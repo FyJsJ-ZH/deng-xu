@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { WorldCard, HeroPreset, PlayerCard } from '@/types/cards';
 import { makeId } from '@/utils/files';
 import { createKVStore, isIdbAvailable } from '@/utils/idb';
+import { loadBuiltinWorlds, missingBuiltinIds } from '@/data/builtinWorldIds';
 
 /**
  * 卡片库为什么落在 IndexedDB 而不是 localStorage：
@@ -19,6 +20,29 @@ const WORLDS_KEY = 'worlds';
  * 而玩家精心设定的主角不该因为"清空卡片库"就一起消失。
  */
 const PRESETS_KEY = 'heroPresets';
+/**
+ * 玩家**主动删掉**的内置世界 id。
+ *
+ * ## 为什么需要第三个键
+ *
+ * 内置卡现在有两套逻辑会碰到它们，而这两套逻辑天生打架：
+ *
+ *  1. **缺卡补齐** —— 库里缺了某张内置卡就补回来。
+ *     没有它的话，2026-10 新增的四张卡对**已经玩过的人**永远不可见
+ *     （原先只在"首次运行"播种，老玩家的库早就不是 null 了）。
+ *  2. **用户的删除** —— 删了就该没了。
+ *
+ * 少了这个键，第 1 条会把第 2 条刚删掉的卡在下次启动时原样塞回来，
+ * 玩家看到的是"删除无效"。所以删内置卡时在这里记一笔。
+ */
+const REMOVED_BUILTIN_KEY = 'removedBuiltinWorlds';
+
+/**
+ * `REMOVED_BUILTIN_KEY` 的内存副本。
+ * 只由 `loadWorlds` 写入、由 `deleteWorld` 追加 —— 不放进 store state，
+ * 因为它是**内部记账**，UI 不该看见、也不该因为它的变化触发重渲染。
+ */
+let removedBuiltinCache: string[] = [];
 
 const kv = createKVStore('pale-notes', 'kv');
 
@@ -239,25 +263,49 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           error = `读取世界卡库失败：${describeError(err)}`;
         }
 
-        // 注意：读到空数组不算「首次运行」。用户自己删光了卡，
-        // 再把内置卡塞回去会显得删除操作没生效。
-        let needSeed = false;
-        if (worlds === null) {
-          /*
-            ⚠️ 内置世界必须**动态 import**。
-            2026-10 世界书重构后，三个深度世界的正文合计约 580 KB 源码
-            （打包进 JS 约 640 KB、gzip 约 400 KB）。如果静态 import，
-            这段体积会全部落进**首屏包** —— 实测主包会从 472 KB 涨到 647 KB
-            （gzip 198 → 408 KB），手机上首屏要多下 200 KB 才能看到主菜单。
-            而内置卡**只在首次运行（kv 里还没有卡）时才需要**，
-            所以改成动态 import，由 Vite 自动拆成独立 chunk，按需加载。
-          */
-          const { BUILTIN_WORLDS } = await import('@/data/builtinWorlds');
-          worlds = deepClone(BUILTIN_WORLDS);
-          needSeed = true;
+        /*
+          ── 读「玩家删过的内置卡」──
+          读失败一律按"没删过"处理：宁可多补一张内置卡（他还能再删一次），
+          也不要因为一个辅助键读不出来，就让所有新世界都对他不可见。
+        */
+        try {
+          const rawR = await kv.get<unknown>(REMOVED_BUILTIN_KEY);
+          const parsedR = typeof rawR === 'string' && rawR.trim() ? JSON.parse(rawR) : rawR;
+          removedBuiltinCache = Array.isArray(parsedR)
+            ? parsedR.filter((x): x is string => typeof x === 'string')
+            : [];
+        } catch {
+          removedBuiltinCache = [];
         }
 
-        set({ worlds, heroPresets: presets, loaded: true, loadError: error });
+        // 注意：读到空数组不算「首次运行」（`worlds === null` 才算）。
+        // 用户自己删光了卡，再把内置卡塞回去会显得删除操作没生效。
+        const firstRun = worlds === null;
+        const missing = missingBuiltinIds((worlds ?? []).map(w => w.id), removedBuiltinCache);
+
+        let needSeed = false;
+        if (firstRun || missing.length) {
+          /*
+            ⚠️ 走 `loadBuiltinWorlds`（按 id **动态**加载，每个世界各成一个 chunk），
+            **不要** import `@/data/builtinWorlds` —— 那个模块静态拉入全部八张卡
+            （约 2.5 MB 源码 / gzip 640 KB），等于把它们整块塞进首屏包。
+            这里只取缺的那几张：老玩家升级时通常只需下四个 chunk。
+          */
+          const add = await loadBuiltinWorlds(missing);
+          if (add.length || firstRun) {
+            worlds = [...(worlds ?? []), ...deepClone(add)];
+            needSeed = true;
+          }
+        }
+
+        /*
+          ⚠️ `worlds` 的类型是 `WorldCard[] | null`（null = 首次运行），
+          但走到这里它一定是个数组：上面那条分支保证了"缺卡就补"。
+          这里**显式归一化**而不是依赖类型收窄 —— 它同时挡掉一个边角情况：
+          首次运行、但每一张内置卡都在"删过的"名单里（换过设备又清过库），
+          那时 `add` 是空的，`worlds` 会一直是 null，直接塞进 store 会让下游 `w.id` 崩。
+        */
+        set({ worlds: worlds ?? [], heroPresets: presets, loaded: true, loadError: error });
         if (needSeed) await queuePersist();
       })();
 
@@ -288,9 +336,25 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
 
     deleteWorld: async (id) => {
       const before = get().worlds;
+      const target = before.find((w) => w.id === id);
       const worlds = before.filter((w) => w.id !== id);
       if (worlds.length === before.length) return; // 没删到东西就不必整体写回
       await commitWorlds(worlds);
+
+      /*
+        删的是**内置卡**时记一笔（见 REMOVED_BUILTIN_KEY）。
+        不记的话，下次启动的"缺卡补齐"会把它原样塞回来 —— 玩家看到的是
+        "删除按钮坏了"。用户自己导入或复制的卡不必记：那些 id 不在内置清单里。
+      */
+      if (target?.builtin === true && !removedBuiltinCache.includes(id)) {
+        removedBuiltinCache = [...removedBuiltinCache, id];
+        // 与卡片库共用一条写链，保证两个键的写入有序（同 persistPresets 的理由）
+        writeChain = writeChain
+          .then(() => kv.set(REMOVED_BUILTIN_KEY, JSON.stringify(removedBuiltinCache)))
+          // 辅助键写失败不值得打扰玩家：最坏是下次启动把这张卡补回来一次
+          .catch(() => undefined);
+        await writeChain;
+      }
     },
 
     duplicateWorld: async (id) => {

@@ -18,9 +18,18 @@ function list(items: string[], fallback = '无'): string {
   return filtered.length ? filtered.join('、') : fallback;
 }
 
-function attrLine(a: AttributeDef): string {
+function attrLine(a: AttributeDef, value?: number): string {
   const desc = a.description?.trim();
-  return desc ? `- \`${a.id}\`（${a.name}）：${desc}` : `- \`${a.id}\`（${a.name}）`;
+  /*
+    ⚠️ 带上**当前值**。原先这里只列 id 与说明，于是数据 AI 每次结算都要
+    「重新猜」主角现在是什么水平 —— 它看不到当前值，只能凭这一轮的剧情瞎估，
+    结果是同一个属性在相邻两轮里被写得忽高忽低。
+  */
+  const val = typeof value === 'number' && Number.isFinite(value)
+    ? `，当前 ${Math.round(value)}（${TIER_LABEL[attributeTier(value)]}）`
+    : '';
+  const head = `- \`${a.id}\`（${a.name}）${val}`;
+  return desc ? `${head}：${desc}` : head;
 }
 
 function resourceLine(r: ResourceDef): string {
@@ -77,8 +86,27 @@ function povInstruction(world: WorldCard): string {
   }
 }
 
+/**
+ * 每轮随主角一起注入的两段简报。
+ *
+ * 之所以做成一个对象而不是两个独立参数：它们**必须成对地出现在
+ * 「主角」那一段的紧后面** —— 那是模型读"我是谁"的位置。
+ * 散在提示词各处只会让它们变成两段可读可不读的参考资料。
+ */
+export interface TurnBriefing {
+  /** 各背景槽位选中的 option id，key 为槽位 label */
+  backgroundChoices?: Record<string, string>
+  /** 属性当前值（id → 数值） */
+  aspects?: Record<string, number>
+}
+
 /** 叙事 AI 的 system prompt */
-export function buildNarrativeSystemPrompt(world: WorldCard, activeCharacters: CharacterCard[], player: PlayerCard): string {
+export function buildNarrativeSystemPrompt(
+  world: WorldCard,
+  activeCharacters: CharacterCard[],
+  player: PlayerCard,
+  briefing: TurnBriefing = {},
+): string {
   const sections: string[] = [];
 
   sections.push(`你是文字角色扮演游戏《${world.title}》的**叙事者**。
@@ -123,6 +151,18 @@ ${world.rules.trim()}
 ${formatPlayer(player)}
 
 请在叙事中自然地体现这些特征：正确使用对应的代称，并在动作描写中呼应其外貌与性格。`);
+
+  /*
+    ── 背景与属性：**每一轮**都注入，不再只是开场的表单 ──
+    这两段必须紧跟在「主角」之后：那是模型读"这个人是谁"的位置。
+    放到提示词末尾会被当成参考资料，放在这里才会被当成他的定义。
+    两段都可能返回空串（玩家没选背景 / 世界关掉了机制层），空则不注入。
+  */
+  const bgBriefing = buildBackgroundBriefing(world, briefing.backgroundChoices)
+  if (bgBriefing) sections.push(bgBriefing)
+
+  const attrBriefing = buildAttributeBriefing(world, briefing.aspects)
+  if (attrBriefing) sections.push(attrBriefing)
 
   if (activeCharacters.length) {
     sections.push(`## 出场角色档案
@@ -186,7 +226,7 @@ ${world.narrative.customStyle.trim() ? `- **额外文风要求**：${world.narra
 }
 
 /** 数据 AI 的 system prompt —— JSON 结算协议 */
-export function buildDataSystemPrompt(world: WorldCard): string {
+export function buildDataSystemPrompt(world: WorldCard, aspects?: Record<string, number>): string {
   const attributes = world.enableMechanics ? world.attributes : [];
   const resources = world.enableMechanics ? world.resources : [];
 
@@ -205,7 +245,20 @@ export function buildDataSystemPrompt(world: WorldCard): string {
     sections.push(`## 本世界的数值体系
 
 ### 属性
-${attributes.length ? attributes.map(attrLine).join('\n') : '（本世界未定义属性）'}
+${attributes.length ? attributes.map(a => attrLine(a, aspects?.[a.id])).join('\n') : '（本世界未定义属性）'}
+
+**属性是能力，不是分数。** 上面标了每个属性的**当前值与档位**，判据是这样定的：
+
+- **内行**（4 及以上）：他做这类事应当成功，而且**看得出别人看不出的东西**。
+  剧情里遇到需要这门本事的场合，可以让他凭它拿到额外信息、少走一步弯路。
+- **够用**（2~3）：日常做得来；碰上真正的行家或硬场面，要给阻力。
+- **不会**（0~1）：**这类行动应当失败**，或者必须借助他人与外物。
+  玩家仍然可以尝试（协议里不许用 requirements 拦人），但你要如实写出失败的
+  具体过程与代价，而不是照顾他一下让他蒙过去。**也不要因为他不会就不给出这类选项** ——
+  明知不可为而为之，本身是一种玩法；你只负责让后果真实。
+- 属性**只在剧情中明确发生了对应事件时**才变动（见下面的通则）；不要因为"他这次做得不错"
+  就随手加一点，那会让档位失去意义。一次真正的成长（拜师、长期练习、吃过一次大亏）
+  才配得上 +1。
 
 ### 资源
 ${resources.length ? resources.map(resourceLine).join('\n') : '（本世界未定义资源）'}
@@ -407,6 +460,152 @@ export function describeBackgroundChoices(
 }
 
 /**
+ * 把玩家选定的背景槽位整理成**每一轮都注入叙事 AI** 的一段简报。
+ *
+ * ## 为什么必须有它（2026-10，玩家第二次打回）
+ *
+ * 玩家原话：
+ * > 「只有开局处境对剧情有影响……**我的想法是背景、出身、主角背景、属性
+ * > 全部对剧情有直接的影响**」
+ *
+ * 他说得对，而且原因在代码里看得很清楚：
+ *
+ *  - `describeBackgroundChoices` 的**唯一调用点**是 `buildOpeningInstruction`，
+ *    也就是**只喂给第一幕**。第二幕起，玩家挑的出身/立场/来路就再也没进过提示词。
+ *  - 每轮倒是有 `playerState.background` 那一段 JSON 进上下文，
+ *    但 `buildDataSystemPrompt` 里对它的定义白纸黑字写着
+ *    「物品必须与玩家的出身挂钩」—— 它被**当成发物品的依据**，
+ *    而不是"这个人此刻怎么看待世界"的依据。
+ *
+ * 于是背景槽位变成了一个开局点一下就作废的表单。这一段把它拿回来：
+ * 写清楚每一轮该怎么用（认得出什么、习惯怎么做、别人怎么待他、手上有什么），
+ * 并**显式要求写出他的外行** —— 否则模型会顺手把主角写成全能。
+ *
+ * 返回空串表示玩家没选任何背景（或世界卡没定义槽位），此时**不注入**：
+ * 一个只有标题没有内容的空区块只会浪费 token。
+ */
+export function buildBackgroundBriefing(
+  world: WorldCard,
+  choices: Record<string, string> | undefined,
+): string {
+  const picks = describeBackgroundChoices(world, choices || {})
+  if (!picks.length) return ''
+
+  const lines = picks.map(p => {
+    const bits = [`- **${p.label}**：${p.title}`]
+    if (p.description) bits.push(`  ${p.description}`)
+    if (p.items.length) bits.push(`  随身：${p.items.join('、')}`)
+    return bits.join('\n')
+  })
+
+  return `## 他的来路与立场（**每一轮都要用上 —— 这不是只在开场生效的表单**）
+
+${lines.join('\n')}
+
+上面这些是**他此刻看世界的方式**，不是一段履历、更不是自我介绍。请在**每一轮**叙事里让它们真的起作用：
+
+- **他认得出什么**：来路决定眼力。同一件东西，他看见的是**同行才看得见的门道**
+  （行省抄写人拿到一份状纸，先看纸的规格与押缝印对不对；赶驮人看一头骡子，先看蹄与牙口；
+  钱庄伙计听人报数，先在心里验一遍贴现）。给出这种专业细节，而不是笼统的"你很在行"。
+- **不会的地方要如实写出来**：凡是与他的来路无关的领域，他会看错、会问出蠢问题、
+  会被人糊弄、会听不懂行话 —— 这才是**外行**该有的样子，也正是来路在起作用。
+  **不要让他什么都懂** —— 他的本事只在他自己那一行里，出了那一行，他和你我一样要交学费。
+  这一条比上一条更重要。
+- **他习惯怎么做**：立场与信念决定他遇到麻烦时的第一反应 —— 是先查账、先托人、
+  先动手，还是先跑。同一件事，不同来路的人会走出不同的第一步。
+- **别人怎么待他**：出身决定待遇。同样一句话，换个身份去说，对方的脸色、开价、
+  推托的借口都不一样；他也会因为出身而被某些门**天然地挡在外面**。
+- **他手上有哪些东西**：随身物要真的被用起来（拿在手里、押在柜上、当掉、送出去），
+  不是写一次就被忘掉的摆设。
+- **实在不会的时候，让他求人**：他没有的那门本事，别让他凭空会了 ——
+  让他花钱雇人、托人情、或者干脆绕开。这才是来路真正在起作用的样子。`
+}
+
+/**
+ * 属性分档。
+ *
+ * ## 为什么是这三档，而不是一条公式
+ *
+ * 四个内置世界的 `attributePoints` 都是 **6 点自由分配**（见各世界卡），
+ * 再叠上背景选项的 `attributeBonus`（通常 +1~+3），所以单个属性的落点
+ * 大致在 **0~6**：0 = 一点没投，6 = 投满又赶上有加成的出身。
+ *
+ * 于是三档正好：**0~1 不会 / 2~3 够用 / 4+ 内行**。
+ * 这里刻意**不做数值检定**（不掷骰、不算成功率）——
+ * 项目约定「允许失败，失败后果在下一回合判定」，而叙事 AI 的职责是**演绎**而非判定。
+ * 给它档位和用法，比给它一套概率更不容易把书写成战报。
+ */
+export type AttributeTier = 'none' | 'ok' | 'expert'
+
+export function attributeTier(value: number): AttributeTier {
+  if (!Number.isFinite(value) || value <= 1) return 'none'
+  if (value <= 3) return 'ok'
+  return 'expert'
+}
+
+const TIER_LABEL: Record<AttributeTier, string> = {
+  none: '不会',
+  ok: '够用',
+  expert: '内行',
+}
+
+/**
+ * 把属性当前值整理成**每一轮都注入叙事 AI** 的一段简报。
+ *
+ * ## 为什么必须有它
+ *
+ * 玩家原话：「**那些属性对游戏剧情的影响也几乎没有**」。根因是结构性的：
+ *
+ *  - 属性**只进数据 AI**（`buildDataSystemPrompt`），在那里也只是一张
+ *    「id → 名字 → 说明」的字典，唯一用途是**加减法**；
+ *  - **叙事 AI 根本收不到属性** —— `buildNarrativeSystemPrompt` 的入参里
+ *    压根没有 `aspects`。所以它写下"你翻过那道墙"的时候，
+ *    并不知道自己笔下的主角武艺是 0 还是 6。
+ *
+ * 结果是属性退化成一个只会上下跳的数字面板，玩家看不见它对故事的形状有任何影响。
+ * 这一段把它变成**叙事待遇**：高就是内行、低就是外行、没有就是不会，
+ * 而且是每一轮都要照着写、**写不出数字**的那种。
+ *
+ * 传入 `aspects` 为空或全部为 0（还没分配）时返回空串，不注入。
+ */
+export function buildAttributeBriefing(
+  world: WorldCard,
+  aspects: Record<string, number> | undefined,
+): string {
+  const attrs = world?.enableMechanics ? world.attributes || [] : []
+  if (!attrs.length || !aspects) return ''
+
+  const rows = attrs.map(a => ({
+    def: a,
+    value: Math.round(aspects[a.id] ?? 0),
+  }))
+  // 全 0 = 这一局还没分配过点数，简报没有意义（也免得给 AI 一堆"不会"）
+  if (!rows.some(r => r.value !== 0)) return ''
+
+  const lines = rows.map(r => {
+    const tier = attributeTier(r.value)
+    const desc = (r.def.description || '').trim()
+    return `- **${r.def.name}** · ${TIER_LABEL[tier]}（${r.value}）${desc ? ` —— ${desc}` : ''}`
+  })
+
+  return `## 他的能力：这几样东西决定他做得到什么、做不到什么（**每一轮都要照此描写**）
+
+${lines.join('\n')}
+
+**这不是一组可以随手加的数字，而是他在这个世界里能做成什么事的天花板。** 每一轮都要落到具体的手感与结果上：
+
+- **内行**的那几样：他看得出门道、下手稳、会被同行请教，也能靠它吃饭。
+  写他做这类事时**要给专业细节**（术语、行话、判断依据、动作的准确度），
+  而不是笼统地说一句"你很擅长"。
+- **够用**的那几样：日常做得来，遇到真正的行家会被压一头。别把它写成专家。
+- **不会**的那几样：**这是硬边界**。他做这类事会失败、会露怯、会被骗，
+  需要求人或花钱雇人。**不要因为剧情需要就让他突然会了** —— 那等于把这个面板作废。
+  他绕开它、或者为它付出代价，才是正确的演法。
+- 上面**没列出**的能力，就是他不会的，不要凭空给他。
+- 叙事里**一个字都不要提属性名与数字**，全部化成动作、手感与结果。`
+}
+
+/**
  * 解析玩家选定的「开局处境」素材。
  *
  * ## 这里我改错过两次
@@ -555,18 +754,26 @@ ${playerCard || '（玩家没有填写任何主角设定 —— 此时请让第�
 不要把他换成别的部门、别的官职、别的出身，也不要给他加一个他没写过的上司。`);
 
   if (seed) {
-    parts.push(`═══ 二、开局处境（**附加参考**）═══
+    parts.push(`═══ 二、他所处的那一类环境（**附加参考：这是素材，不是剧本**）═══
 
-他选的处境是「${seed.title}」。这类处境通常是这个样子（**这是素材，不是剧本**）：
+他选的处境是「${seed.title}」。下面这段描述的是**这一类环境长什么样**：
 
 ${seed.seed}
 
-用法：从这里取"场合的质感、会碰到的人的类型、这一行当特有的麻烦与体面"，
-然后**结合上面第一段里主角自己的身份**，写出属于他一个人的第一幕。
+⚠️ 这一节最容易把第一幕写死，所以有三条硬限制：
 
-⚠️ 若这段素材与主角的设定**冲突**（例如素材说他在某个衙门、某个部门，
+1. **它不决定"他现在在哪、正在做什么"。** 那由上面第一段（主角本人）决定。
+   这段里的衙门、行当、街市**都不是他的岗位**，只是他可能会打交道、
+   会路过、会听人提起的那一类环境。
+2. **不要从这段素材里替他认亲。** 里面出现的人只是"这类环境里会有的人"，
+   **不是任何人**的下属、同僚或亲戚 —— 他身边的人由他自设的身份决定。
+3. **它不限制他往后能去做什么。** 不要因为选了这类环境，就把第一幕之后的路
+   都往这上面收；他随时可以走进完全不同的地方，那不算跑题。
+
+用法：只取这类环境的**气味、行话、价钱与规矩**。
+凡是它与主角自设设定**冲突**之处（例如素材说他在某个衙门、某个部门，
 而主角写的是另一个），**一律以主角的设定为准**，素材只保留可用的氛围与人物类型。
-${hasOwnBackground ? '' : '\n（主角没有自述背景，所以这一段可以更大程度地充当他的处境依据。）'}`);
+${hasOwnBackground ? '' : '\n（主角没有自述背景，所以此时可以**参照他的来路与立场**替他安排一个合乎逻辑的开场 ——\n但只写"他此刻恰好在做的一件事"，不要写成"他被钉在这个位置上"。）'}`);
   } else {
     const tone = (world.story?.atmosphere || world.story?.opening || '').trim();
     if (tone) {
@@ -594,21 +801,22 @@ ${tone}`);
         if (p.items.length) bits.push(`　开局随身：${p.items.join('、')}`)
         return bits.join('')
       })
-      parts.push(`═══ 三、他的其他选择（**附加参考，优先级最低**）═══
+      parts.push(`═══ 三、他带进第一幕的东西（**附加参考**）═══
 
 ${lines.join('\n')}
 
-这些只用来给第一幕**加质感与动机**，具体落到：
+这些已经作为他的**固定设定**写进了系统提示（见「他的来路与立场」一节），
+这里只提醒第一幕怎么落地：
 - **手上有什么**：随身物要真的出现在第一幕里（拿在手里、揣着、藏在靴筒里），并成为他行动的依据。
-- **他心里想要什么、怕什么**：立场与志向决定他在这件事上的偏向；隐秘决定他的顾忌。
 - **他第一眼会注意到什么**：外行看热闹、内行看门道 —— 让他的来路决定他先看见什么。
+- **他心里想要什么、怕什么**：立场决定他在这件事上的偏向，也决定他先提防谁。
 - **别人怎么称呼他**：称呼要跟他的身份相称。
 
 ⚠️ 三条禁令：
 1. 不要把这些写成一段自我介绍（"你出身于……"）；
 2. **不要因为"他是商人"就把场景改成商号、因为"他是军人"就改成军营** ——
    他身处什么场合，**首先由第一段里他自己的身份决定**；
-   第二段只提供这类场合的氛围与人物类型，这些选择只是他带进场合里的东西；
+   这一节只是他带进场合里的东西；
 3. **更不要因为它们去改主角的身份与职位** —— 那是第一段说了算的。`);
     }
   }

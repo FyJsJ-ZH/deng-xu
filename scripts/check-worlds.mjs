@@ -47,7 +47,16 @@ const AS_JSON = process.argv.includes('--json')
   这时先由外部把 bundle 打好（或由 `pnpm gen:worldbook` 顺带产出），
   本脚本直接复用，就不必依赖管道。
 */
-const BUNDLE = path.join(ROOT, '.check', 'worlds-check.mjs')
+/*
+  ⚠️ `DX_WORLDS_BUNDLE` 环境变量可以把打包产物挪到别的路径。
+  加这个口子是因为**多个世界卡可能正在被并行施工**：
+  它们都要反复跑这个脚本，若共用一个 `.check/worlds-check.mjs`，
+  就会互相覆盖对方的 bundle（表现为"我刚改的没生效"或 esbuild 半途报错）。
+  设了这个变量的进程各用各的产物，互不干扰。
+*/
+const BUNDLE = process.env.DX_WORLDS_BUNDLE
+  ? path.resolve(ROOT, process.env.DX_WORLDS_BUNDLE)
+  : path.join(ROOT, '.check', 'worlds-check.mjs')
 fs.mkdirSync(path.dirname(BUNDLE), { recursive: true })
 
 /** bundle 是否比它的输入都新（inputs 里任一文件更新就需要重打） */
@@ -135,6 +144,48 @@ const EXPECTED = [
       '系统', '面板', '经验值', '技能点', '内力', '真气', '修仙', '灵气',
       '电脑', '网络', '数据', '程序', '人工智能', '机器人', '塑料',
       '魔法', '法术', '咒语', '蓝条', '魔力',
+    ],
+  },
+  /*
+    ── 由艺创区素材新增的 4 个世界（2026-10）──
+    都不设 required：它们在开发中先以骨架存在，写完再逐步达标，
+    这样"还没写完"不会连带把已有 4 个世界的验收一起弄红。
+  */
+  {
+    id: 'builtin_zhongdi',
+    label: '中帝纪年（1905 架空东北亚，无超自然力量）',
+    required: false,
+    // 与《大晟会典》同一条底线：这是一个**没有异力**的世界
+    banned: [
+      '内力', '真气', '轻功', '法术', '修仙', '仙尊', '灵气', '神通', '妖术', '魔法',
+      '系统', '面板', '经验值', '技能点',
+    ],
+  },
+  {
+    id: 'builtin_zhiming',
+    label: '织命星典（工业味剑与魔法 · 黑潮帝国）',
+    required: false,
+    banned: [
+      '系统', '面板', '经验值', '技能点', '电脑', '网络', '数据', '程序',
+      '人工智能', '机器人', '手机', '塑料',
+    ],
+  },
+  {
+    id: 'builtin_ximeng',
+    label: '汐梦洲风物志（渊海位面 · 魔网与符文）',
+    required: false,
+    banned: [
+      '系统', '面板', '经验值', '技能点', '电脑', '网络', '程序',
+      '人工智能', '机器人', '手机', '塑料',
+    ],
+  },
+  {
+    id: 'builtin_elysion',
+    label: '埃律西昂：原欲之壤（魔素与原欲法则）',
+    required: false,
+    banned: [
+      '系统', '面板', '经验值', '技能点', '电脑', '网络', '数据', '程序',
+      '人工智能', '机器人', '手机', '塑料',
     ],
   },
 ]

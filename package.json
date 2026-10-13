@@ -38,6 +38,7 @@
     "check:sprites-audit": "node scripts/lib/audit-sprites.mjs",
     "check:worlds": "node scripts/check-worlds.mjs",
     "check:look": "node scripts/check-sprites.mjs",
+    "probe:invisible": "node scripts/probe-invisible.mjs",
     "see": "node scripts/see.mjs"
   },
   "dependencies": {

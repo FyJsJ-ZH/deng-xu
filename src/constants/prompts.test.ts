@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { buildOpeningInstruction, describeBackgroundChoices, resolveOpeningSeed } from '@/constants/prompts'
+import {
+  attributeTier,
+  buildAttributeBriefing,
+  buildBackgroundBriefing,
+  buildNarrativeSystemPrompt,
+  buildOpeningInstruction,
+  describeBackgroundChoices,
+  resolveOpeningSeed,
+} from '@/constants/prompts'
 import type { CharacterCard, PlayerCard, WorldCard } from '@/types/cards'
 
 /**
@@ -167,5 +175,108 @@ describe('开场指令 · 主角自设优先，背景槽位只是素材', () => 
     expect(picked).toHaveLength(2)
     expect(picked[0]).toMatchObject({ label: '开局处境', id: 'court', title: '在朝中当权' })
     expect(picked[0].items).toEqual(['一枚印'])
+  })
+})
+
+/**
+ * 背景与属性的**每轮**注入（A2 / A3）。
+ *
+ * ## 玩家第二次打回时的原话
+ *
+ * > 「只有开局处境对剧情有影响（实际上，这是负面影响，因为开局处境被限定了
+ * > 是非常影响自由度的，**我的想法是背景、出身、主角背景、属性全部对剧情有
+ * > 直接的影响**），那些属性对游戏剧情的影响也几乎没有」
+ *
+ * 两条根因，都钉在这里：
+ *
+ *  1. 背景只喂给第一幕 —— `describeBackgroundChoices` 的**唯一**调用点是
+ *     `buildOpeningInstruction`，第二幕起玩家挑的出身/立场再没进过提示词。
+ *  2. 属性**从来没进过叙事 AI 的提示词** —— `buildNarrativeSystemPrompt` 的入参里
+ *     压根没有 `aspects`，它只进数据 AI 当加减法用。
+ *
+ * 所以下面最要紧的是最后一条：**两段简报都要出现在 `buildNarrativeSystemPrompt`
+ * 的产物里** —— 这才是"每一轮"与"只在开场"的分界线。
+ */
+describe('每轮注入 · 他的来路与立场', () => {
+  it('包含槽位名、选项、说明与随身物', () => {
+    const out = buildBackgroundBriefing(mkWorld(), { 开局处境: 'court', 官场立场: 'genghua' })
+    expect(out).toContain('开局处境')
+    expect(out).toContain('在朝中当权')
+    expect(out).toContain('要害位置上的人')
+    expect(out).toContain('一枚印')
+    expect(out).toContain('官场立场')
+    expect(out).toContain('更化派')
+    // 它必须自称"每一轮都要用上"，而不是一份开场表单
+    expect(out).toContain('每一轮')
+  })
+
+  it('没选任何背景 ⇒ 返回空串（不注入一个空区块）', () => {
+    expect(buildBackgroundBriefing(mkWorld(), {})).toBe('')
+    expect(buildBackgroundBriefing(mkWorld(), undefined)).toBe('')
+  })
+
+  it('★ 明确要求写出"不会的地方"，防止 AI 把主角写成全能', () => {
+    const out = buildBackgroundBriefing(mkWorld(), { 开局处境: 'court' })
+    expect(out).toContain('外行')
+  })
+})
+
+describe('每轮注入 · 他的能力面板', () => {
+  const attrWorld = (over: Partial<WorldCard> = {}) => mkWorld({
+    attributes: [
+      { id: 'wu', name: '武艺', description: '刀剑弓马' },
+      { id: 'cha', name: '洞察', description: '从账册里看出不对' },
+    ],
+    ...over,
+  })
+
+  it('attributeTier 按 0~1 不会 / 2~3 够用 / 4+ 内行 分档', () => {
+    expect(attributeTier(0)).toBe('none')
+    expect(attributeTier(1)).toBe('none')
+    expect(attributeTier(2)).toBe('ok')
+    expect(attributeTier(3)).toBe('ok')
+    expect(attributeTier(4)).toBe('expert')
+    expect(attributeTier(9)).toBe('expert')
+    // 脏数据不能把档位算崩（存档里出现过字符串与 NaN）
+    expect(attributeTier(NaN)).toBe('none')
+    expect(attributeTier(-3)).toBe('none')
+  })
+
+  it('带当前值、档位与属性说明，且明说"不要凭空给他"', () => {
+    const out = buildAttributeBriefing(attrWorld(), { wu: 0, cha: 5 })
+    expect(out).toContain('武艺')
+    expect(out).toContain('不会')
+    expect(out).toContain('洞察')
+    expect(out).toContain('内行')
+    expect(out).toContain('刀剑弓马')
+    expect(out).toContain('一个字都不要提属性名与数字')
+  })
+
+  it('全为 0（还没分配点数）⇒ 不注入', () => {
+    expect(buildAttributeBriefing(attrWorld(), { wu: 0, cha: 0 })).toBe('')
+    expect(buildAttributeBriefing(attrWorld(), {})).toBe('')
+    expect(buildAttributeBriefing(attrWorld(), undefined)).toBe('')
+  })
+
+  it('世界关了机制层 ⇒ 不注入（那时属性本来就不参与结算）', () => {
+    expect(buildAttributeBriefing(attrWorld({ enableMechanics: false }), { wu: 6 })).toBe('')
+  })
+
+  it('★ 两段简报都进了叙事 system prompt —— 这才是"每一轮"与"只在开场"的分界', () => {
+    const sys = buildNarrativeSystemPrompt(attrWorld(), noChars, player({ background: '刑部正四品' }), {
+      backgroundChoices: { 开局处境: 'court' },
+      aspects: { wu: 4, cha: 1 },
+    })
+    expect(sys).toContain('在朝中当权')
+    expect(sys).toContain('武艺')
+    expect(sys).toContain('内行')
+    expect(sys).toContain('洞察')
+    expect(sys).toContain('不会')
+  })
+
+  it('不传 briefing 时行为不变（兼容尚未改到的调用点）', () => {
+    const sys = buildNarrativeSystemPrompt(mkWorld(), noChars, player())
+    expect(sys).toContain('沈砚')
+    expect(sys).not.toContain('每一轮都要用上')
   })
 })

@@ -33,13 +33,48 @@ const root = process.cwd()
 const asJson = process.argv.includes('--json')
 
 /*
+  ── 载入素材目录（部件池 + 调色板）──
+
+  ⚠️ 这一段**必须在打包世界卡之前**。理由不是性能，是可用性：
+  它只读 `src/assets/lpc/*.json`，与世界卡无关；而下面的打包会**在失败时直接退出**
+  （任何一张世界卡正在写、语法暂时不完整，都会走到那条路）。
+  原先这段排在打包之后，于是"参考清单过期"这件事永远修不好 ——
+  而清单过期正是它要解决的问题：照着旧清单写 `look`，写出来的是不存在的部件。
+*/
+const runtime = JSON.parse(fs.readFileSync(path.join(root, 'src/assets/lpc/runtime.json'), 'utf8'))
+const PARTS = runtime.parts || runtime.default?.parts || []
+const PART_IDS = new Set(PARTS.map(p => p.id))
+const PART_KIND = new Map(PARTS.map(p => [p.id, p.kind]))
+
+const palettes = JSON.parse(fs.readFileSync(path.join(root, 'src/assets/lpc/palettes.json'), 'utf8')).palettes
+const COLOR_KEYS = Object.fromEntries(
+  Object.entries(palettes).map(([mat, map]) => [mat, new Set(Object.keys(map))]),
+)
+
+/*
+  顺手刷新 `.check/LPC-PARTS.md`（函数声明在下面，hoisted；它引用的 PARTS / palettes
+  此刻已经初始化完毕，不存在 TDZ 问题）。放在打包之前，是为了让这份参考文件
+  在任何情况下都能被修好。
+*/
+const partsDoc = writePartsDoc()
+
+/*
   ── 自己打包世界数据 ──
   这个脚本要在 CI 里独立跑，不能指望"别人先跑过 check:worlds"。
   ⚠️ `stdio: 'ignore'` 是必须的：在受限环境里用管道捕获 esbuild 输出会 EPERM
   （命名管道被禁），症状是 esbuild 明明能跑却报错 —— 这个坑项目里踩过（见 check-worlds.mjs 的注释）。
 */
-const BUNDLE = path.join(root, '.check', 'worlds-check.mjs')
+/*
+  ⚠️ `DX_WORLDS_BUNDLE` 环境变量可以把打包产物挪到别的路径。
+  加这个口子是因为**多张世界卡可能正在被并行施工**：它们都要反复跑这个脚本，
+  若共用一个 `.check/worlds-check.mjs`，就会互相覆盖对方的 bundle
+  （表现为"我刚改的没生效"）。与 check-worlds.mjs 用同一个变量名。
+*/
+const BUNDLE = process.env.DX_WORLDS_BUNDLE
+  ? path.resolve(root, process.env.DX_WORLDS_BUNDLE)
+  : path.join(root, '.check', 'worlds-check.mjs')
 {
+  fs.mkdirSync(path.dirname(BUNDLE), { recursive: true })
   const esbuild = path.join(root, 'node_modules', 'esbuild', 'bin', 'esbuild')
   const r = spawnSync(process.execPath, [
     esbuild, 'src/data/builtinWorlds.ts',
@@ -53,16 +88,7 @@ const BUNDLE = path.join(root, '.check', 'worlds-check.mjs')
   }
 }
 
-// ── 载入素材目录（部件池 + 调色板）──
-const runtime = JSON.parse(fs.readFileSync(path.join(root, 'src/assets/lpc/runtime.json'), 'utf8'))
-const PARTS = runtime.parts || runtime.default?.parts || []
-const PART_IDS = new Set(PARTS.map(p => p.id))
-const PART_KIND = new Map(PARTS.map(p => [p.id, p.kind]))
-
-const palettes = JSON.parse(fs.readFileSync(path.join(root, 'src/assets/lpc/palettes.json'), 'utf8')).palettes
-const COLOR_KEYS = Object.fromEntries(
-  Object.entries(palettes).map(([mat, map]) => [mat, new Set(Object.keys(map))]),
-)
+// ── 素材目录已在文件顶部载入（见那里的注释：必须早于打包）──
 
 /** `look` 的每个字段应当指向哪一类部件（用于查"头发字段填了裤子 id"这种错） */
 const FIELD_KIND = {
@@ -81,6 +107,84 @@ const FIELD_KIND = {
 }
 /** 颜色字段 → 材质 */
 const FIELD_MATERIAL = { skin: 'body', hairColor: 'hair', clothColor: 'cloth', eye: 'eye' }
+
+/**
+ * 重新生成 `.check/LPC-PARTS.md` —— 写 `SpriteLook` 时查阅的部件清单。
+ *
+ * ## 为什么由这个脚本生成，而不是仓库里留着现成的一份
+ *
+ * 这份清单原先由**一次性脚本**产出，那个脚本用完就删了 ——
+ * 于是清单只会**过期**：上游换素材时 `runtime.json` 变了，
+ * 而清单里的 id 还停在旧版本上，照着它写 `look` 就会写出不存在的部件。
+ * 让守卫脚本每次运行都顺手刷新，才不会出现"参考文件比代码旧"这种事。
+ *
+ * ## 一个被修掉的排版 bug（值得记住）
+ *
+ * 上一版的列宽是写死的 `padEnd(32)`。而部件 id 有超过 32 字符的
+ * （`torso_clothes_longsleeve2_cardigan` 之类），于是相邻两个 id
+ * **粘成了一个**：`...cardigan` + `torso_clothes_...` → `...cardigantorso_...`。
+ * 照着这份清单复制，复制到的是一个**不存在的 id** ——
+ * 这是最坏的一种文档错误：它看起来像真的，而且会静默失效。
+ * 现在列宽按该类最长 id 算，永远留两个空格。
+ */
+function writePartsDoc() {
+  const byKind = new Map()
+  for (const p of PARTS) {
+    if (!byKind.has(p.kind)) byKind.set(p.kind, [])
+    byKind.get(p.kind).push(p.id)
+  }
+  const FIELD_HINT = {
+    belt: 'look.belt', apron: 'look.apron（罩裙）', armour: 'look.torso（盔甲也算上装）',
+    arms: 'look.arms', beard: 'look.beard', body: '（固定用 body，不用手填）',
+    cape: 'look.cape', clothes: 'look.torso', eyebrows: 'look.brows', feet: 'look.feet',
+    hair: 'look.hair', hat: 'look.hat', head: 'look.head', legs: 'look.legs',
+    nose: 'look.nose', accessory: 'look.hat / look.belt（按 id 前缀判断）',
+  }
+
+  const L = []
+  L.push('# LPC 立绘部件清单（写 SpriteLook 时查阅）')
+  L.push('')
+  L.push('> ⚠️ **自动生成** —— 由 `node scripts/check-sprites.mjs` 每次运行时刷新，不要手改。')
+  L.push('> 数据源：`src/assets/lpc/runtime.json`、`src/assets/lpc/palettes.json`。')
+  L.push('')
+  L.push('## 三条硬规则')
+  L.push('')
+  L.push('1. **部件 id 必须原样复制** —— 写错的 id 会被**静默忽略**并退回关键词推断（那条路错误率高）。')
+  L.push('2. **颜色只有四种材质能独立指定**：`skin`(body) / `hairColor`(hair) / `clothColor`(cloth) / `eye`(eye)。')
+  L.push('   所有布料（上衣、裤子、鞋、帽子、披风、腰带）**共用 `clothColor`** ——')
+  L.push('   「上衣红、裤子黑」目前做不到，别写不存在的字段。')
+  L.push('3. `note` 如实写外观要点，`check:sprites` 会拿它跟 `look` 做一致性检查。')
+  L.push('')
+  L.push(`## 部件 id（共 ${PARTS.length} 件）`)
+  L.push('')
+  for (const [kind, ids] of [...byKind.entries()].sort()) {
+    const colW = Math.max(...ids.map(i => i.length)) + 2
+    L.push(`### ${kind}  →  ${FIELD_HINT[kind] || '（未知类别）'}`)
+    L.push('')
+    L.push('```')
+    for (let i = 0; i < ids.length; i += 3) {
+      L.push(ids.slice(i, i + 3).map(id => id.padEnd(colW)).join('').trimEnd())
+    }
+    L.push('```')
+    L.push('')
+  }
+  L.push('## 调色板键')
+  L.push('')
+  for (const [mat, map] of Object.entries(palettes)) {
+    const keys = Object.keys(map)
+    L.push(`### ${mat}（${keys.length} 个）`)
+    L.push('')
+    L.push('```')
+    L.push(keys.join('  '))
+    L.push('```')
+    L.push('')
+  }
+
+  const out = path.join(root, '.check', 'LPC-PARTS.md')
+  fs.mkdirSync(path.dirname(out), { recursive: true })
+  fs.writeFileSync(out, L.join('\n'), 'utf8')
+  return out
+}
 
 const problems = []
 const warnings = []
@@ -169,7 +273,7 @@ if (BUILTIN_WORLDS[0]?.story && BUILTIN_WORLDS[0].story.__playerLook) {
 }
 
 if (asJson) {
-  console.log(JSON.stringify({ coverage, problems, warnings }, null, 2))
+  console.log(JSON.stringify({ coverage, problems, warnings, partsDoc }, null, 2))
 } else {
   console.log('\n=== 立绘一致性审计（check:sprites）===\n')
   console.log('  世界                        角色   已写 look   覆盖率')

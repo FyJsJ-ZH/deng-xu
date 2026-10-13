@@ -621,7 +621,8 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
                   <div>
                     <h2 className="font-serif text-2xl font-bold">你的来处</h2>
                     <p className="text-xs text-text-muted mt-1">
-                      由世界卡定义的背景槽位，会带来属性与资源加成，也可能决定开局物品。
+                      由世界卡定义的背景槽位：它决定他的属性与资源加成、开局随身，
+                      也决定他在故事里认得出什么、习惯怎么做、别人怎么待他 —— 这些每一轮都参与 AI 的叙事。
                     </p>
                   </div>
 
@@ -701,7 +702,7 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
                       </h2>
                       <p className="text-xs text-text-muted mt-1">
                         {world.enableMechanics
-                          ? `可自由分配 ${world.attributePoints} 点。属性会影响 AI 对你行动风格的判断。`
+                          ? `可自由分配 ${world.attributePoints} 点。属性是他**做得到什么、做不到什么**的天花板：高的地方他是内行，低的地方他会失手 —— AI 每一轮都照着这个写。`
                           : '这个世界卡关闭了机制层，数值不会生效。'}
                       </p>
                     </div>
@@ -830,8 +831,9 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
                           )}
                         </div>
                         <p className="text-[10px] text-text-muted leading-relaxed">
-                          ⓘ 第一幕会由 AI **结合你自己填的主角设定**现场创作，下面是这类处境的素材，
-                          不是写死的剧本。你在「扮演角色」里写的身份与职位**优先于**这里的任何说法。
+                          ⓘ 第一幕由 AI 结合你自己填的主角设定现场创作。下面这段只是这类环境的
+                          气味、行话与价钱，它不规定你现在在哪、正在做什么。
+                          你在「扮演角色」里写的身份与职位优先于这里的任何说法。
                         </p>
                         {seed && (
                           <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap font-serif">

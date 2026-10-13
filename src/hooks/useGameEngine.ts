@@ -929,7 +929,20 @@ export function useGameEngine(): GameEngineReturn {
       const memoryBlock = renderMemoryForPrompt(updatedStore.memory)
 
       const narrativeMessages: ChatMessage[] = [
-        { role: 'system', content: buildNarrativeSystemPrompt(activeWorld, activeCharacters, player) },
+        {
+          role: 'system',
+          /*
+            ⚠️ 背景选择与属性值**必须每轮都传**（2026-10 玩家第二次打回）。
+            原先这里只有 (世界, 在场角色, 主角卡) 三个参数 ——
+            于是玩家在选角页挑的出身/立场，以及他分配的所有属性点，
+            从第二幕起就再也进不了叙事提示词。背景与属性双双退化成
+            "开局点一下就作废"的表单。详见 `buildBackgroundBriefing` 的注释。
+          */
+          content: buildNarrativeSystemPrompt(activeWorld, activeCharacters, player, {
+            backgroundChoices: useSessionStore.getState().backgroundChoices,
+            aspects: updatedStore.aspects,
+          }),
+        },
         ...(updatedStore.summary ? [{ role: 'system' as const, content: `[前情摘要]\n${updatedStore.summary}` }] : []),
         ...(memoryBlock
           ? [{
@@ -1115,7 +1128,7 @@ export function useGameEngine(): GameEngineReturn {
         setDebugDataInput(dataAnalysisContext)
 
         const dataMessages: ChatMessage[] = [
-          { role: 'system', content: buildDataSystemPrompt(activeWorld) },
+          { role: 'system', content: buildDataSystemPrompt(activeWorld, useGameStore.getState().aspects) },
           { role: 'user', content: dataAnalysisContext }
         ]
 
