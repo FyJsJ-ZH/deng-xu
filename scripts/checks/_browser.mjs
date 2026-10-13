@@ -130,6 +130,61 @@ export async function launch({ port, userDataDir, viewport, mobile = false, extr
   return { send, ev, shot, close, errors, page }
 }
 
+/**
+ * 截图并返回 PNG Buffer —— **带重试**，并在失败时抛一个说清是什么的错误。
+ *
+ * ## 为什么不能直接写 `shot.result.data`
+ *
+ * CDP 的 `Page.captureScreenshot` 会**偶发失败**：响应里只有 `error`、没有 `result`。
+ * 这在两种情况下明显更容易发生：
+ *   · 页面还在渲染 —— 尤其是 `captureBeyondViewport` 要合成一整张长图时
+ *     （地图画廊那张有 45 张地图，上千像素高）；
+ *   · 页面里的 `<img>` 还没解码完。
+ *
+ * 裸取 `.result.data` 会抛 `Cannot read properties of undefined (reading 'data')`
+ * —— 这个报错完全看不出是"截图偶发失败"，走查于是随机变红，
+ * 而重跑一次又能过（CI 上「地图昼夜」就这样红过，查了半天才排除掉真实缺陷）。
+ *
+ * 所以：失败就等一会儿重试；连续失败才抛错，且错误里带上 CDP 的原话。
+ *
+ * @param send    `launch()` 返回的 CDP 发送函数
+ * @param params  传给 `Page.captureScreenshot` 的参数
+ * @param opts    retries / delayMs
+ */
+export async function capturePage(send, params = { format: 'png' }, opts = {}) {
+  const retries = opts.retries ?? 3
+  const delayMs = opts.delayMs ?? 700
+  let lastErr = null
+  for (let i = 0; i < retries; i++) {
+    const s = await send('Page.captureScreenshot', params)
+    if (s?.result?.data) return Buffer.from(s.result.data, 'base64')
+    lastErr = s?.error?.message || s?.error || '响应里没有 result'
+    await sleep(delayMs)
+  }
+  throw new Error(`Page.captureScreenshot 连续 ${retries} 次失败：${lastErr}`)
+}
+
+/**
+ * 等页面里所有 `<img>` 加载完（或出错）再继续。
+ *
+ * 走查里凡是"先画一堆图、再截图"的地方都该先调它 ——
+ * 用固定 `sleep(2500)` 等图片是走查不稳的常见原因：
+ * 机器快的时候早就好了（白等），机器慢的时候还没好（截到空白）。
+ * 这与项目里那条「**等条件，不要等时间**」是同一条铁律。
+ */
+export async function waitForImages(ev, timeoutMs = 15000) {
+  try {
+    await ev(`(async () => {
+      const imgs = [...document.images];
+      await Promise.race([
+        Promise.all(imgs.map(i => (i.complete ? 0 : new Promise(r => { i.onload = r; i.onerror = r })))),
+        new Promise(r => setTimeout(r, ${timeoutMs})),
+      ]);
+      return imgs.length;
+    })()`)
+  } catch { /* 页面没有 document.images 时不阻塞流程 */ }
+}
+
 /** 一套简单的断言收集器，四个走查共用同一套输出格式 */
 export function makeChecker() {
   const results = []

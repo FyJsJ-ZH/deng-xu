@@ -1364,7 +1364,7 @@ export const westfantasy: WorldCard = {
       scenario: '在白石城宫城的西侧书房里，面前摊着三份日期互相矛盾的婚配登记抄本',
       location: '白石城·宫城西书房',
       present: false,
-      look: { head: 'heads_human_male_elderly', skin: 'light', hair: 'hair_buzzcut', hairColor: 'gray', torso: 'torso_clothes_robe', clothColor: 'slate', legs: 'legs_pants', feet: 'feet_shoes_basic', beard: '', eye: 'gray', brows: 'eyebrows_thin', note: '五十岁人类男性，灰白短发，深灰素袍，瘦削、肩塌；脸上有不眠的眼袋（画不出）' },
+      look: { head: 'heads_human_male_elderly', skin: 'light', hair: 'hair_buzzcut', hairColor: 'gray', torso: 'torso_clothes_longsleeve2_buttoned', clothColor: 'slate', legs: 'legs_pants', feet: 'feet_shoes_basic', beard: '', eye: 'gray', brows: 'eyebrows_thin', note: '五十岁人类男性，灰白短发；深灰素袍长衫（保色：原 torso_clothes_robe 固定棕、染不上 slate，改用可换色带襟衫件），瘦削、肩塌；脸上有不眠的眼袋（画不出）' },
       tags: ['帝国', '权臣', '人类'],
     }),
     char({
@@ -1376,7 +1376,7 @@ export const westfantasy: WorldCard = {
       scenario: '在白垩脊南麓的一个边防据点里，正在检查一块被移回原位的界碑上的刻痕',
       location: '白垩脊南麓·狼喉隘据点',
       present: false,
-      look: { head: 'heads_human_female', skin: 'light', hair: 'hair_long_straight', hairColor: 'dark_gray', torso: 'torso_clothes_robe', clothColor: 'navy', legs: 'legs_pants', feet: 'feet_shoes_basic', beard: '', eye: 'brown', brows: 'eyebrows_thin', note: '四十七岁人类女性，深灰长发，洗得发白的深蓝外袍，袖口卷到小臂；小臂与颈侧有浅白术痕（画不出）' },
+      look: { head: 'heads_human_female', skin: 'light', hair: 'hair_long_straight', hairColor: 'dark_gray', torso: 'torso_clothes_longsleeves_cuffed', clothColor: 'navy', legs: 'legs_pants', feet: 'feet_shoes_basic', beard: '', eye: 'brown', brows: 'eyebrows_thin', note: '四十七岁人类女性，深灰长发；深蓝外袍、袖口卷到小臂（保色：原 torso_clothes_robe 固定棕、染不上 navy，改用可换色卷袖衫件，与"袖口卷到小臂"一致）；小臂与颈侧有浅白术痕（画不出）' },
       tags: ['帝国', '术士', '人类'],
     }),
     char({
@@ -1388,7 +1388,7 @@ export const westfantasy: WorldCard = {
       scenario: '在三姓城的教会堂区里等一个人，等的人不是你，但你已经进门了',
       location: '三姓城·圣承教会堂区',
       present: true,
-      look: { head: 'heads_human_male', skin: 'light', hair: '', hairColor: 'dark_brown', torso: 'torso_clothes_robe', clothColor: 'gray', legs: 'legs_pants', feet: 'feet_boots_basic', beard: 'beards_mustache', eye: 'gray', brows: 'eyebrows_thick', note: '四十一岁人类男性，剃光头、短须，灰袍下藏旧皮甲，身高体壮；左小腿有旧弩伤（画不出）' },
+      look: { head: 'heads_human_male', skin: 'light', hair: '', hairColor: 'dark_brown', torso: 'torso_clothes_longsleeve2', clothColor: 'gray', legs: 'legs_pants', feet: 'feet_boots_basic', beard: 'beards_mustache', eye: 'gray', brows: 'eyebrows_thick', note: '四十一岁人类男性，剃光头、短须；灰袍长衫（保色：原 torso_clothes_robe 固定棕、染不上 gray，改用可换色衫件）下藏旧皮甲，身高体壮；左小腿有旧弩伤（画不出）' },
       tags: ['教会', '严律派', '人类'],
     }),
     char({
@@ -1400,7 +1400,7 @@ export const westfantasy: WorldCard = {
       scenario: '在三姓城官署的后巷屋里核一份提交给行省法庭的补充陈述，桌上摊着四份契约的抄本',
       location: '三姓城·官署后巷',
       present: true,
-      look: { head: 'heads_human_male_gaunt', skin: 'brown', hair: 'hair_long_tied', hairColor: 'black', torso: 'torso_clothes_robe', clothColor: 'tan', legs: 'legs_pants', feet: 'feet_boots_basic', beard: '', eye: 'brown', brows: 'eyebrows_thick', note: '三十六岁兽人男性，深褐偏灰肤色，颧骨高，黑发在脑后束成短辫，长袍腰系盐晶；鼻梁有旧裂痕（画不出）' },
+      look: { head: 'heads_human_male_gaunt', skin: 'brown', hair: 'hair_ponytail2', hairColor: 'black', torso: 'torso_clothes_longsleeve2_buttoned', clothColor: 'brown', legs: 'legs_pants', feet: 'feet_boots_basic', beard: '', eye: 'brown', brows: 'eyebrows_thick', note: '三十六岁兽人男性，深褐偏灰肤色，颧骨高，黑发在脑后束成短辫（原 hair_long_tied 是固定色件、黑发会画成橙发，改用可换色束发件）；帝国式粗布长衣（定色：原 torso_clothes_robe 固定棕、且缺 clothColor，裤鞋会掉进关键词推断；改用可换色带襟衫件 + brown，衣色比肤色深一档、不再与皮肤同色），腰系盐晶；鼻梁有旧裂痕（画不出）' },
       tags: ['兽人', '公议', '外务帐房'],
     }),
     char({
@@ -1412,7 +1412,7 @@ export const westfantasy: WorldCard = {
       scenario: '在南境返回白石城的途中，车马正停在一座行省小城的驿馆里等一场雨停',
       location: '帝国南境·驿馆',
       present: false,
-      look: { head: 'heads_human_female', skin: 'light', hair: 'hair_half_up', hairColor: 'dark_brown', torso: 'torso_clothes_longsleeve_formal', clothColor: 'navy', legs: 'legs_pants', feet: 'feet_boots_basic', beard: '', eye: 'brown', brows: 'eyebrows_thin', note: '二十六岁人类女性，深褐头发盘起，素色好料长衣，中等身材偏瘦；右手食指内侧有烫伤疤（画不出）' },
+      look: { head: 'heads_human_female', skin: 'light', hair: 'hair_half_up', hairColor: 'dark_brown', torso: 'torso_clothes_longsleeve2', clothColor: 'navy', legs: 'legs_pants', feet: 'feet_boots_basic', beard: '', eye: 'brown', brows: 'eyebrows_thin', note: '二十六岁人类女性，深褐头发盘起，素色好料长衣（保色：原 torso_clothes_longsleeve_formal 是固定白件、染不上 navy，改用可换色无饰长袖衫件），中等身材偏瘦；右手食指内侧有烫伤疤（画不出）' },
       tags: ['帝国', '公主', '继承'],
     }),
     char({
@@ -1424,7 +1424,7 @@ export const westfantasy: WorldCard = {
       scenario: '在白塔城的双誓团营地里，正为一批到期的马料款与团里的粮官争执',
       location: '白塔城·双誓团营地',
       present: false,
-      look: { head: 'heads_human_male', skin: 'light', hair: 'hair_buzzcut', hairColor: 'ginger', torso: 'torso_armour_leather', clothColor: 'teal', legs: 'legs_leggings', feet: 'feet_boots_basic', beard: 'beards_beard', eye: 'blue', brows: 'eyebrows_thick', arms: 'arms_bracers', cape: 'cape_solid', note: '二十九岁人类男性，结实矮壮，红褐大胡子，深青战袍配皮甲与披风；左手缺半截小指（画不出）' },
+      look: { head: 'heads_human_male', skin: 'light', hair: 'hair_buzzcut', hairColor: 'ginger', torso: 'torso_clothes_longsleeve2_buttoned', clothColor: 'teal', legs: 'legs_leggings', feet: 'feet_boots_basic', beard: 'beards_beard', eye: 'blue', brows: 'eyebrows_thick', arms: 'arms_bracers', cape: 'cape_solid', note: '二十九岁人类男性，结实矮壮，红褐大胡子；深青战袍（保色：原 torso_armour_leather 的皮甲色画死在 PNG 里、clothColor 染不到上装，改用可换色带襟衫件），甲以臂甲与披风保留；左手缺半截小指（画不出）' },
       tags: ['王国', '骑士', '人类'],
     }),
     char({
@@ -1448,7 +1448,7 @@ export const westfantasy: WorldCard = {
       scenario: '在白塔城双誓团总部的地图厅里，听两名谷地来的旗士说明第三谷的情况',
       location: '白塔城·双誓团总部',
       present: false,
-      look: { head: 'heads_human_male', skin: 'light', hair: 'hair_buzzcut', hairColor: 'dark_brown', torso: 'torso_armour_legion', clothColor: 'gray', legs: 'legs_leggings', feet: 'feet_boots_basic', beard: '', eye: 'gray', brows: 'eyebrows_thick', arms: 'arms_armour', cape: 'cape_solid', note: '三十八岁人类男性，比常人高半头、肩极宽，短发，下巴干净，普通骑士甲；左眉到颧骨有旧伤（画不出）' },
+      look: { head: 'heads_human_male', skin: 'light', hair: 'hair_buzzcut', hairColor: 'dark_brown', torso: 'torso_clothes_longsleeve2_buttoned', clothColor: 'gray', legs: 'legs_leggings', feet: 'feet_boots_basic', beard: '', eye: 'gray', brows: 'eyebrows_thick', arms: 'arms_armour', cape: 'cape_solid', note: '三十八岁人类男性，比常人高半头、肩极宽，短发，下巴干净；灰色骑士战衣（保色：原 torso_armour_legion 是 metal 材质固定色件、clothColor 只染得到裤鞋，改用可换色带襟衫件），甲以臂甲与披风保留；左眉到颧骨有旧伤（画不出）' },
       tags: ['王国', '双誓团', '人类'],
     }),
     char({
@@ -1460,7 +1460,7 @@ export const westfantasy: WorldCard = {
       scenario: '在维克斯的长桥市场，正在处理一笔帝国国债的利息交割',
       location: '维克斯·长桥市场',
       present: false,
-      look: { head: 'heads_human_female', skin: 'light', hair: 'hair_half_up', hairColor: 'light_brown', torso: 'torso_clothes_longsleeve_formal', clothColor: 'forest', legs: 'legs_pants', feet: 'feet_shoes_basic', beard: '', eye: 'brown', brows: 'eyebrows_thin', note: '三十一岁人类女性，身材纤细，浅栗色头发半挽，深绿商袍；右手小指戴记名环（画不出）' },
+      look: { head: 'heads_human_female', skin: 'light', hair: 'hair_half_up', hairColor: 'light_brown', torso: 'torso_clothes_longsleeve2_buttoned', clothColor: 'forest', legs: 'legs_pants', feet: 'feet_shoes_basic', beard: '', eye: 'brown', brows: 'eyebrows_thin', note: '三十一岁人类女性，身材纤细，浅栗色头发半挽；深绿商袍、样式极简（保色：原 torso_clothes_longsleeve_formal 是固定白件、染不上 forest，改用可换色带襟衫件；与同世界瑟兰迪尔的素色长衫靠前襟区分）；右手小指戴记名环（画不出）' },
       tags: ['联邦', '钱庄', '人类'],
     }),
     char({
@@ -1484,7 +1484,7 @@ export const westfantasy: WorldCard = {
       scenario: '在石桥市一间租来的屋子里，桌上摊着几片星图残页，正在比对一段被改动过的星象记录',
       location: '石桥市·租屋',
       present: false,
-      look: { head: 'heads_human_male', skin: 'light', hair: 'hair_long_center_part', hairColor: 'blonde', torso: 'torso_clothes_robe', clothColor: 'forest', legs: 'legs_pants', feet: 'feet_shoes_basic', beard: '', eye: 'gray', brows: 'eyebrows_thin', note: '三百八十九岁精灵男性，看起来三十五岁上下，身材高瘦，浅金色长发中分（原辫垂左肩，画不出），灰绿薄袍，浅灰蓝眼' },
+      look: { head: 'heads_human_male', skin: 'light', hair: 'hair_long_center_part', hairColor: 'blonde', torso: 'torso_clothes_longsleeve2', clothColor: 'forest', legs: 'legs_pants', feet: 'feet_shoes_basic', beard: '', eye: 'gray', brows: 'eyebrows_thin', note: '三百八十九岁精灵男性，看起来三十五岁上下，身材高瘦，浅金色长发中分（原辫垂左肩，画不出）；灰绿薄袍（保色：原 torso_clothes_robe 固定棕、染不上 forest，改用可换色无饰长袖衫件，"看不出织法"即无扣无缝饰），浅灰蓝眼' },
       tags: ['精灵', '议事会', '星图'],
     }),
     char({
@@ -1496,7 +1496,7 @@ export const westfantasy: WorldCard = {
       scenario: '在三姓城的市集边上替一头被偷的牛找下落，已经问过十一个人',
       location: '三姓城·市集',
       present: true,
-      look: { head: 'heads_human_female_elderly', skin: 'brown', hair: 'hair_braid', hairColor: 'gray', torso: 'torso_clothes_longsleeve2', clothColor: 'tan', legs: 'legs_widepants', feet: 'feet_boots_basic', beard: 'beards_mustache', eye: 'gray', brows: 'eyebrows_thin', belt: 'belt_sash_narrow', note: '五十二岁兽人女性，中等身高背略前倾，深褐肤色，花白辫发系盐晶；脸上盐晶粉面纹（画不出）' },
+      look: { head: 'heads_human_female_elderly', skin: 'brown', hair: 'hair_braid', hairColor: 'gray', torso: 'torso_clothes_longsleeve2', clothColor: 'tan', legs: 'legs_widepants', feet: 'feet_boots_basic', beard: '', eye: 'gray', brows: 'eyebrows_thin', belt: 'belt_sash_narrow', note: '五十二岁兽人女性，中等身高背略前倾，深褐肤色，花白辫发系盐晶；脸上盐晶粉面纹（画不出）' },
       tags: ['兽人', '萨满', '盐部'],
     }),
     char({
@@ -1508,7 +1508,7 @@ export const westfantasy: WorldCard = {
       scenario: '坐在三姓城铁砧酒馆的角落里，面前一杯没动过的酒，看着门口',
       location: '三姓城·铁砧酒馆',
       present: true,
-      look: { head: 'heads_human_male_gaunt', skin: 'taupe', hair: 'hair_long_straight', hairColor: 'raven', torso: 'torso_clothes_robe', clothColor: 'walnut', legs: 'legs_pants', feet: '', beard: '', eye: 'gray', brows: 'eyebrows_thin', note: '人类形态约四十岁，身材高瘦，极深的黑长发到肩下，皮肤偏灰，深褐无饰长衣，赤脚；不眨眼（画不出）' },
+      look: { head: 'heads_human_male_gaunt', skin: 'taupe', hair: 'hair_long_straight', hairColor: 'raven', torso: 'torso_clothes_longsleeve2', clothColor: 'brown', legs: 'legs_pants', feet: '', beard: '', eye: 'gray', brows: 'eyebrows_thin', note: '人类形态约四十岁，身材高瘦，极深的黑长发到肩下，皮肤偏灰；深褐无饰长衣（保色 + 定色：原 torso_clothes_robe 固定棕，且 walnut 实测渲染 #996b4a 偏浅、够不上"深褐"，改用可换色无饰长袖衫件 + brown #744b30），赤脚；不眨眼（画不出）' },
       tags: ['龙', '代言', '不可测'],
     }),
   ],

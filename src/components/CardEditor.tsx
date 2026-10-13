@@ -527,13 +527,20 @@ export function CardEditor() {
                   所以作者这里应当只写**舞台与局势**，
                   把"主角此刻为什么在这里"留给背景去决定。
                 */}
+                {/*
+                  ⚠️ 字段是 `atmosphere`，**不是** `opening`。
+                  `opening` 是改名前的老名字，引擎读的是 `atmosphere || opening`
+                  这个兜底 —— 所以这里写错字段时"跑起来看着没问题"，
+                  但实际上：内置卡（已有 atmosphere）在编辑器里改这段**完全无效**，
+                  而被遮蔽的正是玩家以为自己刚写下的文字。
+                */}
                 <Field
-                  label="开场设定（可留空）"
-                  hint="写场景与局势（时间/地点/在场的人/正在发生什么）；主角的具体处境由他选的背景决定，不必在这里写死"
+                  label="世界氛围（可留空）"
+                  hint="写这个世界的时间感、地标、气味、物价与规矩；它是每一轮叙事的底色，不是第一幕的剧本"
                 >
-                  <textarea className={`${areaCls} h-28`} value={draft.story.opening}
-                    onChange={e => patchStory({ opening: e.target.value })}
-                    placeholder={'黄昏，桥头的客栈。桥下有兵在收过桥粮。\n（写"舞台"就够：谁在场、正在发生什么、结尾留什么钩子。\n不要写死主角正在做什么 —— 那应该随他选的背景而不同。）'} />
+                  <textarea className={`${areaCls} h-28`} value={draft.story.atmosphere}
+                    onChange={e => patchStory({ atmosphere: e.target.value })}
+                    placeholder={'米价一石六百文，一碗汤饼八文；东京的坊市不闭，西京日落即闭市。\n（写"底色"就够：时间感、地标、气味、物价、规矩。\n第一幕由 AI 结合玩家自设的主角现场创作，不必在这里写死。）'} />
                 </Field>
               </div>
 

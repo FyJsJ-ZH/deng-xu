@@ -3,6 +3,7 @@ import type { WorldCard, HeroPreset, PlayerCard } from '@/types/cards';
 import { makeId } from '@/utils/files';
 import { createKVStore, isIdbAvailable } from '@/utils/idb';
 import { loadBuiltinWorlds, missingBuiltinIds } from '@/data/builtinWorldIds';
+import { normalizeWorldCard } from '@/utils/worldCard';
 
 /**
  * 卡片库为什么落在 IndexedDB 而不是 localStorage：
@@ -393,7 +394,14 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
         const title = typeof raw.title === 'string' ? raw.title.trim() : '';
         if (!title) continue; // 没有标题的卡在列表里无法区分，直接丢弃
 
-        const card = deepClone(raw);
+        /*
+          ⚠️ 必须过一道 `normalizeWorldCard`。
+          导入的卡可能来自旧版本的世界包（`story.opening` 还没改名、
+          `openingSeeds` 还是两层嵌套），那些字段在新代码里会**静默失效** ——
+          氛围文本读得到但编辑器看不到，开场素材则直接取不到、退回世界基调。
+          迁移放在这里是因为 `importWorlds` 是**所有**导入路径的唯一收口。
+        */
+        const card = normalizeWorldCard(deepClone(raw));
         // 缺 id，或与本库已有 id 撞车，都换新 id：
         // 导入包来自别人的库，id 撞了会让两张卡互相覆盖。
         if (typeof card.id !== 'string' || !card.id.trim() || used.has(card.id)) {

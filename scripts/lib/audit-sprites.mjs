@@ -25,7 +25,13 @@ import { installDomShim, decodePng, encodePng } from './canvas-shim.mjs'
 
 const ROOT = 'D:/工作区/pale-notes-web'
 const QUIET = process.argv.includes('--quiet')
-const out = path.join(ROOT, '.check', 'render-audit.mjs')
+/*
+  ⚠️ `DX_WORLDS_BUNDLE` 同样支持挪走产物（与 check-worlds.mjs / check-sprites.mjs 同名变量）：
+  审计脚本可能被并行跑（例如"四张世界卡同时补 look"），共用一个 outfile 会互相覆盖。
+*/
+const out = process.env.DX_WORLDS_BUNDLE
+  ? path.resolve(ROOT, process.env.DX_WORLDS_BUNDLE)
+  : path.join(ROOT, '.check', 'render-audit.mjs')
 
 const lpcPartsPlugin = {
   name: 'lpc-parts',
@@ -99,9 +105,22 @@ function contradictions(traits, recipe) {
   if (traits.age === 'child' || traits.age === 'young') {
     if (has(/elderly/)) bad.push(`推断为${traits.age}，却用了老年头部部件`)
   }
-  // 4. 推断为 elder，却拿了 _small（幼儿）头
+  /*
+    4. 推断为 elder，却拿了「小体型」头 —— ⚠️ 这条原先判得太死。
+
+    部件池的 9 个头部件里**没有专门的幼童头**：`_small` 的语义是"体型小"，
+    它同时被当作幼童与"身量不高"来用。而 `heads_human_elderly_small`
+    正是「老年 + 小体型」—— 大晟的崔敬延写的是「六十三岁…**身量不高**」，
+    用这个部件**完全正确**，却被旧规则报成"用了幼童头部部件"（假警报，
+    而且它会把人引去改一个本来没错的东西）。
+
+    只有不带 `elderly` 标记的 `heads_human_male_small` / `_female_small`
+    用在老者身上才可疑。
+  */
   if (traits.age === 'elder') {
-    if (has(/heads_human_.*_small/)) bad.push('推断为老者，却用了幼童头部部件')
+    if (has(/heads_human_(?:male|female)_small/) && !has(/elderly/)) {
+      bad.push('推断为老者，却用了幼童体型头部部件')
+    }
   }
   // 5. 没推断出胡须却配了胡子 —— 不算错（可能是刻画），只统计
   return bad
@@ -120,10 +139,20 @@ for (const c of chars) {
     gender: c.card.gender,
   }
   const traits = M.inferTraits(profile)
-  const recipe = M.recipeForDiag(c.id, { profile, gender: c.card.gender })
+  /*
+    ⚠️ `look` 必须传下去。有 look 时它**优先于推断**决定部件，于是下面的
+    `contradictions(traits, recipe)` 就自动变成了「世界书正文里的 description」
+    对「作者手写的 look」的**交叉验证** —— 两者打脸就是真错，
+    而这正是这个审计最该抓的东西。
+
+    不传 look 的话，审计看到的是一张与游戏里**完全不同**的图，
+    还会告诉你"没问题"。这类"审计与渲染不同源"的错，是项目里最贵的一种
+    （交接文档记过 15+ 次同类误判）。
+  */
+  const recipe = M.recipeForDiag(c.id, { profile, gender: c.card.gender, look: c.card.look })
   const bad = contradictions(traits, recipe)
   if (bad.length) nBad++
-  rows.push({ ...c, traits, recipe, bad })
+  rows.push({ ...c, traits, recipe, bad, hasLook: !!c.card.look })
 }
 
 if (!QUIET) {
@@ -152,7 +181,19 @@ for (const [k, v] of Object.entries(cov)) {
 }
 
 console.log(`\n=== 机检矛盾 ===`)
-console.log(`  ${nBad} / ${rows.length} 张角色卡存在"描述与部件打脸"`)
+/*
+  分两栏报，因为这两栏的含义**完全不同**：
+    · 有 look：比的是「世界书正文的 description」对「作者手写的 look」——
+      打脸就是真错，必须修。
+    · 无 look：比的是「description 推断」对「推断出来的部件」——
+      两者同源，矛盾只能说明**推断规则本身**有问题（词表覆盖/优先级）。
+  混在一起报会让人误以为"词表还很差"，其实现在 95 张卡全都手写了 look。
+*/
+const withLook = rows.filter(r => r.hasLook)
+const noLook = rows.filter(r => !r.hasLook)
+const badOf = list => list.filter(r => r.bad.length).length
+console.log(`  有 look（手写部件优先于推断）：${badOf(withLook)} / ${withLook.length} 张打脸`)
+console.log(`  无 look（仍走关键词推断）    ：${badOf(noLook)} / ${noLook.length} 张打脸`)
 if (nBad) {
   const byKind = new Map()
   for (const r of rows) for (const b of r.bad) byKind.set(b, (byKind.get(b) || 0) + 1)
@@ -164,7 +205,9 @@ if (nBad) {
 // ── 对照图 ──
 const cells = []
 for (const r of rows) {
-  const url = await M.spriteDataUrl(r.id, r.card.description || '', { scale: 3, ...{ gender: r.card.gender } })
+  const url = await M.spriteDataUrl(r.id, r.card.description || '', {
+    scale: 3, gender: r.card.gender, look: r.card.look,
+  })
   cells.push({ src: url })
 }
 const cols = 6

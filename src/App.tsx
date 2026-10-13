@@ -75,6 +75,7 @@ const MAX_TURN_SNAPSHOTS_UI = MAX_TURN_SNAPSHOTS
 
 function App() {
   const { history, resources, resourceDefs, isGameStarted, playerName, location, lastUsage, sessionUsage } = useGameStore()
+  const syncWorldDefs = useGameStore(s => s.syncWorldDefs)
   const { llm } = useUIStore()
   /*
     C9：快速模式开关。
@@ -99,6 +100,7 @@ function App() {
     truncationWarning,
     clearTruncationWarning,
     rewindTurns,
+    rewindOptions,
     rewindToTurn
   } = useGameEngine()
 
@@ -181,6 +183,25 @@ function App() {
   useEffect(() => {
     hasInitialized.current = false
   }, [world?.id])
+
+  /**
+   * 世界卡的定义变了就同步进来（B5：世界状态与世界卡分离）。
+   *
+   * `gameStore` 里的 `attributeDefs` / `resourceDefs` 原先只在开局那一刻拷一份，
+   * 之后是**冻结的快照** —— 玩家在卡片编辑器里给世界加了一个属性，
+   * 正在进行的这一局看不到它，必须重开一局才生效。
+   *
+   * 现在真源明确是 `session.world`，那两个字段只是渲染与结算用的缓存。
+   * 这里盯着世界卡对象：**它在编辑器里被改动时就会触发**（对象引用变了），
+   * 于是新属性立刻出现在状态栏里。
+   *
+   * ⚠️ 只在游戏进行中同步：标题页不该被世界卡的改动影响，
+   * 而且开局那一刻 `initFromWorld()` 已经做过一次完整的初始化。
+   */
+  useEffect(() => {
+    if (!world || !isGameStarted) return
+    syncWorldDefs(world)
+  }, [world, isGameStarted, syncWorldDefs])
 
   /**
    * 记录「最近玩过」。
@@ -320,25 +341,46 @@ function App() {
           {/*
             回溯（B8）。只在**真的攒过快照**时出现：开局第一轮还没结束，
             列一个空下拉只会让人以为功能坏了。
+
+            ⚠️ 选项里必须带**那一轮玩家干了什么**（`rewindOptions`）。
+            原先只列「第 N 轮结束时」，而 `history` 里根本不含玩家的输入
+            （只有叙事与状态变更），于是玩家面对一串编号完全想不起当时做过什么，
+            也就无从判断该退回哪一轮 —— 这是"回溯"这个功能最实际的用法障碍。
           */}
           {rewindTurns.length > 0 && (
             <>
               <span className="opacity-40">|</span>
               <select
-                className="bg-transparent border border-text-muted/30 rounded px-1 py-[1px] text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-40"
+                className="bg-transparent border border-text-muted/30 rounded px-1 py-[1px] text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-40 max-w-[16rem]"
                 value=""
                 disabled={isProcessing}
-                title={`回到某一轮结束时：叙事历史、三层记忆、数值（属性/资源/物品/关系/时间）都会一起回滚，之后发生的事全部作废。\n可回滚的轮次：${rewindTurns.join('、')}（更早的轮次已超出快照上限 ${MAX_TURN_SNAPSHOTS_UI}）`}
+                title={`回到某一轮结束时：叙事历史、三层记忆、数值（属性/资源/物品/关系/时间）都会一起回滚，之后发生的事全部作废。\n可回滚的轮次：${rewindTurns.join('、')}（更早的轮次已超出快照上限 ${MAX_TURN_SNAPSHOTS_UI}）\n下拉里显示的是**那一轮你输入的行动**。`}
                 onChange={e => {
                   const t = Number(e.target.value)
                   if (!t) return
-                  const ok = rewindToTurn(t)
-                  if (!ok) window.alert(`第 ${t} 轮的快照已经不在了，无法回到那一轮。`)
+                  const opt = rewindOptions.find(o => o.turn === t)
+                  /*
+                    回溯是**破坏性**的（之后所有轮次作废），所以先把这一轮的
+                    玩家行动原文摆出来让他确认 —— 这既是"查看上一轮输入"，
+                    也是防止点错一行就毁掉几十轮。
+                  */
+                  if (opt?.full) {
+                    const ok = window.confirm(
+                      `回到第 ${t} 轮结束时？\n\n` +
+                      `你在那一轮输入的行动：\n${opt.full}\n\n` +
+                      `⚠️ 这一轮之后发生的事会全部作废（叙事、数值、关系、记忆一起回滚）。`,
+                    )
+                    if (!ok) return
+                  }
+                  const done = rewindToTurn(t)
+                  if (!done) window.alert(`第 ${t} 轮的快照已经不在了，无法回到那一轮。`)
                 }}
               >
                 <option value="">回到第…轮</option>
-                {[...rewindTurns].reverse().map(t => (
-                  <option key={t} value={t}>第 {t} 轮结束时</option>
+                {[...rewindOptions].reverse().map(o => (
+                  <option key={o.turn} value={o.turn}>
+                    第 {o.turn} 轮 · {o.action}
+                  </option>
                 ))}
               </select>
             </>

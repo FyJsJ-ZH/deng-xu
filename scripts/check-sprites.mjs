@@ -105,8 +105,42 @@ const FIELD_KIND = {
   nose: 'nose',
   belt: null,           // accessory（belt_*）
 }
+/**
+ * 会跟着 `look.hairColor` 换色的发型件（`recolors === 'hair'`）。
+ *
+ * ⚠️ 与衣服同一类陷阱，而且**更隐蔽**：`runtime.json` 的 67 个发型件里
+ * 只有两个是固定色（`hair_long_tied` 与 `hair_pigtails`，颜色画死成**亮橙色**）——
+ * 偏偏它们是最常用的两个通用发型。作者给角色写「黑发束成低马尾」
+ * 并填 `hairColor: 'black'`，画出来是一头**橙色**。
+ * 这类错不报错、不崩，只是人物凭空染了一头橘发。
+ */
+const HAIR_RECOLORABLE = new Set(PARTS.filter(p => p.recolors === 'hair').map(p => p.id))
+
 /** 颜色字段 → 材质 */
 const FIELD_MATERIAL = { skin: 'body', hairColor: 'hair', clothColor: 'cloth', eye: 'eye' }
+
+/**
+ * 会跟着 `look.clothColor` 换色的部件 id 集合（即 `runtime.json` 里 `recolors === 'cloth'`）。
+ *
+ * ## 为什么必须知道这件事
+ *
+ * 上游部件分成两类，而**只有一类会换色**：
+ *   · `recolors: "cloth"` —— 运行时按调色板换色（`torso_clothes_longsleeve2` 等）
+ *   · `recolors: null`    —— **颜色画死在 PNG 里**：
+ *       `dress_*`（每种颜色一个文件，靠 id 后缀区分）、
+ *       `torso_clothes_robe`（固定**棕色**）、`torso_jacket_*`、`legs_widepants`…
+ *
+ * 这个区分是 `lpcSprite.ts` 刻意利用的（固定色部件能天然形成内外层次：
+ * 黑外套里露出白衬衫）。但对**作者**来说它是个陷阱：
+ * 给 `torso_clothes_robe` 写 `clothColor: 'black'` 完全合理，
+ * 却什么都不会发生 —— 玩家看到的是棕色袍，描述里写的是玄色。
+ *
+ * 这类错**不报错、不崩、机检也全绿**，只让立绘与描述对不上。
+ * 所以在这里显式查出来。
+ */
+const CLOTH_RECOLORABLE = new Set(PARTS.filter(p => p.recolors === 'cloth').map(p => p.id))
+/** 参与 `clothColor` 的字段（布料部件所在的槽位） */
+const CLOTH_FIELDS = ['torso', 'legs', 'feet', 'hat', 'cape', 'belt', 'arms']
 
 /**
  * 重新生成 `.check/LPC-PARTS.md` —— 写 `SpriteLook` 时查阅的部件清单。
@@ -252,6 +286,103 @@ function checkLook(worldTitle, who, look) {
     if (/无胡|没有胡|净面|不留胡/.test(note) && look.beard && look.beard !== '') {
       warnings.push(`${at} ｜ note 说没胡子，但 beard="${look.beard}"`)
     }
+  }
+
+  /*
+    ⑤ `clothColor` 是不是**白写的**。
+    见 `CLOTH_RECOLORABLE` 的说明：固定色部件（robe / dress_* / jacket_*）不参与换色。
+    判据刻意收得很紧 —— 只在「**一个**会换色的布料部件都没有」时报错。
+    因为"部分固定、部分换色"是 `lpcSprite.ts` 有意造成的层次
+    （黑外套 + 里面那件固定白衬衫），那不是错。
+  */
+  const clothColor = look.clothColor
+  if (typeof clothColor === 'string' && clothColor) {
+    const clothParts = CLOTH_FIELDS
+      .map(f => look[f])
+      .filter(v => typeof v === 'string' && v && PART_IDS.has(v))
+    if (clothParts.length && !clothParts.some(id => CLOTH_RECOLORABLE.has(id))) {
+      problems.push(
+        `${at} ｜ clothColor="${clothColor}" **不会生效**：选中的布料部件全是固定色` +
+        `（${clothParts.slice(0, 4).join('、')}${clothParts.length > 4 ? '…' : ''}）—— ` +
+        `颜色画死在 PNG 里；要么换一个接受 cloth 换色的部件，要么把这个颜色删掉`,
+      )
+    }
+    /*
+      部分失效（更常见、也更隐蔽的一种）：
+      上装选了固定色部件时，`clothColor` **只染得到裤子/鞋/帽**，上装纹丝不动。
+      作者几乎总是以为整身都染上了 —— 于是「玄色圆领袍」画出来是棕色袍，
+      而脚本的其它检查全绿。
+
+      这里只报**警告**而不是错误：固定色部件同时被用来做"外套里露出的白衬衫"
+      那种层次（见 lpcSprite.ts 的 BASE_SHIRTS），那些是有意的。
+      是不是真错，要拿描述里的颜色去对 —— 那是人的判断。
+    */
+    const torsoId = look.torso
+    /*
+      ⚠️ `dress_*` **豁免**这条警告。
+      它们的颜色写在 **id 后缀**里（`dress_slit_purple` = 紫色高开叉礼服，
+      LPC 为每种颜色预渲染了一个文件）—— 选了这个 id 就是选了这个颜色，
+      不存在"以为染上了其实没染"的误会。
+      ⚠️ 判据必须带**颜色后缀**：`dress_kimono_oversize` 这类 `dress_*` 并**不带**
+      颜色后缀，它的颜色同样是画死的、`clothColor` 一样染不上 —— 早先我图省事
+      用 `/^dress_/` 一刀切，正好把这一类漏掉了（芙蕾雅的粉色和服就是这么漏的）。
+      代价是漏掉一种情况：作者本想要别的色、却填了 `clothColor` 去改
+      （那确实改不动）。但这个代价可接受：`dress_*` 的 id 后缀是显式的，
+      看一眼就知道是什么色。
+      反例（**不豁免**）：`torso_armour_*`。甲的颜色同样是固定的，
+      但"黑铁重甲"这种描述会让人以为 `clothColor: 'black'` 能染 ——
+      提示他"染不上"是有价值的，让作者自己决定"保形状还是保颜色"。
+    */
+    const isPreColoredDress = /^dress_[a-z0-9_]*_(black|blue|brown|gray|green|navy|pink|purple|red|white)$/.test(torsoId)
+    if (typeof torsoId === 'string' && torsoId && PART_IDS.has(torsoId)
+        && !CLOTH_RECOLORABLE.has(torsoId) && !isPreColoredDress) {
+      warnings.push(
+        `${at} ｜ torso="${torsoId}" 是固定色部件 —— clothColor="${clothColor}" **染不到上装**` +
+        `（只影响裤子/鞋/帽）。请确认描述里的衣服颜色与这个部件的固有色是否一致`,
+      )
+    }
+  } else {
+    /*
+      ⑥ **没有** `clothColor`、而上装又是固定色件 —— 这时其它布料槽的颜色不受控。
+      裤子 / 鞋 / 帽 / 披风会走关键词推断（推不出来就用随机种子定一个），
+      于是整套配色可能与描述冲突（实测：白罩袍的角色配出蓝裤蓝鞋、
+      皮夹克的角色配出紫裤）。
+
+      ⚠️ 这条是子代理在修另一批角色时**实测**发现的：他原本按"描述的颜色与
+      固有色恰好一致，那就删掉 clothColor 免得误导后来人"处理，结果一删，
+      下半身的颜色立刻失控。所以"删掉那个没用的颜色"并不是安全操作。
+    */
+    const torsoId = look.torso
+    if (typeof torsoId === 'string' && torsoId && PART_IDS.has(torsoId)
+        && !CLOTH_RECOLORABLE.has(torsoId) && !/^dress_/.test(torsoId)) {
+      const lower = ['legs', 'feet', 'hat', 'cape', 'belt']
+        .map(f => look[f])
+        .filter(v => typeof v === 'string' && v && CLOTH_RECOLORABLE.has(v))
+      if (lower.length) {
+        warnings.push(
+          `${at} ｜ 没有 clothColor，而上装 torso="${torsoId}" 是固定色件 —— ` +
+          `下半身（${lower.slice(0, 3).join('、')}）的颜色会掉进关键词推断，不受你控制。` +
+          `要么给整套一个 clothColor，要么确认推断出来的颜色恰好合适`,
+        )
+      }
+    }
+  }
+
+  /*
+    ⑦ `hairColor` 是不是**白写的** —— 与 `clothColor` 完全同一类陷阱。
+    发型件里只有 `hair_long_tied` / `hair_pigtails` 是固定色（画死成亮橙色），
+    而它们恰好是通用件，很容易被选中。作者写「黑发」「蜜色双马尾」，
+    配上 `hairColor` 以为定了色，实际渲染是一头橙发。
+  */
+  const hairId = look.hair
+  if (typeof look.hairColor === 'string' && look.hairColor
+      && typeof hairId === 'string' && hairId && PART_IDS.has(hairId)
+      && !HAIR_RECOLORABLE.has(hairId)) {
+    warnings.push(
+      `${at} ｜ hair="${hairId}" 不接受 hair 换色（固有色画死在 PNG 里）—— ` +
+      `hairColor="${look.hairColor}" **不会生效**。换一个可换色的发型件，` +
+      `或在 note 里写清它实际是什么颜色`,
+    )
   }
 }
 

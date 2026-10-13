@@ -111,8 +111,7 @@ describe('正确的开局顺序：先清空，再写入', () => {
   })
 })
 
-describe('initFromWorld 的语义', () => {
-  it('装载世界的属性/资源定义，并清空上一局的数值', () => {
+describe('initFromWorld 的语义', () => {  it('装载世界的属性/资源定义，并清空上一局的数值', () => {
     useGameStore.getState().setAspects({ force: 9 })
     useGameStore.getState().initFromWorld(fakeWorld)
     const after = useGameStore.getState()
@@ -144,5 +143,79 @@ describe('addItem 的去重语义', () => {
     const inv = useGameStore.getState().inventory
     expect(inv).toHaveLength(1)
     expect(inv[0].name).toBe('第二版')
+  })
+})
+
+/**
+ * B5：世界状态与世界卡分离。
+ *
+ * `attributeDefs` / `resourceDefs` 原先只在**开局那一刻**由 `initFromWorld()` 拷一份，
+ * 之后是**冻结的快照** —— 玩家在卡片编辑器里给世界加了一个属性，
+ * 正在进行的这一局看不到它，必须重开一局才生效。
+ *
+ * `syncWorldDefs` 就是那条"卡改了，把定义追上来"的通道。
+ * 它与 `initFromWorld` 的关键差别：**只补不改，绝不重置玩家的数值**。
+ */
+describe('syncWorldDefs · 世界卡改了要跟上，但不能动进度', () => {
+  it('★ 世界卡新增的属性会追进来，值为 0', () => {
+    useGameStore.getState().initFromWorld(fakeWorld)
+    useGameStore.getState().setAspects({ force: 7 })
+
+    const grown = {
+      ...fakeWorld,
+      attributes: [...fakeWorld.attributes, { id: 'luck', name: '运气', description: '' }],
+    }
+    useGameStore.getState().syncWorldDefs(grown as any)
+
+    const after = useGameStore.getState()
+    expect(after.attributeDefs.map(d => d.id)).toEqual(['force', 'insight', 'luck'])
+    expect(after.aspects.luck).toBe(0)
+  })
+
+  it('★ 已有的数值一个都不动（那是玩家的进度，不是定义）', () => {
+    useGameStore.getState().initFromWorld(fakeWorld)
+    useGameStore.getState().setAspects({ force: 7, insight: 2 })
+    useGameStore.getState().modifyResource('health', -2)
+
+    useGameStore.getState().syncWorldDefs(fakeWorld as any)
+
+    const after = useGameStore.getState()
+    expect(after.aspects.force).toBe(7)
+    expect(after.aspects.insight).toBe(2)
+    expect(after.resources.health).toBe(3)   // 5 - 2，没有被重置回 5
+  })
+
+  it('新增的资源补初始值，已有的保持当前值', () => {
+    useGameStore.getState().initFromWorld(fakeWorld)
+    useGameStore.getState().modifyResource('health', -1)
+
+    const grown = {
+      ...fakeWorld,
+      resources: [...fakeWorld.resources, { id: 'sanity', name: '理智', initial: 4 }],
+    }
+    useGameStore.getState().syncWorldDefs(grown as any)
+
+    const after = useGameStore.getState()
+    expect(after.resources.sanity).toBe(4)
+    expect(after.resources.health).toBe(4)   // 仍是 5-1
+  })
+
+  it('世界卡删掉的属性：定义里不再有，但数值留着（万一又加回来，进度还在）', () => {
+    useGameStore.getState().initFromWorld(fakeWorld)
+    useGameStore.getState().setAspects({ force: 5, insight: 3 })
+
+    const shrunk = { ...fakeWorld, attributes: [fakeWorld.attributes[0]] }
+    useGameStore.getState().syncWorldDefs(shrunk as any)
+
+    const after = useGameStore.getState()
+    expect(after.attributeDefs.map(d => d.id)).toEqual(['force'])
+    expect(after.aspects.insight, '孤儿值留着，渲染按 defs 走所以不会露出来').toBe(3)
+  })
+
+  it('世界卡没定义属性时退回兜底体系（不能让界面空掉）', () => {
+    useGameStore.getState().initFromWorld(fakeWorld)
+    useGameStore.getState().syncWorldDefs({ ...fakeWorld, attributes: [], resources: [] } as any)
+    expect(useGameStore.getState().attributeDefs.length).toBeGreaterThan(0)
+    expect(useGameStore.getState().resourceDefs.length).toBeGreaterThan(0)
   })
 })

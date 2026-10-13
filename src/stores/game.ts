@@ -161,6 +161,20 @@ export interface TokenUsage {
 export interface TurnSnapshot {
   /** 这一轮结束时是第几轮（正整数；0 = 开局前） */
   turn: number
+  /**
+   * 这一轮**玩家输入的行动原文**（2026-10 新增）。
+   *
+   * ## 为什么必须单独存它
+   *
+   * `history` 里其实**只有两种**消息：assistant（叙事）与 system（状态变更）——
+   * 玩家的输入从来没有落进历史，它只出现在**发给模型的 messages** 里。
+   * 于是玩家打开回溯下拉时看到的只有「第 3 轮」「第 7 轮」这种编号，
+   * 完全想不起来那一轮自己干了什么，也就无从判断该退回哪一轮。
+   *
+   * 存进快照而不是补进 history，是刻意的：history 每轮都要整段发给模型，
+   * 往里加消息等于每轮多花 token；而这个字段只服务于**回溯界面**。
+   */
+  playerAction?: string
   /** 这一轮**新增**的消息（不包含之前的轮次） */
   historyDelta: ChatMessage[]
   /** 拍快照时 history 的绝对长度，回放时用它核对是否错位 */
@@ -409,8 +423,25 @@ export interface GameState {
   turnsSinceLastMajorEvent: number
 
   // Actions
-  /** 用世界卡初始化数值体系；开局前调用 */
+  /** 用世界卡初始化数值体系；开局前调用（会**重置**数值） */
   initFromWorld: (world: WorldCard) => void
+  /**
+   * 把世界卡的**定义**同步进来（属性 / 资源），**只补不改**。
+   *
+   * ## 为什么需要它（B5：世界状态与世界卡分离）
+   *
+   * `attributeDefs` / `resourceDefs` 原先只在**开局那一刻**由 `initFromWorld()`
+   * 拷进来一份，之后就是一份**冻结的快照** —— 玩家在卡片编辑器里给世界加了一个属性，
+   * 正在进行的这一局**看不到它**，必须重开一局才生效。
+   *
+   * 根子上是"世界定义"与"这一局的进度"混在了一个 store 里。现在明确：
+   * **真源是世界卡**（`session.world`），下面这两个字段只是为了让渲染与结算
+   * 少绕一层而留的**缓存**，世界卡一变就刷新它。
+   *
+   * ⚠️ 与 `initFromWorld` 的语义差别：那个是"开档，一切从头"，
+   * 这个是"卡改了，把定义追上来"—— **绝不重置已有的数值**。
+   */
+  syncWorldDefs: (world: WorldCard) => void
   setPlayerProfile: (name: string, gender: string, appearance: string, avatar?: string) => void
   incrementTurnCounter: () => void
   resetTurnCounter: () => void
@@ -453,8 +484,11 @@ export interface GameState {
    *
    * 只在**一轮真正结束**时调用（叙事 + 结算都完成），
    * 半途失败的一轮不留快照 —— 否则回溯会退回到一个"数据结算没跑"的残缺状态。
+   *
+   * @param playerAction 这一轮玩家输入的行动原文（存进快照，供回溯界面显示）。
+   *                     可以不传（开局那一轮就没有玩家输入）。
    */
-  pushTurnSnapshot: (turn: number) => void
+  pushTurnSnapshot: (turn: number, playerAction?: string) => void
   /**
    * 回滚到第 `turnIndex` 轮**结束时**的状态。
    *
@@ -581,6 +615,25 @@ export const useGameStore = create<GameState>()(
           aspects: emptyMap(attributeDefs),
           resources: resourceMap(resourceDefs)
         };
+      }),
+
+      syncWorldDefs: (world) => set((state) => {
+        const attributeDefs = world.attributes?.length ? world.attributes : FALLBACK_ATTRIBUTES;
+        const resourceDefs = world.resources?.length ? world.resources : FALLBACK_RESOURCES;
+
+        // 世界卡新增的属性补 0、新增的资源补初始值
+        const aspects = { ...state.aspects };
+        for (const d of attributeDefs) if (aspects[d.id] === undefined) aspects[d.id] = 0;
+        const resources = { ...state.resources };
+        for (const d of resourceDefs) if (resources[d.id] === undefined) resources[d.id] = d.initial;
+
+        /*
+          被世界卡**删掉**的属性/资源，数值原地留着不清理。
+          理由：那是玩家的进度，而"定义"已经不在 `defs` 里了 ——
+          渲染与结算都按 defs 走，孤儿值不会露出来；可万一玩家把属性改回来
+          （编辑器里手滑删了又加），进度还在，不用从零开始。
+        */
+        return { attributeDefs, resourceDefs, aspects, resources };
       }),
 
       setPlayerProfile: (name, gender, appearance, avatar) => set({ playerName: name, playerGender: gender, playerAppearance: appearance, playerAvatar: avatar }),
@@ -760,7 +813,7 @@ export const useGameStore = create<GameState>()(
       resetSessionUsage: () => set({ sessionUsage: { ...EMPTY_USAGE }, lastUsage: null }),
 
       // —— B8：回溯 ——
-      pushTurnSnapshot: (turn) => set((state) => {
+      pushTurnSnapshot: (turn, playerAction) => set((state) => {
         const turnIndex = Math.max(1, Math.floor(turn) || 1)
         const historyLength = state.history.length
         const prev = state.turnSnapshots.length
@@ -795,6 +848,7 @@ export const useGameStore = create<GameState>()(
         */
         const snapshot = JSON.parse(JSON.stringify({
           turn: turnIndex,
+          playerAction: typeof playerAction === 'string' && playerAction.trim() ? playerAction.trim() : undefined,
           historyDelta,
           historyLength,
           summary: state.summary,

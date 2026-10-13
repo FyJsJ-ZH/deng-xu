@@ -39,6 +39,7 @@
     "check:worlds": "node scripts/check-worlds.mjs",
     "check:look": "node scripts/check-sprites.mjs",
     "probe:invisible": "node scripts/probe-invisible.mjs",
+    "probe:parts": "node scripts/probe-parts.mjs",
     "see": "node scripts/see.mjs"
   },
   "dependencies": {

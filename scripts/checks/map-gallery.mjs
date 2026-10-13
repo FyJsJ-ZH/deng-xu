@@ -14,7 +14,7 @@ import { spawn } from 'node:child_process'
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
-import { outDir, profileDir, removeProfile } from './_browser.mjs'
+import { outDir, profileDir, removeProfile, capturePage, waitForImages } from './_browser.mjs'
 
 const SITE = process.env.SITE || 'http://localhost:5199/'
 // 必须绝对路径：--user-data-dir 用相对路径时 Chromium 会静默失败（见 _browser.mjs 的 outDir）
@@ -147,9 +147,17 @@ ${arr.map(r => `<div style="margin-bottom:14px">
 fs.writeFileSync(path.join(OUT, 'map-gallery.html'), html, 'utf8')
 const bust = `?t=${Date.now()}`
 await send('Page.navigate', { url: 'file:///' + path.join(OUT, 'map-gallery.html').replace(/\\/g, '/') + bust })
-await sleep(2500)
-const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
-fs.writeFileSync(path.join(OUT, 'map-gallery.png'), Buffer.from(shot.result.data, 'base64'))
+/*
+  ⚠️ 这里原先只有一句 `sleep(2500)`，然后直接裸取 `shot.result.data` —— 两个坑叠在一起：
+    · 固定等待：机器快时白等，慢时图还没解码完就截；
+    · 裸取：`Page.captureScreenshot` 偶发只返回 `error`、没有 `result`，
+      于是抛 `Cannot read properties of undefined (reading 'data')` ——
+      一个完全看不出是"截图偶发失败"的报错（CI 上这套走查因此红过两次，重跑又过）。
+  现在改成：**等图片真的加载完** + **带重试的截图**。
+*/
+await waitForImages(ev)
+const png = await capturePage(send, { format: 'png', captureBeyondViewport: true })
+fs.writeFileSync(path.join(OUT, 'map-gallery.png'), png)
 console.log(`\n画廊已写入 ${path.join(OUT, 'map-gallery.png')}`)
 
 const failed = results.filter(r => !r.ok)

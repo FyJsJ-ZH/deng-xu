@@ -898,11 +898,11 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_male_small', skin: 'light',
         hair: 'hair_parted_side_bangs', hairColor: 'gray',
-        torso: 'torso_jacket_frock', clothColor: 'charcoal',
+        torso: 'torso_clothes_longsleeve2_buttoned', clothColor: 'charcoal',
         legs: 'legs_formal_striped', feet: 'feet_boots_revised',
         beard: 'beards_mustache', brows: 'eyebrows_thin', nose: 'head_nose_straight', eye: 'gray',
         belt: 'belt_formal',
-        note: '五十六岁男性，中等身量、肩膀往下沉；灰白短发，蓄短须；深灰燕尾服与条纹正装裤，胸前口袋插一支红铅笔',
+        note: '五十六岁男性，中等身量、肩膀往下沉；灰白短发，蓄短须；深灰西装与条纹正装裤（保色：原 torso_jacket_frock 是固定黑燕尾服件、clothColor 染不上，改用可换色扣襟长袖件，charcoal 才生效；取舍是长外套退为扣襟上衣，颜色与整身统一保住了），胸前口袋插一支红铅笔',
       },
     }),
     char({
@@ -956,11 +956,11 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_female', skin: 'light',
         hair: 'hair_half_up', hairColor: 'ginger',
-        torso: 'dress_bodice_green',
-        legs: '',
+        torso: 'torso_clothes_longsleeve2_cardigan', clothColor: 'forest',
+        legs: 'legs_skirt_straight',
         feet: 'feet_shoes_basic',
         beard: '', brows: 'eyebrows_thin', nose: 'head_nose_straight', eye: 'green',
-        note: '四十一岁女性，身量中等偏高、肩背笔直；深红头发梳成极整齐的发髻、鬓角用发油压住；深绿天鹅绒长裙配短外套，两手各戴一枚戒指',
+        note: '四十一岁女性，身量中等偏高、肩背笔直；深红头发梳成极整齐的发髻、鬓角用发油压住；深绿天鹅绒长裙配短外套，两手各戴一枚戒指（保色：原 dress_bodice_green 是固定色紧身胸衣、形状不是长裙也不是外套，改用可换色开襟外衣件 + 直筒长裙拼出"短外套 + 长裙"，forest 才染得上整身；此前没有 clothColor，鞋色掉进关键词推断，实测配出的是棕鞋）',
       },
     }),
     char({
@@ -976,11 +976,11 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_female_elderly', skin: 'light',
         hair: 'hair_lob', hairColor: 'gray',
-        torso: 'torso_clothes_robe', clothColor: 'gray',
-        legs: '', feet: 'feet_shoes_basic',
+        torso: 'torso_clothes_longsleeve', clothColor: 'gray',
+        legs: 'legs_skirt_straight', feet: 'feet_shoes_basic',
         beard: '', brows: 'eyebrows_thin', nose: 'head_nose_elderly', eye: 'gray',
         belt: 'belt_sash',
-        note: '六十三岁女性，个子小、背有点驼，脸皱纹很深、浅灰眼睛不眨；深灰修会长袍，腰间一条麻绳，绳上挂两把钥匙',
+        note: '六十三岁女性，个子小、背有点驼，脸皱纹很深、浅灰眼睛不眨；深灰修会长袍，腰间一条麻绳，绳上挂两把钥匙（保色：原 torso_clothes_robe 是固定棕袍件、clothColor 染不上（灰袍画出来是棕的），改用可换色无领长袖 + 直筒长裙拼出袍身，gray 才生效；取舍是袍的垂坠感改为上下两件，麻绳腰带正好落在接缝上）',
       },
     }),
     char({
@@ -996,11 +996,11 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_male', skin: 'light',
         hair: 'hair_swoop', hairColor: 'white',
-        torso: 'torso_jacket_collared', clothColor: 'navy',
+        torso: 'torso_clothes_longsleeve2_buttoned', clothColor: 'navy',
         legs: 'legs_pants2', feet: 'feet_boots_revised',
         beard: 'beards_mustache', brows: 'eyebrows_thick', nose: 'head_nose_straight', eye: 'gray',
-        belt: 'belt_leather',
-        note: '五十九岁男性，身量高大、体格厚实，重心压在右腿；方脸、浓眉、白发向后梳；深蓝制服，肩章擦得亮',
+        belt: 'belt_leather', arms: 'shoulders_epaulets',
+        note: '五十九岁男性，身量高大、体格厚实，重心压在右腿；方脸、浓眉、头发全白向后梳；深蓝制服配肩章（保色：原 torso_jacket_collared 是固定黑立领外套件、clothColor 染不上，改用可换色扣襟长袖件并补可换色的 shoulders_epaulets，navy 才染得上；取舍是立领外套退为扣襟上衣，制服的肩部轮廓靠肩章补回）',
       },
     }),
     char({
@@ -1035,10 +1035,10 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_female', skin: 'light',
         hair: 'hair_topknot_short', hairColor: 'black',
-        torso: 'torso_aprons_apron', clothColor: 'charcoal',
+        torso: 'torso_clothes_longsleeve', clothColor: 'charcoal',
         legs: 'legs_skirt_straight', feet: 'feet_shoes_basic',
         beard: '', brows: 'eyebrows_thin', nose: 'head_nose_straight', eye: 'brown',
-        note: '二十九岁女性，身量瘦高、手指细长，走路很快；黑发随意挽在脑后，用一支木簪别住；深色工作围裙，口袋插卷尺与别针',
+        note: '二十九岁女性，身量瘦高、手指细长，走路很快；黑发随意挽在脑后，用一支木簪别住；深色工作衣配深裙（保色：原 torso_aprons_apron 是固定色围裙件、clothColor 染不上，而部件池里的围裙件全都是固定色，改用可换色无领长袖作深色工作衣，charcoal 才生效；取舍是围裙的口袋与系带轮廓丢了，只保住整身深色）',
       },
     }),
     char({
@@ -1054,11 +1054,11 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_male_elderly', skin: 'light',
         hair: 'hair_balding', hairColor: 'white',
-        torso: 'torso_jacket_frock', clothColor: 'black',
-        legs: 'legs_formal', feet: 'feet_shoes_revised',
+        torso: 'torso_clothes_longsleeve2_buttoned', clothColor: 'black',
+        legs: 'legs_pants', feet: 'feet_shoes_revised',
         beard: '', brows: 'eyebrows_thin', nose: 'head_nose_straight', eye: 'gray',
         belt: 'belt_formal',
-        note: '六十三岁男性，身量不高、微胖，走路脚掌外撇；头发稀疏、鬓角全白，脸上是正在听人说话的表情；剪裁极好的黑呢外套，袖口珍珠纽扣',
+        note: '六十三岁男性，身量不高、微胖，走路脚掌外撇；头发稀疏、鬓角全白，脸上是正在听人说话的表情；剪裁极好的黑呢外套，袖口珍珠纽扣（保色：原 torso_jacket_frock 是固定黑燕尾服件、clothColor 染不上，改用可换色扣襟长袖件，black 才生效；裤由 legs_formal 改 legs_pants —— legs_formal 自带一块固定的墨绿饰，配黑呢外套不符；取舍是长外套退为扣襟上衣，扣子正好对上"珍珠纽扣"）',
       },
     }),
     char({
@@ -1093,10 +1093,10 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_male', skin: 'light',
         hair: 'hair_parted2', hairColor: 'blonde',
-        torso: 'torso_jacket_iverness', clothColor: 'navy',
-        legs: 'legs_formal', feet: 'feet_shoes_revised',
+        torso: 'torso_clothes_longsleeve2_buttoned', clothColor: 'navy',
+        legs: 'legs_pants', feet: 'feet_shoes_revised',
         beard: '', brows: 'eyebrows_thin', nose: 'head_nose_straight', eye: 'gray',
-        note: '三十四岁男性，身量高、体格偏瘦，站着习惯把手插在裤袋里；深金色头发、脸很白、下颌线条清楚；深蓝外套，扣子是素的，腕上一只旧皮表带',
+        note: '三十四岁男性，身量高、体格偏瘦，站着习惯把手插在裤袋里；深金色头发、脸很白、下颌线条清楚；深蓝外套，扣子是素的，腕上一只旧皮表带（保色：原 torso_jacket_iverness 是固定紫紫外套件、clothColor 染不上，改用可换色扣襟长袖件，navy 才生效；裤由 legs_formal 改 legs_pants —— legs_formal 自带一块固定的墨绿饰，配深蓝不符；取舍是外套剪裁退为扣襟上衣）',
       },
     }),
     char({
@@ -1112,10 +1112,10 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_male_plump', skin: 'light',
         hair: 'hair_parted_side_bangs2', hairColor: 'dark_gray',
-        torso: 'torso_clothes_longsleeve_formal', clothColor: 'charcoal',
-        legs: 'legs_formal', feet: 'feet_shoes_revised',
+        torso: 'torso_clothes_longsleeve2_cardigan', clothColor: 'charcoal',
+        legs: 'legs_pants', feet: 'feet_shoes_revised',
         beard: 'beards_medium', brows: 'eyebrows_thick', nose: 'head_nose_large', eye: 'brown',
-        note: '五十九岁男性，中等身量偏胖、圆脸，戴一副圆片眼镜所以眼睛显得小；深灰头发分缝，蓄中等胡子；深色医生礼服，口袋插一支玻璃温度计',
+        note: '五十九岁男性，中等身量偏胖、圆脸，戴一副圆片眼镜所以眼睛显得小；深灰头发分缝，蓄中等胡子；深色医生礼服，口袋插一支玻璃温度计（保色：原 torso_clothes_longsleeve_formal 是固定白衬衫件、clothColor 染不上（深色礼服画出来是白的），改用可换色开襟外衣件，charcoal 才生效；裤由 legs_formal 改 legs_pants —— legs_formal 在 charcoal 下画出来是墨绿；取舍是长礼服退为开襟外衣，敞口露出的白衬衫正是原来那件的用途）',
       },
     }),
     char({
@@ -1151,10 +1151,10 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_female', skin: 'light',
         hair: 'hair_long_center_part', hairColor: 'dark_brown',
-        torso: 'torso_clothes_longsleeve_formal', clothColor: 'black',
+        torso: 'torso_clothes_longsleeve2', clothColor: 'black',
         legs: 'legs_skirt_straight', feet: 'feet_shoes_basic',
         beard: '', brows: 'eyebrows_thin', nose: 'head_nose_straight', eye: 'gray',
-        note: '三十五岁女性，坐姿笔直；深褐头发中分、梳得一丝不乱；黑色高领长裙，袖口是白色硬边，手指上有墨水染出的淡痕',
+        note: '三十五岁女性，坐姿笔直；深褐头发中分、梳得一丝不乱；黑色高领长裙，袖口是白色硬边，手指上有墨水染出的淡痕（保色：原 torso_clothes_longsleeve_formal 是固定白衬衫件、clothColor 染不上（黑长裙画出来是白的），改用可换色带领长袖件，black 才生效；取舍是白硬边只剩领口那一圈内衬，袖口描不出来 —— 可换色的 wrists_cuffs 会跟着 clothColor 一起染黑）',
       },
     }),
     char({
@@ -1170,11 +1170,12 @@ export const veil: WorldCard = {
       look: {
         head: 'heads_human_female', skin: 'light',
         hair: 'hair_half_up', hairColor: 'white',
-        torso: 'dress_sash_purple',
+        torso: 'dress_sash_purple', clothColor: 'black',
         legs: '',
         feet: 'feet_shoes_basic',
+        cape: 'cape_solid',
         beard: '', brows: 'eyebrows_thin', nose: 'head_nose_straight', eye: 'gray',
-        note: '五十二岁女性，身量偏高、肩背极直；花白头发梳成高髻、插一支珍珠发针；深紫色丝绸长裙配黑色蕾丝披肩，手上戴素金戒指与一枚旧胸针',
+        note: '五十二岁女性，身量偏高、肩背极直；花白头发梳成高髻、插一支珍珠发针；深紫色丝绸长裙配黑色披肩（取舍：部件池里没有蕾丝披肩件，用可换色的 cape_solid 披风顶上，正好让 clothColor=black 有着落；dress_sash_purple 是固定色长裙、上装不受它影响，黑色只作用在披肩与鞋上 —— 此前没有 clothColor，鞋色掉进关键词推断，实测配出的是蓝鞋），手上戴素金戒指与一枚旧胸针',
       },
     }),
   ],

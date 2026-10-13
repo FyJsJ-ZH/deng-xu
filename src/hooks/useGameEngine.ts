@@ -280,6 +280,28 @@ export function estimateMissingCompletion(usage: TokenUsage, output: string): To
   return { ...usage, completionTokens: c, totalTokens: usage.promptTokens + c }
 }
 
+/** 回溯下拉里的一项 */
+export interface RewindOption {
+  turn: number
+  /** 那一轮玩家行动的**摘要**（下拉选项里显示，已截断） */
+  action: string
+  /** 完整原文（回溯是破坏性操作，确认时要把原文给玩家看） */
+  full: string
+}
+
+/**
+ * 把玩家行动压成一行摘要。
+ *
+ * 回溯下拉的宽度很窄，塞不下一条完整的自由输入；但**截得太狠也没用**
+ * —— 玩家要能一眼认出"哦，这是我去码头那次"。所以留 18 个字，
+ * 并在下面 `App.tsx` 的确认框里给出完整原文。
+ */
+function summarizeAction(text: string, max = 18): string {
+  const t = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!t) return '（无输入）'
+  return t.length > max ? `${t.slice(0, max)}…` : t
+}
+
 interface GameEngineReturn {
   handleAction: (actionId: string, actionText: string) => Promise<void>
   retryLastAction: () => Promise<void>
@@ -299,6 +321,15 @@ interface GameEngineReturn {
   turnCount: number
   /** 可回溯到的轮次列表（升序）；空数组表示还没攒下快照 */
   rewindTurns: number[]
+  /**
+   * 回溯下拉的选项：轮次 + **那一轮玩家干了什么**。
+   *
+   * 为什么要有它：`history` 里只有 assistant 与 system 两种消息，
+   * 玩家的输入从来没进过历史（见 `TurnSnapshot.playerAction` 的注释）。
+   * 于是玩家面对「第 3 轮」「第 7 轮」这种编号时完全想不起来当时做过什么，
+   * 也就无从判断该退回哪一轮。
+   */
+  rewindOptions: RewindOption[]
   /**
    * 回到第 N 轮结束时（B8）。
    *
@@ -941,6 +972,26 @@ export function useGameEngine(): GameEngineReturn {
           content: buildNarrativeSystemPrompt(activeWorld, activeCharacters, player, {
             backgroundChoices: useSessionStore.getState().backgroundChoices,
             aspects: updatedStore.aspects,
+            /*
+              世界书按这段文本挑章节（见 utils/loreDigest.ts），所以要拼成
+              「这一轮真正出现了什么」：玩家这一轮的动作、他此刻在哪、谁在场、
+              刚发生了什么。拼得越准，挑出来的章节越对题 ——
+              漏掉一个地名，讲那一带的章节就可能永远挑不出来。
+            */
+            context: [
+              actionText,
+              updatedStore.location,
+              updatedStore.identity,
+              activeCharacters.map(c => c.name).join(' '),
+              updatedStore.history
+                .filter(h => h.role === 'assistant')
+                .slice(-1)
+                .map(h => h.content)
+                .join(' ')
+                .slice(0, 1200),
+            ].filter(Boolean).join('\n'),
+            // 开局那一轮给双倍预算：第一幕要把整个世界立住，之后才收窄
+            ...(isOpening ? { loreBudget: 24000 } : {}),
           }),
         },
         ...(updatedStore.summary ? [{ role: 'system' as const, content: `[前情摘要]\n${updatedStore.summary}` }] : []),
@@ -1208,7 +1259,7 @@ export function useGameEngine(): GameEngineReturn {
         否则回溯会退回到一个"叙事有了、数值没结算"的残缺状态 ——
         那种不一致比不能回溯更难查。
       */
-      useGameStore.getState().pushTurnSnapshot(turnNumber)
+      useGameStore.getState().pushTurnSnapshot(turnNumber, actionText)
     } catch (error: any) {
       console.error('Game Engine Error:', error)
       setLastError(formatEngineError(error))
@@ -1343,6 +1394,10 @@ export function useGameEngine(): GameEngineReturn {
     isInputAllowed,
     turnCount: countTurns(store.history),
     rewindTurns: store.turnSnapshots.map(s => s.turn),
+    rewindOptions: store.turnSnapshots.map(s => {
+      const full = String(s.playerAction || '').trim()
+      return { turn: s.turn, action: summarizeAction(full), full }
+    }),
     rewindToTurn,
   }
 }

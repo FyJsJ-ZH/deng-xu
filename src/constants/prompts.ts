@@ -10,6 +10,7 @@
 import type { AttributeDef, CharacterCard, LLMConfig, PlayerCard, ResourceDef, WorldCard } from '@/types/cards';
 import { avatarCatalogPrompt } from '@/utils/avatarArt';
 import { sceneCatalogPrompt } from '@/utils/sceneArt';
+import { digestLore, renderLoreDigest } from '@/utils/loreDigest';
 
 const EMPTY = '（未填写）';
 
@@ -98,6 +99,18 @@ export interface TurnBriefing {
   backgroundChoices?: Record<string, string>
   /** 属性当前值（id → 数值） */
   aspects?: Record<string, number>
+  /**
+   * 本轮情境文本（玩家行动 + 当前地点 + 在场角色 + 最近一段叙事）。
+   *
+   * 世界书按它挑章节注入 —— 见 `buildNarrativeSystemPrompt` 里那段注释，
+   * 以及 `utils/loreDigest.ts` 的完整说明。
+   */
+  context?: string
+  /**
+   * 本轮世界书正文的汉字预算。不给就用 `digestLore` 的默认值（12000）。
+   * 开局那一轮值得给大一些：第一幕要立住整个世界，之后每轮再收窄。
+   */
+  loreBudget?: number
 }
 
 /** 叙事 AI 的 system prompt */
@@ -112,9 +125,39 @@ export function buildNarrativeSystemPrompt(
   sections.push(`你是文字角色扮演游戏《${world.title}》的**叙事者**。
 你的唯一职责是写出沉浸式的小说片段。你**不是**游戏系统，不需要关心数值、状态或任何规则判定——那些由另一个引擎处理。`);
 
-  sections.push(`## 世界观设定
+  /*
+    ── 世界观设定：**按需注入**，不再整段塞 ──
 
-${world.worldLore.trim() || '（作者未提供详细设定，请在首次叙事时从玩家的开场设定中自然建立世界。）'}`);
+    改之前这里是一行 `world.worldLore.trim()` —— 把三到七万汉字整份发出去，
+    每一轮都发。实测大晟的叙事 prompt 因此是 **66027 汉字 ≈ 4.4 万 token**，
+    其中 worldLore 独占 57074 字，约八成是这一轮用不到的设定。
+
+    贵还不是最要紧的：超长上下文里模型对中段内容的注意力会明显下降，
+    于是"写了五万字"的效果反而不如"把这一轮真用得上的八千字摆在他眼前"。
+
+    现在按本轮情境（玩家行动、当前地点、在场角色、最近一段叙事）挑章节，
+    落选章节只给标题 + 一句话提要。完整推理见 `utils/loreDigest.ts`。
+  */
+  const loreText = String(world.worldLore || '').trim();
+  if (loreText) {
+    const digest = digestLore(loreText, {
+      context: briefing.context || '',
+      /*
+        ⚠️ 专名清单放宽到 160 个（默认 48）。它在这里的用途不是"给开场提示词列名字"，
+        而是**当检索键**：清单越全，越多章节能被正确命中。
+        漏掉一个地名，讲那一带的章节就永远挑不出来。
+      */
+      nouns: collectWorldProperNouns(world, 160),
+      ...(briefing.loreBudget ? { budget: briefing.loreBudget } : {}),
+    });
+    sections.push(`## 世界观设定
+
+${renderLoreDigest(digest, world.title)}`);
+  } else {
+    sections.push(`## 世界观设定
+
+（作者未提供详细设定，请在首次叙事时从玩家的开场设定中自然建立世界。）`);
+  }
 
   if (world.rules.trim()) {
     sections.push(`## 世界规则与硬性约束

@@ -358,31 +358,72 @@ const EYE_COLORS: [RegExp, string][] = [
  *    「三十七岁男子……他替自己和一个寡妇的账户」里，`男子` 先命中就定了 male，
  *    后面那个 `寡妇` 根本不会被看到。
  */
-const GENDERS: [RegExp, 'male' | 'female'][] = [
+/**
+ * 性别词表 —— **按档位分层**，逐档尝试，前一档命中就不再往下看。
+ *
+ * ## 为什么必须分档（2026-10 的第二次修正）
+ *
+ * 原先是一张**扁平**表 + `firstHit`（取词表顺序里第一个命中的），它同时有两个
+ * **方向相反**的错，而且互相掩盖：
+ *
+ *   · ① 女性表排在男性表之前 → 「二十六岁的**男性**……这道疤反而让他在
+ *     **女性**群体中人气更高」被判成 female（"女性"指的是别人，
+ *     织命星典的艾德·黑钢因此长了女脸）；
+ *   · 可若把顺序倒过来，又会踩另一个坑：「元婴**修士**，**女子**」——
+ *     「修士」在西幻里指 friar（男），在中式修仙里却是**男女通用**的称呼，
+ *     而它出现得更早 → 判成 male（埃律西昂的冷鸢因此长了男脸）。
+ *
+ * 两个错的共同点是：**把"隐含性别"的词和"明确性别"的词放在同一档里比先后**。
+ * 所以现在按可靠度分档，**档内**才比位置与年龄邻近：
+ *
+ *   ①a 明确的自述性别词（女子 / 男子 / 女性 / 男性 / 妇人…）
+ *   ①b 隐含性别的身份职业词（修女 / 侍女 / 修士 / 农夫…）—— **歧义词全关在这一档**
+ *   ②  带代词的亲属短语（他的父亲 / 她的母亲）—— 代词已把关系归给了某人
+ *   ③  裸的关系称谓（侄女 / 鳏夫…）—— 只在全文没有自述性别词时才用
+ *   ④  女性代词（**先于**男性代词：`/he\b/` 会命中 "her" 里的 "he"）
+ *   ⑤  男性代词
+ *
+ * ⚠️ ①b 这一档是**为什么需要分档**的最好例子：`修士`/`农夫`/`侍卫` 这些词
+ * 单独看有统计倾向，值得用；但一旦让它们跟 `女子`/`男子` 平起平坐，
+ * 就会在"元婴修士，女子"这种句子上翻车。它们只能当**次选**。
+ */
+const GENDER_TIERS: [RegExp, 'male' | 'female'][][] = [
   /*
-    ① 自述性别的身份名词 —— **最高优先级**。
-    这里刻意**不含** `妻子`/`寡妇`/`遗孀`/`丈夫`/`女儿`/`儿子`/`侄女`/`孙女`，
-    它们是关系词，挪到 ③（详见上面第 6 条）。
+    ①a 明确的自述性别词。
+    刻意**不含** `妻子`/`寡妇`/`遗孀`/`丈夫`/`女儿`/`儿子`/`侄女`/`孙女`（关系词，见 ③），
+    也**不含**职业身份词（见 ①b）。
   */
-  [/少女|姑娘|女孩|女生|女子|女士|女性|妇人|妇女|女人|夫人|太太|主母|小姐|妃子|王妃|皇后|公主|女王|女皇|女仆|侍女|丫鬟|女官|女侠|女将|女修|女弟子|师姐|师妹|修女|尼姑|处女|接生婆|媒婆|巫女|girl|woman|lady|madam|female|princess|queen|witch|nun|maiden/i, 'female'],
-  [/少年|男子|男人|男性|先生|男士|少爷|公子|男童|男孩|男生|师兄|师弟|修士|和尚|僧|汉子|大汉|壮汉|农夫|男仆|侍卫|男爵|公公|老汉|boy|man|male|sir|mister|gentleman|monk|brother/i, 'male'],
+  [
+    [/少女|姑娘|女孩|女生|女子|女士|女性|妇人|妇女|女人|夫人|太太|主母|小姐|妃子|王妃|皇后|公主|女王|女皇|处女|girl|woman|lady|madam|female|princess|queen|maiden/i, 'female'],
+    [/少年|男子|男人|男性|先生|男士|少爷|公子|男童|男孩|男生|汉子|大汉|壮汉|老汉|boy|man|male|sir|mister|gentleman/i, 'male'],
+  ],
+  // ①b 隐含性别的身份/职业词（歧义词都在这一档，只能当次选）
+  [
+    [/女仆|侍女|丫鬟|女官|女侠|女将|女修|女弟子|师姐|师妹|修女|尼姑|接生婆|媒婆|巫女|witch|nun/i, 'female'],
+    [/修士|和尚|僧|农夫|男仆|侍卫|男爵|公公|师兄|师弟|monk|brother/i, 'male'],
+  ],
   /*
     ② 带代词的亲属短语：「他的父亲」→ 被描述者是男性。
     代词已经把关系**归给了别人或自己**，所以这一条比裸的关系词可靠。
   */
-  [/她(?:的)?(?:父亲|妈妈|母亲|爹|娘|儿子|女儿|妻子|丈夫|兄弟|姐妹|家人)/i, 'female'],
-  [/他(?:的)?(?:父亲|妈妈|母亲|爹|娘|儿子|女儿|妻子|丈夫|兄弟|姐妹|家人)/i, 'male'],
+  [
+    [/她(?:的)?(?:父亲|妈妈|母亲|爹|娘|儿子|女儿|妻子|丈夫|兄弟|姐妹|家人)/i, 'female'],
+    [/他(?:的)?(?:父亲|妈妈|母亲|爹|娘|儿子|女儿|妻子|丈夫|兄弟|姐妹|家人)/i, 'male'],
+  ],
   /*
     ③ 裸的关系称谓（兜底，优先级最低的一档名词）。
     走到这里说明全文没有任何"自述性别"的词，只能靠关系推断 ——
     比如「老国王的侄女，寡居」就是这一档。
   */
-  [/妻子|妃子|寡妇|遗孀|皇后|公主|女王|女皇|女儿|侄女|孙女|外甥女|养女|继女|widow|daughter|niece|queen|princess/i, 'female'],
-  [/丈夫|鳏夫|儿子|孙子|外甥|养子|继子|husband|son|nephew/i, 'male'],
-  // ④ 女性代词（先于男性代词）
-  [/她|she\b|her\b/i, 'female'],
-  // ⑤ 男性代词
-  [/他|he\b|his\b/i, 'male'],
+  [
+    [/妻子|妃子|寡妇|遗孀|皇后|公主|女王|女皇|女儿|侄女|孙女|外甥女|养女|继女|widow|daughter|niece|queen|princess/i, 'female'],
+    [/丈夫|鳏夫|儿子|孙子|外甥|养子|继子|husband|son|nephew/i, 'male'],
+  ],
+  // ④⑤ 代词档（女性**必须先于**男性：`/he\b/` 会命中 "her" 里的 "he"）
+  [
+    [/她|she\b|her\b/i, 'female'],
+    [/他|he\b|his\b/i, 'male'],
+  ],
 ]
 
 /**
@@ -674,6 +715,53 @@ function firstHit<T>(text: string, table: [RegExp, T][]): { value: T; evidence: 
   return undefined
 }
 
+/**
+ * 取「**出现位置**最靠前」的命中，而不是「词表顺序」最靠前的。
+ *
+ * ## 为什么性别需要它（2026-10 修）
+ *
+ * `firstHit` 按词表顺序返回 —— 对颜色/年龄那是合理的（词表顺序 = 优先级）。
+ * 但 `GENDERS` 里 ① 女性表排在 ① 男性表**之前**（历史原因见 GENDERS 的规则 4），
+ * 于是**任何同时含男女词的描述都会被判成 female**。
+ *
+ * 实测代价：织命星典的艾德·黑钢，`description` 开头明写「二十六岁的**男性**」，
+ * 结尾有一句「这道疤反而让他在**女性**群体中人气更高」—— 后者指的是别人，
+ * 却把这位帝国陆军少校画成了女性。埃律西昂的卡西乌斯·维特里乌斯同理
+ * （他的 `relationship` 里提到「女皇」，而本人是「男子」）。
+ * 这两条都被审计脚本报成「推断为女性，却用了男性头部」——
+ * **是推断错了，不是作者写错了**。
+ *
+ * ## 排序规则（从硬到软）
+ *
+ *   1. `nearAgeFirst` 打开时，**紧邻年龄表述的命中最硬**：
+ *      「二十六岁的男性」比「女性群体」可靠得多。判据是命中处往前 12 字内
+ *      出现 `\d+岁` / 年龄 / 年纪 / 年岁。
+ *   2. 其次比**出现位置**，靠前的赢（描述通常先把本人讲清楚，再提别人）。
+ *   3. 位置也相同时**不替换**，保留词表顺序 —— 这一条专为 `her` 里的 `he`：
+ *      `/he\b/` 与 `/her\b/` 会匹配到同一位置，女性表在前才能判对。
+ */
+function firstHitByPosition<T>(
+  text: string,
+  table: [RegExp, T][],
+  nearAgeFirst = false,
+): { value: T; evidence: string } | undefined {
+  let best: { value: T; at: number; rank: number; evidence: string } | undefined
+  for (const [re, value] of table) {
+    const m = text.match(re)
+    if (!m || m.index === undefined) continue
+    const at = m.index
+    let rank = 0
+    if (nearAgeFirst) {
+      const before = text.slice(Math.max(0, at - 12), at)
+      rank = /\d+\s*(?:岁|歲)|年龄|年纪|年岁/.test(before) ? 0 : 1
+    }
+    if (!best || rank < best.rank || (rank === best.rank && at < best.at)) {
+      best = { value, at, rank, evidence: m[0] }
+    }
+  }
+  return best ? { value: best.value, evidence: best.evidence } : undefined
+}
+
 /** 收集所有命中的词表项（用于身份/头饰这类可叠加的特征） */
 function allHits<T>(text: string, table: [RegExp, T][]): { values: T[]; evidence: string[] } {
   const values: T[] = []
@@ -846,7 +934,19 @@ export function inferTraits(input: {
       亲属词描述的是别人，不能算在自己头上。
     */
     const genderText = stripOtherPeople(text)
-    const genderHit = firstHit(genderText, GENDERS)
+    /*
+      ⚠️ **逐档**尝试，而不是在一张扁平表里取第一个命中。两个理由都能举出真实事故：
+        · 扁平表里 ① 女性表排在 ① 男性表之前 → 「二十六岁的男性……让他在
+          **女性**群体中人气更高」判成 female；
+        · 把顺序倒过来 → 「元婴**修士**，**女子**」判成 male（"修士"男女通用）。
+      分档之后，每一档内部才用 `firstHitByPosition` 比位置与年龄邻近。
+      完整推理见 `GENDER_TIERS` 的注释。
+    */
+    let genderHit: { value: 'male' | 'female'; evidence: string } | undefined
+    for (const tier of GENDER_TIERS) {
+      genderHit = firstHitByPosition(genderText, tier, true)
+      if (genderHit) break
+    }
     if (genderHit) {
       out.gender = genderHit.value
       out.evidence.push(`性别:${genderHit.evidence}`)

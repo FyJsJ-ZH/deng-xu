@@ -52,12 +52,12 @@ export function tileVariantUrls(kind, phase, scale = 8) {
  * 渲染一个角色立绘，返回 dataURL。
  *
  * @param key        随机种子（同 key 同形象）
- * @param description 角色描述 —— 外貌推断的主要输入
- * @param opts       gender / headOnly / scale / direction
+ * @param description 角色描述 —— **兜底**推断的输入（有 look 时它不再决定部件）
+ * @param opts       gender / headOnly / scale / direction / **look**
  */
 export async function spriteDataUrl(key, description, opts = {}) {
   const profile = { description, gender: opts.gender }
-  const recipe = recipeFor(key, { profile, gender: opts.gender })
+  const recipe = recipeFor(key, { profile, gender: opts.gender, look: opts.look })
   return renderSprite(recipe, {
     headOnly: opts.headOnly,
     scale: opts.scale,
@@ -65,15 +65,29 @@ export async function spriteDataUrl(key, description, opts = {}) {
   })
 }
 
-/** 直接暴露配方函数，供诊断脚本对比"推断结果 → 实际部件" */
-export { recipeFor as recipeForDiag }
+/**
+ * 直接暴露配方函数，供诊断脚本对比"推断结果 → 实际部件"。
+ *
+ * ⚠️ `opts.look` **必须透传**。这条路径原先只传 `profile` 与 `gender`，
+ * 于是离线审计（`audit-sprites.mjs`）看到的永远是"关键词推断"的结果 ——
+ * 而**线上渲染早就优先用 `look` 了**。两套结果不一致，
+ * 审计就会对着一张与游戏里完全不同的图下判断（并且它还会说"没问题"）。
+ * 这类"审计与渲染不同源"的错，是这个项目里最贵的一种。
+ */
+export function recipeForDiag(key, opts = {}) {
+  const profile = opts.profile || { description: opts.description, gender: opts.gender }
+  // ⚠️ 这里**不能**加 `async`：`recipeFor` 是同步的，包成 Promise 之后
+  // 调用方拿到的 `recipe.parts` 会是 undefined（`contradictions()` 直接崩）。
+  return recipeFor(key, { profile, gender: opts.gender, look: opts.look })
+}
 
 /** 全部内置世界（含各自的角色卡）—— 供"全量立绘审计"遍历真实语料 */
 export { BUILTIN_WORLDS } from '@/data/builtinWorlds'
 
-/** 立绘详情：配方 + 推断结果，供"为什么画成这样"的诊断 */export async function spriteDetail(key, description, opts = {}) {
+/** 立绘详情：配方 + 推断结果，供"为什么画成这样"的诊断 */
+export async function spriteDetail(key, description, opts = {}) {
   const profile = { description, gender: opts.gender }
-  const recipe = recipeFor(key, { profile, gender: opts.gender })
+  const recipe = recipeFor(key, { profile, gender: opts.gender, look: opts.look })
   const traits = inferTraits({ description })
   const url = await renderSprite(recipe, {
     headOnly: opts.headOnly, scale: opts.scale, direction: opts.direction,

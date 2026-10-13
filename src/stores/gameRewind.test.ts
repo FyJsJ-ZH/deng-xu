@@ -60,12 +60,51 @@ function playTurn(
     S().patchMemory({ bonds: [{ who: opts.bond, state: `第${turn}轮的关系` }] })
   }
   S().patchMemory({ timeline: [{ turn, text: `第${turn}轮发生了什么` }] })
-  S().pushTurnSnapshot(turn)
+  // 第二个参数是"这一轮玩家输入的行动"，回溯下拉要靠它（见下面的 describe）
+  S().pushTurnSnapshot(turn, `第${turn}轮的行动`)
 }
 
 beforeEach(() => {
   mem.clear()
   freshGame()
+})
+
+describe('回溯 · 每一轮要记得住「玩家当时干了什么」', () => {
+  /*
+    这条是为**界面**存的，不是为模型存的。
+
+    `history` 里其实只有两种消息：assistant（叙事）与 system（状态变更）——
+    玩家的输入从来没有落进历史，它只出现在发给模型的 messages 里。
+    于是回溯下拉原先只有「第 3 轮结束时」这种编号，而玩家面对一串编号
+    完全想不起来当时做过什么，也就无从判断该退回哪一轮。
+
+    存进快照而不是补进 history 是刻意的：history 每轮都要整段发给模型，
+    往里加消息等于每轮多花 token；快照只服务于回溯界面。
+  */
+  it('★ 快照里存下这一轮玩家输入的行动原文', () => {
+    playTurn(1)
+    playTurn(2)
+    expect(S().turnSnapshots.find(s => s.turn === 2)?.playerAction).toBe('第2轮的行动')
+  })
+
+  it('没传行动时不写空串（开局那一轮本来就没有玩家输入）', () => {
+    S().pushTurnSnapshot(1)
+    expect(S().turnSnapshots[0].playerAction).toBeUndefined()
+  })
+
+  it('只写了空白也不写进去（免得下拉里多一个空条目）', () => {
+    S().pushTurnSnapshot(1, '   ')
+    expect(S().turnSnapshots[0].playerAction).toBeUndefined()
+  })
+
+  it('回溯之后那一轮的行动仍然在（界面要靠它说明"你要退掉的是哪一轮"）', () => {
+    playTurn(1)
+    playTurn(2)
+    playTurn(3)
+    expect(S().rewindTo(1)).toBe(true)
+    expect(S().turnSnapshots.find(s => s.turn === 1)?.playerAction).toBe('第1轮的行动')
+    expect(S().turnSnapshots.some(s => s.turn === 3)).toBe(false)
+  })
 })
 
 describe('回溯 · 只回滚玩家能感知的那几项', () => {
