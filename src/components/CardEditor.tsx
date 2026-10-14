@@ -71,8 +71,9 @@ export function createEmptyWorld(): WorldCard {
       urgencyAfterTurns: 4
     },
     narrative: {
-      pov: 'second',
-      tense: 'present',
+      // 与内置世界卡的规范一致：第三人称、过去时（2026-10 用户要求）
+      pov: 'third',
+      tense: 'past',
       replyLength: 600,
       customStyle: ''
     },
@@ -1120,7 +1121,8 @@ export function CardEditor() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <button onClick={() => {
-                    const c = createEmptyCharacter({ present: true })
+                    // 新建的角色默认**不在场**（与项目规范一致：谁在场由玩家勾或 AI 定）
+                    const c = createEmptyCharacter({ present: false })
                     patch({ characters: [...draft.characters, c] })
                     setEditingCharId(c.id)
                   }} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs bg-accent-lantern/10 border border-accent-lantern/30 text-accent-lantern rounded hover:bg-accent-lantern/20 transition-colors">

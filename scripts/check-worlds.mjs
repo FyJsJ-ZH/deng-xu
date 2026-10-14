@@ -188,6 +188,30 @@ const EXPECTED = [
       '人工智能', '机器人', '手机', '塑料',
     ],
   },
+  {
+    id: 'builtin_london1905',
+    label: '雾都 1905（完全现实的 1905 年伦敦，**无任何超自然力量**）',
+    required: false,
+    /*
+      ⚠️ 这一张的禁用词表是**九张卡里最严的**，因为它唯一的要求就是"现实"。
+      用户原话：「加一个 1905 年伦敦的世界观（**完全现实的世界观，
+      没有其他超凡力量**）」—— 素材源（`D:\艺创区\...\A_1905现实线-雾都伦敦\`）
+      里混着私有超自然设定（守夜人教团、无面之神、素女医药、"帷幕"），
+      那些**一律不得进来**，所以超凡词要逐条列出来挡。
+      另外 1905 年不该有的现代物也要挡（塑料、抗生素、广播网、民航…）。
+    */
+    banned: [
+      // —— 超自然（本该是这张卡的底线）——
+      '魔法', '法术', '咒语', '巫术', '女巫', '巫师', '超能力', '异能', '灵异',
+      '妖怪', '鬼魂', '幽灵', '诅咒', '附身', '驱魔', '显灵', '神谕', '占卜',
+      '帷幕', '遗物', '守夜人', '无面', '素女', '教团', '邪神', '克苏鲁',
+      // —— 游戏化 ——
+      '系统', '面板', '经验值', '技能点', '等级', '血条',
+      // —— 时代错位 ——
+      '电脑', '网络', '数据', '程序', '人工智能', '机器人', '手机', '塑料',
+      '抗生素', '电视', '广播网', '民航', '雷达',
+    ],
+  },
 ]
 
 // 篇幅门槛
@@ -216,7 +240,21 @@ const GATE = {
     8 张是能撑起一张关系网的底线。
   */
   minChars: 8,
-  minPresent: 3,
+  /*
+    ⚠️ `minPresent` 从 **3 改成 0**（2026-10，用户明确要求）。
+
+    原判据的理由是「否则关系面板一开局是空的」。但用户这一轮要求：
+    > 「把所有预设 npc 设置为**不在场**」
+
+    这不是随手一改 —— 它动的是「开局谁在场由谁决定」：
+    角色卡里预标 `present: true`，等于替玩家先认定"这几个人一开局就在你身边"，
+    而那正是玩家反复打回的那种"替我的主角认亲"。全部改成不在场之后，
+    谁在场由 AI 依据**玩家自设的身份与处境**在开场现场决定。
+
+    代价是关系面板开局是空的（要等 AI 让第一个角色登场）。
+    既然这是**知情选择**，门槛就跟着降到 0 —— 而不是留一个假的 3。
+  */
+  minPresent: 0,
   minItems: 15,
   minLores: 8,
   /*
@@ -378,6 +416,17 @@ for (const exp of EXPECTED) {
   if (!w.resources?.length) fail(exp.label, '结构', 'resources 为空')
   if ((w.characters?.length || 0) < GATE.minChars) fail(exp.label, '角色太少', `${w.characters?.length || 0} < ${GATE.minChars}`)
   if (row.present < GATE.minPresent) fail(exp.label, '开局登场角色太少', `${row.present} < ${GATE.minPresent}`)
+  /*
+    ⚠️ 这个**上限**是 2026-10 用户要求「所有预设 NPC 不在场」之后加的。
+    下一个人看到"没有开局登场角色"时，很自然会想"是不是漏了 present: true"，
+    然后把它们一个个加回去 —— 那等于把用户的要求改回来。
+    所以这里显式拦一道，并在报错里写清原因。
+  */
+  if (row.present > 0) {
+    fail(exp.label, '有角色被预设为开局在场',
+      `${row.present} 张卡标了 present: true —— ` +
+      `本项目的规则是**所有预设 NPC 都不在场**，谁在场由 AI 依据玩家的自设身份与处境在开场现场决定`)
+  }
   if ((w.items?.length || 0) < GATE.minItems) fail(exp.label, '物品太少', `${w.items?.length || 0} < ${GATE.minItems}`)
   if ((w.lores?.length || 0) < GATE.minLores) fail(exp.label, 'lore 太少', `${w.lores?.length || 0} < ${GATE.minLores}`)
   if ((w.backgrounds?.length || 0) < GATE.minBackgroundSlots) fail(exp.label, '背景槽太少', `${w.backgrounds?.length || 0} < ${GATE.minBackgroundSlots}`)
@@ -772,7 +821,7 @@ if (problems.length) {
 }
 
 console.log(`\n  门槛：中文字数 ≥${GATE.worldCjk} / worldLore ≥${GATE.worldLoreCjk} / rules ≥${GATE.rulesCjk}`
-  + ` / 角色 ≥${GATE.minChars}（≥${GATE.minPresent} 个开局登场）/ 物品 ≥${GATE.minItems} / lore ≥${GATE.minLores}\n`)
+  + ` / 角色 ≥${GATE.minChars}（预设**全部不在场**，谁在场由 AI 开场现场决定）/ 物品 ≥${GATE.minItems} / lore ≥${GATE.minLores}\n`)
 
 /*
   ── A4：专名一致性（**只警告，绝不进 problems，也就不影响退出码**）──

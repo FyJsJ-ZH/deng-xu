@@ -73,7 +73,7 @@ char({
   relationship: '……',      // 客观立场，**绝不能写成"你的上司/同僚"**
   location: '……',          // 可选
   status: '……',            // 可选
-  present: true,            // 至少 3 张为 true
+  present: false,           // ⚠️ 一律 false —— 见下面「在场」那一条
   tags: ['朝堂'],
 })
 
@@ -93,7 +93,7 @@ story: {
 
 // narrative
 narrative: {
-  pov: 'second',            // 'second' | 'first' | 'third'
+  pov: 'third',             // ⚠️ 2026-10 起统一第三人称；'second' | 'first' | 'third'
   tense: 'present',         // 'present' | 'past'
   replyLength: 800,
   customStyle: `……（≥500 汉字：文风总纲 + 必须做到的事 + 禁止事项）……`,
@@ -117,7 +117,7 @@ narrative: {
 | 生活类章节正文 | **≥ 3000** |
 | rules 的沙盒条款 | 必须有**一条**（按 `1.` `2.` 编号切分）同时含「沙盒/不是任务/可选」与「不要催/没有必须/不必/不要强行/自由」，且 **≥ 300 字** |
 | `attributes` / `resources` | 非空 |
-| `characters` | **≥ 8** 张，`description` 各 **≥ 80** 汉字且**含性别线索**；`present: true` **≥ 3** 张；id 不重复 |
+| `characters` | **≥ 8** 张，`description` 各 **≥ 80** 汉字且**含性别线索**；**全部 `present: false`**（见下）；id 不重复 |
 | `items` | **≥ 15** |
 | `lores` | **≥ 8** |
 | `backgrounds` | **3 ~ 5** 个槽位（超 5 = 必须合并） |
@@ -158,6 +158,15 @@ narrative: {
 ---
 
 ## 四、写作要求（内容质量）
+
+0. **⚠️ 人称与在场（2026-10 起的两条硬规则）**
+   - **人称一律第三人称**：`narrative.pov: 'third'`。而且 `customStyle` 里
+     **不能再出现「第二人称「你」」这类文风自述** —— 那句话比 `pov` 字段更长、
+     更像具体要求，会在提示词里**压过它**，于是模型仍然写"你"，改了等于没改。
+   - **所有角色 `present: false`**：谁在场由玩家在选角页勾，或由 AI 依据玩家
+     自设的身份与处境在开场现场决定。预标 `present: true` 等于替玩家先认定
+     "这几个人一开局就在你身边"，而那正是玩家反复打回的那种"替我的主角认亲"。
+     `check-worlds.mjs` 为此同时卡了**下界（≥0）与上界（必须为 0）**。
 
 1. **世界书要写成"等待探索的沙盒"**，不是任务关卡：
    - `rules` 里必须有独立的沙盒条款（见门槛），写明「没有必须完成的主线 / 不要催 / 世界自己动 / 允许玩家只当普通人」。

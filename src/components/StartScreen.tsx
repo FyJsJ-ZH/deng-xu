@@ -172,6 +172,7 @@ export function StartScreen() {
   const savedPlayerName = useGameStore(s => s.playerName)
   // 用于判断"这一局是否真的有内容"——开场生成失败时 history 为空，但在场角色已经写好了
   const characters = useGameStore(s => s.characters)
+  const inventory = useGameStore(s => s.inventory)
   const sessionWorld = useSessionStore(s => s.world)
 
   /**
@@ -185,10 +186,26 @@ export function StartScreen() {
    *
    * 所以判据放宽：只要有会话（世界卡）就允许回去，
    * 一句叙事都没有时把文案改成「重新开始本局」而不是「继续游戏」。
+   *
+   * ⚠️ **2026-10 再修一次**：原先的兜底是 `characters.length > 0`，
+   * 而那个条件**靠「角色卡预设为在场」撑着** —— 玩家一进选角页，
+   * `present: true` 的角色就被默认勾上，于是"没有任何叙事"时它仍然成立。
+   * 现在所有预设 NPC 都改成了 `present: false`（用户要求：谁在场由玩家勾选
+   * 或由 AI 在开场现场决定），兜底随之失效 ——
+   * **"开局过、但没勾角色、第一轮又失败"就再也回不去了**，
+   * 正是这段注释开头想避免的那条死路，从另一个方向又出现了一次。
+   *
+   * 所以判据换成**玩家自己留下的痕迹**：叙事、在场角色、开局物品、主角档案，
+   * 任一项存在就说明这一局真的开过。它们全部来自玩家的操作，
+   * 不依赖任何预设默认值 —— 这样上层改再多次默认值也不会把它弄塌。
    */
   const hasSession = !!sessionWorld
   const hasProgress = history.length > 0
-  const canResume = hasSession && (hasProgress || characters.length > 0)
+  const hasTrace = hasProgress
+    || characters.length > 0
+    || inventory.length > 0
+    || !!String(savedPlayerName || '').trim()
+  const canResume = hasSession && hasTrace
 
   const lastNarrative = useMemo(() => {
     for (let i = history.length - 1; i >= 0; i--) {

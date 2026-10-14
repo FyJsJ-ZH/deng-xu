@@ -119,7 +119,8 @@ describe('fromSillyTavernLorebook 的映射', () => {
     expect(Array.isArray(world.story.stages)).toBe(true)
     expect(world.story.atmosphere).toBe('')
     expect(world.story.openingSeeds).toBeUndefined()
-    expect(world.narrative.pov).toBe('second')
+    // 2026-10 起默认第三人称（与内置世界卡一致），不再是 second
+    expect(world.narrative.pov).toBe('third')
     expect(typeof world.createdAt).toBe('number')
     // ST 世界书没有数值体系，误开机制层会让面板上一片 0
     expect(world.enableMechanics).toBe(false)

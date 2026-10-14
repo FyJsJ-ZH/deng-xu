@@ -228,6 +228,12 @@ check('可以取消', cf.canCancel)
 check('说明进度保留', cf.explains)
 
 const beforeHist = await ev(`(__gameStore.getState().history||[]).length`)
+// ⚠️ 也要记下**离开前的在场角色数**。原先这条断言写的是 `after.chars > 0`，
+// 它其实是靠「角色卡预设为在场」撑着的 —— 2026-10 用户要求所有预设 NPC
+// 一律 `present: false`（谁在场由玩家勾选或 AI 在开场现场决定），
+// 于是**玩家一个都没勾时 chars 本来就是 0**，`> 0` 会把正确行为判成失败。
+// 真正要验证的是"回去之后东西没丢"，所以改成与离开前**一致**。
+const beforeChars = await ev(`(__gameStore.getState().characters||[]).length`)
 await click('确认返回')
 await sleep(2500)
 const back = JSON.parse(await ev(`(()=>{const G=__gameStore.getState();
@@ -250,7 +256,7 @@ const after = JSON.parse(await ev(`(()=>{const G=__gameStore.getState();return J
 console.log('  ' + JSON.stringify(after))
 check('继续游戏回到了游戏界面', after.started)
 check('主角档案还在', after.playerName === '体验测试者')
-check('NPC 还在', after.chars > 0, `${after.chars} 名`)
+check('在场角色数与离开前一致（没被清掉）', after.chars === beforeChars, `${beforeChars} → ${after.chars}`)
 check('开局物品还在', after.inventory > 0, `${after.inventory} 件`)
 
 const failed = results.filter(r => !r.ok)

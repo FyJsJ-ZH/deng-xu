@@ -302,7 +302,12 @@ export function fromSillyTavernLorebook(payload: unknown): WorldCard | null {
       enableChoices: true,
       urgencyAfterTurns: 0,
     },
-    narrative: { pov: 'second', tense: 'present', replyLength: 500, customStyle: '' },
+    /*
+      ⚠️ 默认人称是 **third**，与内置世界卡当前的规范一致（2026-10 用户要求）。
+      导入外部世界书造出来的卡如果默认第二人称，玩家一进游戏就会看到
+      "与其它卡都不一样"的叙述口吻。
+    */
+    narrative: { pov: 'third', tense: 'past', replyLength: 500, customStyle: '' },
     characters: [],
     enableMechanics: false,
     createdAt: now,

@@ -154,7 +154,13 @@ export function createEmptyCharacter(overrides: Partial<CharacterCard> = {}): Ch
     tags: [],
     creator: '',
     characterVersion: '',
-    present: true,
+    /*
+      ⚠️ 默认 **不在场**（2026-10 用户要求「所有预设 NPC 都不在场」）。
+      `present: true` 等于替玩家先认定"这人一开局就在你身边"，
+      而那正是玩家反复打回的那种"替我的主角认亲"。
+      现在谁在场由玩家在选角页勾，或者由 AI 在开场现场决定。
+    */
+    present: false,
     ...overrides,
   };
 }
