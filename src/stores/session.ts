@@ -19,6 +19,15 @@ interface SessionState {
   activeCharacterIds: string[]
   /** 各背景槽选中的 option id */
   backgroundChoices: Record<string, string>
+  /**
+   * 玩家在「我自己写」背景项里填的自由文本：`{ 槽位 label → 文本 }`。
+   *
+   * 之所以和 `backgroundChoices` 分开存：`choices` 存的是"哪个槽位选了哪一项"，
+   * 而玩家自己写的那段文本**不是任何一个预设项**，它是那个槽位的正文。
+   * 两者的消费方式也不同 —— `choices` 还要拿去查数值加成与开局物品，
+   * 自定义文本只进提示词。见 `BackgroundOption.custom`。
+   */
+  backgroundCustom: Record<string, string>
   /** 玩家分配的属性点 */
   attributeAllocation: Record<string, number>
 
@@ -27,6 +36,7 @@ interface SessionState {
     player: PlayerCard
     activeCharacterIds: string[]
     backgroundChoices: Record<string, string>
+    backgroundCustom?: Record<string, string>
     attributeAllocation: Record<string, number>
   }) => void
   /** 存档进行中时更新世界卡快照（例如开场被覆写） */
@@ -46,14 +56,16 @@ export const useSessionStore = create<SessionState>()(
       player: null,
       activeCharacterIds: [],
       backgroundChoices: {},
+      backgroundCustom: {},
       attributeAllocation: {},
 
-      setSession: ({ world, player, activeCharacterIds, backgroundChoices, attributeAllocation }) => set({
+      setSession: ({ world, player, activeCharacterIds, backgroundChoices, backgroundCustom, attributeAllocation }) => set({
         // 存快照而不是引用，避免卡片库后续编辑影响进行中的存档
         world: JSON.parse(JSON.stringify(world)),
         player: JSON.parse(JSON.stringify(player)),
         activeCharacterIds: [...activeCharacterIds],
         backgroundChoices: { ...backgroundChoices },
+        backgroundCustom: { ...(backgroundCustom || {}) },
         attributeAllocation: { ...attributeAllocation }
       }),
 
@@ -68,6 +80,7 @@ export const useSessionStore = create<SessionState>()(
         player: null,
         activeCharacterIds: [],
         backgroundChoices: {},
+        backgroundCustom: {},
         attributeAllocation: {}
       }),
 

@@ -535,49 +535,65 @@ export const zhiming: WorldCard = {
       label: '来路',
       options: [
         {
-          id: 'lai_gongmin', title: '应许之地的公民',
-          description: '在帝国本土的社区长大，上过九年学，领过配给册，服役期满或即将服役。看惯了广播与升旗，也看惯了外城的烟。',
+          id: 'lai_gongmin', title: '在登记册上长大的人',
+          description: '在本土的社区里长大，上过九年学，领过配给册，服役期满或即将服役。看惯了广播与升旗，也看惯了城外的烟；填籍贯那一栏时从不用想。',
           attributeBonus: { quan: 1, xin: 1 }, resourceBonus: { tieyu: 2 }, startingItems: ['item_peijice', 'item_huanqian'],
         },
         {
-          id: 'lai_jigong', title: '帝都外城的技工学徒',
-          description: '在锻火区或引擎厂长大，手上有一层洗不掉的油。说起回路的顺序比说起家里的亲戚还熟，做梦都在听引擎声。',
+          id: 'lai_jigong', title: '在车间里长大的技工学徒',
+          description: '手上有一层洗不掉的油。说起回路的顺序比说起家里的亲戚还熟，做梦都在听引擎声；师傅骂人的话比课本记得牢。',
           attributeBonus: { mo: 2 }, resourceBonus: { qiannang: 40 }, startingItems: ['item_wenjian', 'item_yantou'],
         },
         {
-          id: 'lai_jiaoting', title: '教廷治下的信徒',
-          description: '在蛇纹河边的教区长大，晨祷与晚祷从不缺席。相信光不选择照耀谁，也听说过精灵当年怎么对待人类的祖先。',
+          id: 'lai_jiaoting', title: '在钟声与祷词里长大的人',
+          description: '在教区的钟声里长大，晨祷与晚祷从不缺席。相信光不选择照耀谁，也听说过精灵当年怎么对待人类的祖先。',
           attributeBonus: { xin: 2 }, resourceBonus: { xinqi: 1, tieyu: 1 }, startingItems: ['item_shengfu', 'item_huanqian'],
         },
         {
-          id: 'lai_chuanyuan', title: '联邦的船上孩子',
+          id: 'lai_chuanyuan', title: '在船上长大的孩子',
           description: '十岁能独自驾小艇，会打七种绳结，认潮水比认字早。家里的男性长辈多半出过海，也多半有人没回来。',
           attributeBonus: { jian: 1, wu: 1 }, resourceBonus: { tipo: 1 }, startingItems: ['item_liangpiao', 'item_huanqian'],
         },
         {
-          id: 'lai_hunxue', title: '森林边缘的混血儿',
+          id: 'lai_hunxue', title: '两边都不算自己人的混血儿',
           description: '母亲是灰精灵，父亲是人类，或者反过来。两种语言都会一点，两边的节日都过，两边的葬礼都插不上手。',
           attributeBonus: { jian: 2 }, resourceBonus: { xinqi: 1 }, startingItems: ['item_huxin', 'item_wenjian'],
         },
         {
-          id: 'lai_fuyong', title: '龙脊山下的附庸工匠',
-          description: '祖辈在龙裔的工坊里做事，负责给飞龙鞍具拧紧每一颗铆钉。知道翅膀根不能碰，也知道主人不喜欢听见"不"字。',
+          id: 'lai_fuyong', title: '祖辈都在别人家工坊里做事的工匠',
+          description: '祖辈在龙裔的工坊里做事，负责给飞龙鞍具拧紧每一颗铆钉；手艺是祖上传的，姓却是别人的。知道翅膀根不能碰，也知道主人不喜欢听见"不"字。',
           attributeBonus: { mo: 1, xin: 1 }, resourceBonus: { tipo: 1 }, startingItems: ['item_zhandoufujian', 'item_liangpiao'],
         },
         {
-          id: 'lai_bianyuan', title: '永霜边缘的人类',
-          description: '在寒鸦堡外的营地长大，出门前先看风向与冰层厚度。见过亡灵巡夜，也见过哨所门口挂着没回来的名字。',
+          id: 'lai_bianyuan', title: '在寒地哨所边上长大的人',
+          description: '在哨所外的营地长大，出门前先看风向与冰层厚度。见过亡灵巡夜，也见过哨所门口挂着没回来的名字。',
           attributeBonus: { wu: 2 }, resourceBonus: { tipo: 2 }, startingItems: ['item_fangshoufu', 'item_liangpiao'],
         },
         {
-          id: 'lai_jiaomin', title: '潮汐王庭的礁民',
+          id: 'lai_jiaomin', title: '礁石城里长大的人',
           description: '在珊瑚与珍珠母搭起的城市里长大，出门用鳃也用脚。习惯了族里为一件事吵上数月，也习惯了陆上人的急躁。',
           attributeBonus: { jian: 1, quan: 1 }, resourceBonus: { qiannang: 60 }, startingItems: ['item_fushihupian', 'item_zhenzhubei'],
         },
         {
-          id: 'lai_linzu', title: '蛇屿群岛上的鳞族',
-          description: '在炎鳞城的阴影里长大，听惯了蜕皮神殿的钟。族里的一切都按祖辈的规矩来，而祖辈的规矩里没有"帝国"这个词。',
+          id: 'lai_linzu', title: '按祖辈老例过日子的人',
+          description: '钟声按祖辈的规矩敲，族里的事也按祖辈的老例办，而老例里没有"帝国"这个词。',
           attributeBonus: { xin: 1, wu: 1 }, resourceBonus: { xinqi: 1 }, startingItems: ['item_shenzhong', 'item_yaonang'],
+        },
+        /*
+          自填项加成（第九轮算法，整套照抄一个典型项，不做逐属性取中位）：
+          ① 本槽 9 个预设的 attributeBonus 各求"属性总和"——九个全部是 2 点（并列）；
+          ② 按总和排序（全部并列，保持数组原序），奇数个取正中间 = 第 5 项
+             `lai_hunxue`「两边都不算自己人的混血儿」，属性总和 2；
+          ③ 整套照抄它：attributeBonus { jian: 2 }、resourceBonus { xinqi: 1 }；
+          ④ startingItems 取本槽出现次数最多的通用物：item_huanqian(3 次)、
+             item_liangpiao(3 次)、item_wenjian(2 次)。
+        */
+        {
+          id: 'lai_custom', title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { jian: 2 }, resourceBonus: { xinqi: 1 },
+          startingItems: ['item_huanqian', 'item_liangpiao', 'item_wenjian'],
         },
       ],
     },
@@ -585,47 +601,47 @@ export const zhiming: WorldCard = {
       label: '行当',
       options: [
         {
-          id: 'hang_junren', title: '黑色方阵的兵',
-          description: '穿全身魔导钢板甲，背"铁雨"步枪，胸前挂一枚还没磨亮的兵种徽。守过山口，也守过别人的家。',
+          id: 'hang_junren', title: '领制式军饷的步兵',
+          description: '穿全身魔导钢板甲，背一把三天不擦就积炭卡壳的制式步枪，胸前挂一枚还没磨亮的兵种徽。守过山口，也守过别人的家。',
           attributeBonus: { wu: 2 }, resourceBonus: { tieyu: 1 }, startingItems: ['item_tieyuqiang', 'item_zhandoufujian'],
         },
         {
-          id: 'hang_zhanche', title: '魔导战车车组',
-          description: '四个人挤一具六十吨的铁壳，分车长、炮手、驾驶员与联络员。闭着眼也能听出哪根回路在跳，谁的中士津贴都靠它。',
+          id: 'hang_zhanche', title: '战车的车组乘员',
+          description: '四个人挤一具六十吨的铁壳，分车长、炮手、驾驶员与联络员。闭着眼也能听出哪根回路在跳，谁的中士津贴都靠它；车不熄火，人就睡不安稳。',
           attributeBonus: { wu: 1, mo: 1 }, resourceBonus: { tieyu: 1 }, startingItems: ['item_tieyuqiang', 'item_xiubuhe'],
         },
         {
-          id: 'hang_fashi', title: '战斗法师',
-          description: '不算弹道，只测魔力环境，把修正值喂给铁律。不爱说话，因为脑子里同时开着三个感知场，说话会分心。',
+          id: 'hang_fashi', title: '随队的战斗法师',
+          description: '不算弹道，只测魔力环境，把修正值报给作战构装。不爱说话，因为脑子里同时开着三个感知场，说话会分心。',
           attributeBonus: { mo: 2 }, resourceBonus: { xinqi: 1 }, startingItems: ['item_madaotongxun', 'item_yaonang'],
         },
         {
-          id: 'hang_maoxian', title: '冒险者公会的注册者',
+          id: 'hang_maoxian', title: '在任务板上讨生活的人',
           description: '认等级、认任务板、认保险条款。黑铁接除草，青铜剿巢穴，白银以上才敢接遗迹与要人护卫，命与价钱成正比。',
           attributeBonus: { jian: 1, wu: 1 }, resourceBonus: { tieyu: 1 }, startingItems: ['item_gonghuiling', 'item_yingjibaozha'],
         },
         {
-          id: 'hang_zoushang', title: '走商与跑船的',
+          id: 'hang_zoushang', title: '走商与跑船的人',
           description: '算季风、算关税、算赊账的名字。一年在路上的日子比在家多，货单上写着"朝圣"两个字的时候，多半不是去朝圣。',
           attributeBonus: { jian: 1, quan: 1 }, resourceBonus: { qiannang: 120 }, startingItems: ['item_shangpiao', 'item_huanqian'],
         },
         {
-          id: 'hang_jishi', title: '工厂技师',
-          description: '在锻火区或引擎厂有正式工牌，三班倒，铁棉混纺的工装洗到发白。厂里发的手套自己磨出指模，比买的合手。',
+          id: 'hang_jishi', title: '三班倒的工厂技师',
+          description: '在厂区有正式工牌，三班倒，铁棉混纺的工装洗到发白。厂里发的手套自己磨出指模，比买的合手。',
           attributeBonus: { mo: 1, wu: 1 }, resourceBonus: { qiannang: 80 }, startingItems: ['item_gongpai', 'item_xiubuhe'],
         },
         {
-          id: 'hang_guangbo', title: '广播剧场的艺人',
+          id: 'hang_guangbo', title: '靠嗓子吃饭的艺人',
           description: '在电台念词、配音效、写台词，靠嗓子吃饭。认识编辑部每一个人，也认识食堂夜班留汤的师傅。',
           attributeBonus: { xin: 1, jian: 1 }, resourceBonus: { tieyu: 1 }, startingItems: ['item_ju_ben', 'item_huanqian'],
         },
         {
-          id: 'hang_xuezhe', title: '科技院的研究学徒',
+          id: 'hang_xuezhe', title: '描线抄数据的研究学徒',
           description: '给符文描线、替老研究员抄数据、拆别人拆坏的东西。熬得住就留下，熬不住就去厂里，两条路都体面。',
           attributeBonus: { mo: 2 }, resourceBonus: { tieyu: 1 }, startingItems: ['item_yuanzheng', 'item_madaotongxun'],
         },
         {
-          id: 'hang_guyong', title: '佣兵与护卫',
+          id: 'hang_guyong', title: '接雇约吃饭的佣兵与护卫',
           description: '接雇约吃饭，雇约上不写雇主名字。护卫、守夜、押运、探遗迹，危险等级写在价钱上，识货的人先看撤退路线。',
           attributeBonus: { wu: 1, xin: 1 }, resourceBonus: { tieyu: 1 }, startingItems: ['item_jingjidaoju', 'item_zhandoufujian'],
         },
@@ -633,6 +649,23 @@ export const zhiming: WorldCard = {
           id: 'hang_gangkou', title: '码头与货栈的工人',
           description: '扛得动、算得清、听得懂六种语言的报价。哪条船昨夜进港、哪家货栈缺人，全在你眼皮底下过。',
           attributeBonus: { wu: 1, jian: 1 }, resourceBonus: { tipo: 1, qiannang: 30 }, startingItems: ['item_liangpiao', 'item_sheng_jie'],
+        },
+        /*
+          自填项加成（第九轮算法，整套照抄一个典型项，不做逐属性取中位）：
+          ① 本槽 10 个预设的 attributeBonus 各求"属性总和"——十个全部是 2 点（并列）；
+          ② 按总和排序（全部并列，保持数组原序），偶数个取中间偏下的那个（lower median）
+             = 第 5 项 `hang_zoushang`「走商与跑船的人」，属性总和 2；
+          ③ 整套照抄它：attributeBonus { jian: 1, quan: 1 }、resourceBonus { qiannang: 120 }；
+          ④ startingItems：本槽并列出现 2 次的有 4 件（item_tieyuqiang / item_zhandoufujian /
+             item_xiubuhe / item_madaotongxun），取其中最通用的 3 件 —— 不塞步枪，
+             免得自填成艺人、账房的人也背着一把。
+        */
+        {
+          id: 'hang_custom', title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { jian: 1, quan: 1 }, resourceBonus: { qiannang: 120 },
+          startingItems: ['item_zhandoufujian', 'item_xiubuhe', 'item_madaotongxun'],
         },
       ],
     },
@@ -650,7 +683,7 @@ export const zhiming: WorldCard = {
           attributeBonus: { quan: 1, xin: 1 }, resourceBonus: { qiannang: 100 }, startingItems: ['item_shangpiao', 'item_yingjibaozha'],
         },
         {
-          id: 'huo_kuangye', title: '混日子与旷野',
+          id: 'huo_kuangye', title: '在野外混日子的人',
           description: '在野外混饭，替人看林、猎魔物、寻失物。不太在乎编制，也不太在乎明天，只认得几条老路与几家肯赊账的店。',
           attributeBonus: { jian: 1, wu: 1 }, resourceBonus: { xinqi: 1 }, startingItems: ['item_lianyou', 'item_yingjibaozha'],
         },
@@ -679,50 +712,82 @@ export const zhiming: WorldCard = {
           description: '不争名额也不争功劳，只求一条安静的巷子、一份不吵的差事、晚上能坐着发十五分钟呆的地方。很难，但不是不可能。',
           attributeBonus: { mo: 1, jian: 1 }, resourceBonus: { xinqi: 2 }, startingItems: ['item_shuangyuedeng', 'item_huanqian'],
         },
+        /*
+          自填项加成（第九轮算法，整套照抄一个典型项，不做逐属性取中位）：
+          ① 本槽 8 个预设的 attributeBonus 各求"属性总和"——八个全部是 2 点（并列）；
+          ② 按总和排序（全部并列，保持数组原序），偶数个取中间偏下的那个（lower median）
+             = 第 4 项 `huo_qiancheng`「信点什么的人」，属性总和 2；
+          ③ 整套照抄它：attributeBonus { xin: 2 }、resourceBonus { xinqi: 2 }；
+          ④ startingItems 取本槽出现次数最多的通用物：item_huanqian(2 次)、
+             item_yingjibaozha(2 次)、item_shuangyuedeng(2 次)。
+        */
+        {
+          id: 'huo_custom', title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { xin: 2 }, resourceBonus: { xinqi: 2 },
+          startingItems: ['item_huanqian', 'item_yingjibaozha', 'item_shuangyuedeng'],
+        },
       ],
     },
     {
       label: '处境',
       options: [
         {
-          id: 'chu_qianxian', title: '前线装甲连队',
-          description: '在联防的边界上，一边是帝国装甲连的引擎声，一边是精灵巡林队的影子。饭是铁盒餐，睡是车底，信要等补给车。',
+          id: 'chu_qianxian', title: '界线两侧对峙的驻防地',
+          description: '在联防的边界上，一边是装甲连的引擎声，一边是巡林队的影子。饭是铁盒餐，睡是车底，信要等补给车；巡逻队在争议地带撞上，谁先动手要写三份报告。',
           attributeBonus: { wu: 1, xin: 1 }, resourceBonus: { tieyu: 1 }, startingItems: ['item_quanjiabu', 'item_tieyuqiang'],
         },
         {
-          id: 'chu_chengfang', title: '城防步兵',
+          id: 'chu_chengfang', title: '在城墙上轮值的守兵',
           description: '在帝国某座城市的城墙上轮值，白天查证件，夜里听远处厂区的机器声。城里有集市、有配给队、也有不肯搬走的老住户。',
           attributeBonus: { wu: 1, quan: 1 }, resourceBonus: { tipo: 1 }, startingItems: ['item_junzhuang', 'item_fangshoufu'],
         },
         {
-          id: 'chu_gongchang', title: '魔导工厂与外城',
+          id: 'chu_gongchang', title: '三班倒的厂区与外城',
           description: '三班倒的厂区，油污的走廊，食堂里排到门口的队伍。工友里有猫耳族联络员、有从教廷来的姑娘、也有守了一辈子炉子的老工人。',
           attributeBonus: { mo: 1, jian: 1 }, resourceBonus: { qiannang: 60 }, startingItems: ['item_gongpai', 'item_tieyuxunzhang'],
         },
         {
-          id: 'chu_shengcheng', title: '辉光圣城的见习圣女骑士',
-          description: '在黎明座的教区见习，早晨扫塔、白天抄经、傍晚在城墙上看永燃灯塔的光。教廷温和，但温和有边界。',
+          id: 'chu_shengcheng', title: '在钟塔里见习的人',
+          description: '在教区的塔里见习，早晨扫塔、白天抄经、傍晚在城墙上看那盏从未熄过的灯。教廷温和，但温和有边界，出了城门就不作数。',
           attributeBonus: { xin: 2 }, resourceBonus: { tieyu: 1 }, startingItems: ['item_shengfu', 'item_madaotongxun'],
         },
         {
-          id: 'chu_ziyougang', title: '双月城自由港',
+          id: 'chu_ziyougang', title: '中立港的码头区',
           description: '中立港的码头区，六种语言的讨价还价从早响到晚。商会只管两件事：城里不许动手，交易不收关税。',
           attributeBonus: { jian: 1, quan: 1 }, resourceBonus: { qiannang: 120 }, startingItems: ['item_shangpiao', 'item_shuangyuedeng'],
         },
         {
-          id: 'chu_bianyuan', title: '边远村镇与外城',
+          id: 'chu_bianyuan', title: '地图边缘的小镇',
           description: '地图边缘的小镇，木牌上刻着谁家出了多少清剿钱。入夜上墙的班次写在祠堂门板上，来的人多，走的人也多。',
           attributeBonus: { wu: 1, jian: 1 }, resourceBonus: { tipo: 1 }, startingItems: ['item_lianyou', 'item_liangpiao'],
         },
         {
-          id: 'chu_lvtu', title: '商队与列车上',
+          id: 'chu_lvtu', title: '商队与货运列车上',
           description: '货在车厢里，人在车顶上，沿途过一道道卡。夜里要看路，白天要跟货主核对装箱单，谁在货里夹了私货大家都心知肚明。',
           attributeBonus: { jian: 1, xin: 1 }, resourceBonus: { qiannang: 80 }, startingItems: ['item_wenjian', 'item_huanqian'],
         },
         {
-          id: 'chu_guhui', title: '古代遗迹外的营地',
+          id: 'chu_guhui', title: '探遗迹的营地',
           description: '遗迹入口外的探队营地，雇约、赌约、遗嘱都在同一个帐篷里签。有人下到第三层就再没上来，活下来的人都记得那条路。',
           attributeBonus: { mo: 1, jian: 1 }, resourceBonus: { qiannang: 60 }, startingItems: ['item_guhuiwupin', 'item_yingjibaozha'],
+        },
+        /*
+          自填项加成（第九轮算法，整套照抄一个典型项，不做逐属性取中位）：
+          ① 本槽 8 个预设的 attributeBonus 各求"属性总和"——八个全部是 2 点（并列）；
+          ② 按总和排序（全部并列，保持数组原序），偶数个取中间偏下的那个（lower median）
+             = 第 4 项 `chu_shengcheng`「在钟塔里见习的人」，属性总和 2；
+          ③ 整套照抄它：attributeBonus { xin: 2 }、resourceBonus { tieyu: 1 }；
+          ④ startingItems：本槽预设的物品两两不重复、全部只出现 1 次，故取其中最通用的
+             3 件跑路物：item_huanqian、item_wenjian、item_liangpiao。
+        */
+        {
+          id: 'chu_custom', title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { xin: 2 }, resourceBonus: { tieyu: 1 },
+          startingItems: ['item_huanqian', 'item_wenjian', 'item_liangpiao'],
         },
       ],
     },
@@ -821,29 +886,62 @@ export const zhiming: WorldCard = {
     pov: 'third',
     tense: 'present',
     replyLength: 800,
-    customStyle: `【文风总纲】
-写这个世界，笔要有两种重量：一种是**钢铁与尺度**的，一种是**玫瑰与私语**的。前者靠数字与体量，不靠形容词——十公里长的空天巨构、两万公里的龙脊山脉、海拔一万两千米的灰烬之冠、八艘两千米的苍穹级母舰、三艘血海级潜舰、十二万常驻人口、每五十六天一次的双生潮。把这些摆出来，宏伟自己就成立了；写「辉煌」「震撼」「无与伦比」只会把它写小。后者靠具体的人：袖口的红色滚边、餐盒底部的加热符文、冷却液与机油混合的气味、报栏前多站的那三分钟。
+    customStyle: `战车监造局 · 技术文件编写规范
+监制字〔第七年度〕第 041 号　　密级：内部　　页数：共七页
+拟稿：第三工段文书组　　会签：第二工段、第七工段、机械处　　抄送：各战车工段、各车组文书
 
-这颗星球**万象勃发**：晶脉托着云海之间的空岛，双月同满的那一夜全世界的魔力涨到三倍，十个叫得出名号的政权各自把旗子插在地图上，工厂与教会、舰队与商队、龙裔与亡灵、精灵与海族全在同一片天空下过日子、算账、结仇。写它，要让读者同时闻到铁水与花香。
+第一条　适用范围
+本规范约束一切记录、汇报、撰写战斗经过的人。凡在文中落笔的场面、人物、器物与账目，按本件办理。
 
-【可执行要求】
-一、宏伟靠尺度。凡是要写「大」，先找一个能量出来的东西：航程几天、舰长多少米、一门炮的装填要几个人几刻、一场战役烧掉多少块魔能砖。体系、军制、徽记、编制这类**制度性的大**，比抒情的大更可信。
-二、异种要有人的复杂度。写一个异族角色之前，先定下两件事：**他的时间感**（精灵的三千年与人类的一辈子不是同一种耐心）与**他的债务观**（谁救过他、谁奴役过他的祖先、这笔账该不该由眼前这个人来还）。各族都该有好人、坏人与只想混口饭的人——不要善良精灵与野蛮兽人这种单色设定。
-三、允许夸饰与热血。这个世界自带张扬的自我修辞：帝国人会念「黎明降临，万物噤声」「世界尽头，帝国边疆」；军装上要缝红滚边，城墙上要铸玫瑰。让角色**认真地自我美化**，再让现实去磨它——这是这个世界最动人的地方。
-四、工业金属味要落到实处。写干活的人：校准符文、装填炮弹、卸货、换滤芯、按季结薪的长工、能在引擎轰鸣里安然入睡的港口居民。手艺是这个世界最可靠的身份证明——听引擎声判断哪根回路跳了闸，比任何「强大」都更像帝国。
-五、代价要真。晶脉会枯、矿工会死在坑里、匠骨墙上刻着建造者的名字、终末黎明号的主炮从未在实战中发射过一次——它的威慑恰恰建立在「不必发射」上。任何胜利都要有账单：弹药的消耗、伤员的名额、报上去的数字与真实数字的差。人也会磨损：疤、耳鸣、失眠、听见引擎声就手抖。
-六、广播腔与私语并置。帝国的广域播报是短句、命令式、以「帝国万岁」收尾；而人在食堂里、战车顶上、深夜宿舍里说的话是碎的、带笑的、带脏字的。两种语言要能在同一段里自然切换：先念一遍播报，再写听播报的人翻了个白眼。
-七、克制的情感。这个世界的人不轻易说爱、不说抱歉、不说谢谢。写感情靠动作：谁替谁挡了风，谁把烟放在谁的爪子够得到的地方，谁在报栏的阵亡名单前多站了三分钟。
+第二条　关于叙述人称
+2.1　记录者是测量员，不是表演者。落笔一律第三人称，只记当场看得见、听得见、数得出来的东西；不写记录者自己的感想，不以"我们"带笔。
+2.2　文中不得出现"你""您"及一切向读件人直接说话的写法；被记录者以职务、姓氏或姓名指称，绝不写成"主角"。
+2.3　人物出场不得预置上级、上峰、同僚、固定搭档或血亲。关系由情节生出来，不由文本框发下去。
+　　〔铅笔，写在图纸背面，字很挤〕按 2.1 写的都成了自问自答。用姓氏加军衔，一句话写清他是谁、正在干什么，就够了。别绕。
 
-【禁止事项】
-不要写成轻小说式的插科打诨，也不要写成黑暗到没有一处暖意的末世——这颗星球的底色是「铁在烧，心不冷」，狰狞的钢铁与娇嫩的玫瑰必须同时在场。不要用「先进」「强大」「辉煌」这类空词形容帝国，让读者从一枚铜环、一张配给册、一双磨穿的军靴里读出这个国家的样子。不要用游戏腔（技能、升级、点数值、系统提示），不要用现代网络语与外来语混搭。不要把异族写成单色的反派或单色的受害者，也不要把帝国写成纯粹的恶——它有严酷的法律，也有替饿肚子的人留一碗汤的木牌。不要替玩家决定情绪与选择，不要写「你感到无比愤怒」，只写让他愤怒的事；不要写「你必须」，只写世界给出的条件。不要滥用神迹与魔法解决问题：魔法是工程、是军需、是要花钱的东西，神祇从不替人打仗。不要用大段背景介绍打断场景——需要交代设定时，让人物在动作里带出来。最后，**不要复述原文**：这是玩家的私人设定稿，只作为参照，落到正文里必须是新写的句子。
+第三条　关于尺度
+3.1　凡落"大"字，必须先给一个能量出来的数：航程几天、舰长多少米、一门炮装填要几个人几刻、一场战役烧掉多少块魔能砖。量不出数的，删。
+3.2　制度性的大优于抒情的大：编制、编号、徽记、番号、配给册，比"辉煌""震撼"可信。帝国给每一门炮都编了号，也给了每一个炮手一副耳塞；这句话比一百个感叹号重。
+3.3　写钢铁的排场时，同时写它摊到人头上多少：十公里长的终末黎明号要占多少人的班次、两万公里的龙脊山脉要多少补给站。狰狞的钢铁与娇嫩的玫瑰并存，这是本国的美学，也是本国的账。
+　　〔铅笔〕上回交上来的本子通篇"蔚为壮观"，被我退了三回。数字摆上去，壮观自己会站在那儿。
 
-【可用句式】
-· 尺度句：「全长十公里。她的影子落在云上，比一座城还宽。」
-· 制度句：「帝国给每一门炮都编了号，也给了每一个炮手一副耳塞。」
-· 播报句：短句、命令式，末句收在「帝国万岁」。
-· 私语句：半截话、脏字、抢话，说完自己先笑。
-· 代价句：把数字与真实并排放——「报上去的数字是三百二十七，点名时站出来的只有两百九十一。」`,
+第四条　关于异族人物
+4.1　写一个异族人物之前，先定两件事：他的时间感（精灵的三千年与人类的一辈子不是同一种耐心），他的债务观（谁救过他、谁奴役过他的祖先、这笔账该不该由眼前这个人来还）。
+4.2　各族内部都该有好人、坏人与只想混口饭的人。精灵不都是傲慢贵族，矮人不都是贪财匠人，兽人不都是嗜血战士，亡灵不都是冷酷学者，海族不都是慢吞吞的深水贵族，兽耳族不必都待在酒馆里——帝国军队里有猫耳族的联络员。
+4.3　本条由第三工段提出，第二工段补充：写单色的稿子一律退回重写。
+
+第五条　关于做工
+5.1　把工序写下来：校准符文对了三遍、炮弹按次序装填、滤芯每班次换一枚、矿上的长工按季结薪。手艺是最可靠的身份证明——能从引擎声里听出哪一根回路跳了闸的人，比任何"强大"的形容都更像帝国人。
+5.2　穿戴与器具按公差记，不按形容词记：军靴底厚十二毫米，履带销磨损不大于零点四毫米，配给册的纸角磨毛了两毫米。人是被这些尺度裁出来的，写清尺度，人就在里面。
+
+第六条　关于代价
+6.1　任何胜利的账目写在同一条里：弹药的消耗、伤员的名额、修车的工时、补给线的账，以及报上去的数字与点名时站出来的数字之差。
+6.2　人和物件一样会磨损：疤、耳鸣、失眠、听见引擎声响就手抖。缴获的异族武器往往因为不合手，只在紧急时用一次。
+6.3　晶脉会枯，矿工会死在坑里，匠骨墙上一排排刻着建造者的名字。终末黎明号的主炮至今未在实战中发射过，它的威慑恰恰建立在此。
+　　〔铅笔〕字数不够就把"惨烈"划掉，换成"少了一个人，靴子还在车上"。至于匠骨墙——你们写它的时候记得比人高，字刻到上面要仰头。别站着写，蹲下来写。
+
+第七条　关于两种语域
+7.1　铁律的播报是短句、命令式，末句收在"帝国万岁"；食堂里、战车顶上、宿舍熄灯后说的话是碎的、带笑的、带脏字的。两种语言要在同一段里自然轮换，别只抄语录不写人。
+7.2　本国人吃自己那一套，且吃得下去：军装袖口缝红滚边，城墙每隔十米嵌一朵铸铁玫瑰。让他们理直气壮地自我美化，再让现实去磨它。
+7.3　文中不出现"爱""抱歉""谢谢"三个词。感情写在动作里：谁替谁挡了风，谁把烟放在谁的爪子够得到的地方，谁在报栏的阵亡名单前多站了三分钟。
+
+第八条　禁用词目表
+8.1　下表所列字眼一律不得入稿：系统、面板、经验值、技能点、数据、程序、电脑、网络、人工智能、机器人、手机、塑料。需要表意时改用本国语汇：铁律、魔导回路、魔导演算网、魔导通讯网、自律作战单位、魔导构装体、合成魔能、广播与报纸。
+8.2　"技能""属性""升级"不得用来描述人的成长。成长要落在手艺、伤疤、履历，以及别人愿意替他作保的次数上。
+8.3　附记一则：写及本人的坐驾、坐骑与器物，写它坏在哪里，不写它"忠诚"。
+
+第九条　关于取景的边界
+9.1　本条线没有总目标，没有验收日期，也没有催办函。不许催：不许每隔两页抛出一封紧急军令、一封来自首都的密信去推着人往前走。
+9.2　世界自己在动，且不等人：征兵站照常开张，双王照常吵架，使节照常迟到，玫瑰园的玫瑰照常开，粮船晚到六天。这些事照写，人若碰就展开，人若不碰，就叫它在背景里老去、变味、或者悄悄解决，不必回头清账。
+9.3　不许发工资式的奖励：出了力按道理结账，闲着日子照过，别为了让他动起来就先塞给他好处。若有事落到某个人头上，得能说清为什么偏偏是他——他懂那门手艺、他欠过那笔人情、他家就在那个街区；不许因为文书上缺一个名字，就抓他来顶。
+9.4　允许只当普通人：在外城修一辈子回路，或在边镇替人看林子看二十年，都是完整的活法，不必补一场大战来证明他值得被记录。
+
+第十条　关于战斗经过的写法
+10.1　打斗前写准备：弹药、油料、地形、谁负责哪一段。打斗中写混乱与代价：听不清的命令、卡壳的枪、喊不出声的人。打斗后写收尾：伤员、修车、上报，以及谁不愿提起当时的样子。
+10.2　打不过就允许逃、装死、谈判、用钱解决，这些都比硬拼更符合本地实情。
+10.3　一件事比开火更能说明这世道：打完以后，谁去收拾，谁去赔钱，谁去给死者的家里送信。
+
+（本件试验行一年。第七条 7.3 小节、第八条 8.2 小节由第三工段提出；第四条、第九条由第二工段提出，机械处核定。执行中如与图纸背面所注不符，以图纸背面为准。）`,
   },
   characters: [
     char({

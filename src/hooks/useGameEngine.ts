@@ -13,6 +13,7 @@ import {
 } from '@/constants/prompts'
 import { storySystem } from '@/systems/StorySystem'
 import { pickAvatarId } from '@/utils/avatarArt'
+import { resolveAiLook } from '@/utils/lookSpec'
 import { isKnownSceneId } from '@/utils/sceneArt'
 import { renderMemoryForPrompt } from '@/utils/memory'
 import { LlmError, classifyLlmError } from '@/api/llmErrors'
@@ -409,11 +410,22 @@ export function useGameEngine(): GameEngineReturn {
     // 把开局选定的背景（出身）解析成可读文本，交给 AI 作为"掉落与线索的依据"。
     const world = useSessionStore.getState().world
     const choices = useSessionStore.getState().backgroundChoices
+    // 「我自己写」的自由文本：选了自定义项时，它取代该槽位的标题与说明。
+    const customs = useSessionStore.getState().backgroundCustom
     const bgLines = world
       ? world.backgrounds
           .map(slot => {
             const opt = slot.options.find(o => o.id === choices[slot.label])
             if (!opt) return null
+            const own = (customs?.[slot.label] || '').trim()
+            /*
+              选了「我自己写」却没写内容 ⇒ 当作没选这个槽位。
+              与 `describeBackgroundChoices` 保持一致：
+              否则这里会发出 `选择: "我自己写"`，数据 AI 会拿它去"挂钩物品的出身"，
+              等于把一句废话当成出身用。
+            */
+            if (opt.custom && !own) return null
+            const isCustom = !!opt.custom && !!own
             const bonusBits = [
               ...Object.entries(opt.attributeBonus || {}).map(([k, v]) => {
                 const d = attributeDefs.find(a => a.id === k)
@@ -429,8 +441,8 @@ export function useGameEngine(): GameEngineReturn {
               .filter(Boolean)
             return {
               分类: slot.label,
-              选择: opt.title,
-              说明: opt.description || '',
+              选择: isCustom ? own : opt.title,
+              说明: isCustom ? '（这一段是他自己写的，不是预设项 —— 按他写的来，不要替换成别的身份）' : (opt.description || ''),
               数值加成: bonusBits,
               开局携带: carried,
             }
@@ -608,11 +620,20 @@ export function useGameEngine(): GameEngineReturn {
                 useGameStore.getState().characters.map(c => (c.id === cid ? undefined : c.avatarId))
               ),
               /*
-                部件级外观：数据 AI **不生成**它（prompt 里没有这个字段），
-                但世界卡自带的角色可能已经带了 —— 透传一次，
-                免得 AI 重新描述这个角色时把立绘的可控外观抹掉。
+                部件级外观。三个来源，按优先级：
+                  1. **该角色已经有 `look`** —— 世界卡作者逐部件写好的显式外观，
+                     权威性最高，任何推测都不该覆盖它。
+                     （`addCharacter` 那层也做了保护，这里是第二道。）
+                  2. `change.payload.look` —— 世界卡透传上来的。
+                  3. `resolveAiLook(appearance)` —— AI 现场造的角色。它输出的是一组
+                     **受限枚举**（sex / hair / cloth …），由 lookSpec 翻成部件 id。
+                     这是"局内 NPC 立绘"唯一可控的来源：在此之前 AI 造的 NPC
+                     一个 look 都没有，只能靠 291 条中文正则去猜。
+                  三者都没有 → undefined，立绘退回关键词推断（旧行为，不变差）。
               */
-              look: change.payload.look,
+              look: useGameStore.getState().characters.find(c => c.id === cid)?.look
+                ?? change.payload.look
+                ?? resolveAiLook(change.payload.appearance, cid),
             })
             summaryLines.push(`登场人物：${change.payload.name}`)
           }
@@ -940,6 +961,7 @@ export function useGameEngine(): GameEngineReturn {
           player,
           activeCharacters,
           useSessionStore.getState().backgroundChoices,
+          useSessionStore.getState().backgroundCustom,
         )
         currentStoryContext = currentStoryContext ? `${currentStoryContext}\n\n${opening}` : opening
       }
@@ -971,6 +993,7 @@ export function useGameEngine(): GameEngineReturn {
           */
           content: buildNarrativeSystemPrompt(activeWorld, activeCharacters, player, {
             backgroundChoices: useSessionStore.getState().backgroundChoices,
+            backgroundCustom: useSessionStore.getState().backgroundCustom,
             aspects: updatedStore.aspects,
             /*
               世界书按这段文本挑章节（见 utils/loreDigest.ts），所以要拼成

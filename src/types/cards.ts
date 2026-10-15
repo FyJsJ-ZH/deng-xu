@@ -46,6 +46,29 @@ export interface BackgroundOption {
   resourceBonus?: Record<string, number>;
   /** 开局携带物品 id 列表 */
   startingItems?: string[];
+  /**
+   * **「我自己写」项**：选中它以后，选角页会展开一个文本框，
+   * 玩家自己写下他在这个世界里的位置、来路或立场。
+   *
+   * ## 为什么必须有这个东西（2026-10，玩家第三次打回）
+   *
+   * 玩家原话：
+   * > 「现在的背景槽位**依旧过于具体，限制住了剧情的开展**」
+   *
+   * 他说得对，而且这是**结构问题**，不是文案问题：
+   * 无论我把预设选项写得多宽，它终究是一个**封闭清单** ——
+   * 玩家想演「一个在四号线沿线卖热食的寡妇」，而清单里只有「合闸派 / 归地派 / 配额派」，
+   * 他只能挑一个最接近的，然后 AI 就照着那个**具体的派别**写下去，他想要的那个角色永远出不来。
+   *
+   * 每个槽位配一个本项，等于给封闭清单开一道门：
+   * 预设负责"给不知道想演什么的玩家一个具体钩子"，本项负责"给知道想演什么的玩家让路"。
+   * 两者的文本走**完全同一条链路**进入提示词（见 `describeBackgroundChoices`），
+   * 区别只在来源。
+   *
+   * ⚠️ 数值加成请填**该槽位所有预设项的中位值** —— 不要填 0
+   * （自定义就变成纯亏，玩家会觉得自己被罚了），也不要填满值（那就成了最优解）。
+   */
+  custom?: boolean;
 }
 
 export interface BackgroundSlot {
@@ -388,6 +411,14 @@ export interface StartConfig {
   player: PlayerCard;
   /** 各背景槽位选中的 option id，key 为槽位 label */
   backgroundChoices: Record<string, string>;
+  /**
+   * 玩家在「我自己写」选项里填的自由文本：`{ 槽位 label → 文本 }`。
+   *
+   * 只有选中的是 `custom: true` 的选项时才有意义。
+   * ⚠️ 它与预设选项走同一条提示词链路，**不是**补充说明、更不是备注 ——
+   * 它是这个槽位的全部内容。见 `BackgroundOption.custom` 的说明。
+   */
+  backgroundCustom?: Record<string, string>;
   /** 玩家分配的属性点 */
   attributeAllocation: Record<string, number>;
   /** 参战/在场的角色卡 id */
@@ -440,6 +471,13 @@ export interface SetupSeed {
    * 对不上的槽位退回默认值（见 SessionSetup 的初始化逻辑）。
    */
   backgroundChoices?: Record<string, string>;
+  /**
+   * 玩家在「我自己写」背景项里写下的文本（key 为槽位 label）。
+   *
+   * 与 `backgroundChoices` 一样是**世界相关**的：换世界时槽位对不上就丢弃，
+   * 只保留本世界确实存在的槽位（见 SessionSetup 的 `resolveSeed`）。
+   */
+  backgroundCustom?: Record<string, string>;
   /** 玩家分配好的属性点（skill id → 点数），同样要按本世界的属性表过滤 */
   attributeAllocation?: Record<string, number>;
 }
@@ -469,8 +507,21 @@ export interface HeroPreset {
    * 一套"通用"选择只能对同世界可靠；分世界存才能既通用又不串味。
    */
   choices?: {
-    default?: { backgroundChoices?: Record<string, string>; attributeAllocation?: Record<string, number> };
-    byWorld?: Record<string, { backgroundChoices?: Record<string, string>; attributeAllocation?: Record<string, number> }>;
+    default?: {
+      backgroundChoices?: Record<string, string>;
+      /**
+       * 玩家在「我自己写」项里写下的文本。**要一起存** ——
+       * 否则他辛苦写的一段设定存进预设、下次套用时却不见了，
+       * 而这恰恰是他最不愿意重打的东西。
+       */
+      backgroundCustom?: Record<string, string>;
+      attributeAllocation?: Record<string, number>;
+    };
+    byWorld?: Record<string, {
+      backgroundChoices?: Record<string, string>;
+      backgroundCustom?: Record<string, string>;
+      attributeAllocation?: Record<string, number>;
+    }>;
   };
   createdAt: number;
   updatedAt: number;

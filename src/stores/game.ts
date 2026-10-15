@@ -665,8 +665,26 @@ export const useGameStore = create<GameState>()(
         // 同一个角色可能被 AI 反复 ADD_CHARACTER，按 id 合并而不是堆重复条目
         const idx = state.characters.findIndex(c => c.id === char.id);
         if (idx >= 0) {
+          const prev = state.characters[idx];
+          const merged = { ...prev, ...char };
+          /*
+            ⚠️ `look` 是**浅合并里唯一的例外**（2026-10 第九轮）。
+
+            `{ ...prev, ...char }` 在 `char.look === undefined` 时会把 `look`
+            **显式赋成 undefined** —— 于是世界卡作者逐部件写好的外观被抹掉，
+            立绘静默退回关键词推断。症状是"某个角色某一天忽然画得不像了"，
+            而且极难联想到是这里。
+
+            这种情形不是假设：提示词里虽然写了"已在出场角色档案中的角色不需要
+            重复 ADD_CHARACTER"，但模型偶尔会照发；而它重新描述一个角色时
+            **本来就不会带 `look`**（那是引擎的字段，不是它的）。
+
+            所以 `look` 只在调用方**明确给了值**时才覆盖。
+            `''` 是有意义的（"明确不要这件部件"），因此判据是 `undefined` 而非假值。
+          */
+          if (char.look === undefined) merged.look = prev.look;
           const next = [...state.characters];
-          next[idx] = { ...next[idx], ...char };
+          next[idx] = merged;
           return { characters: next };
         }
         return { characters: [...state.characters, char] };

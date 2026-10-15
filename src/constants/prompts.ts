@@ -9,6 +9,7 @@
 
 import type { AttributeDef, CharacterCard, LLMConfig, PlayerCard, ResourceDef, WorldCard } from '@/types/cards';
 import { avatarCatalogPrompt } from '@/utils/avatarArt';
+import { aiLookCatalogPrompt } from '@/utils/lookSpec';
 import { sceneCatalogPrompt } from '@/utils/sceneArt';
 import { digestLore, renderLoreDigest } from '@/utils/loreDigest';
 
@@ -97,6 +98,13 @@ function povInstruction(world: WorldCard): string {
 export interface TurnBriefing {
   /** 各背景槽位选中的 option id，key 为槽位 label */
   backgroundChoices?: Record<string, string>
+  /**
+   * 玩家在「我自己写」背景项里填的自由文本：`{ 槽位 label → 文本 }`。
+   *
+   * 它不是 `backgroundChoices` 的补充，而是那一个槽位的**全部内容** ——
+   * 见 `BackgroundOption.custom` 与 `describeBackgroundChoices`。
+   */
+  backgroundCustom?: Record<string, string>
   /** 属性当前值（id → 数值） */
   aspects?: Record<string, number>
   /**
@@ -201,7 +209,7 @@ ${formatPlayer(player)}
     放到提示词末尾会被当成参考资料，放在这里才会被当成他的定义。
     两段都可能返回空串（玩家没选背景 / 世界关掉了机制层），空则不注入。
   */
-  const bgBriefing = buildBackgroundBriefing(world, briefing.backgroundChoices)
+  const bgBriefing = buildBackgroundBriefing(world, briefing.backgroundChoices, briefing.backgroundCustom)
   if (bgBriefing) sections.push(bgBriefing)
 
   const attrBriefing = buildAttributeBriefing(world, briefing.aspects)
@@ -349,7 +357,7 @@ ${resources.length ? resources.map(resourceLine).join('\n') : '（本世界未�
    - 探索到新地点的情报 → \`ADD_LOCATION\`
    - 身份/头衔变化 → \`SET_IDENTITY\`
 6. **人物**
-   - 新角色登场 → \`ADD_CHARACTER\`（必须带完整 payload，包含 id/name/description/relationship/status/location/avatarId）
+   - 新角色登场 → \`ADD_CHARACTER\`（必须带完整 payload，包含 id/name/description/relationship/status/location/avatarId/appearance）
    - 已有角色的关系、状态、位置、描述变化 → \`UPDATE_CHARACTER\`（**务必沿用已有的 id**）
    - 注意：已在「出场角色档案」中的角色**不需要**重复 ADD_CHARACTER，只在状态变化时 UPDATE_CHARACTER。
 
@@ -388,6 +396,43 @@ ${avatarCatalogPrompt()}
 - **同一个 id 不要重复使用**。请在输入里的 \`currentState.characters\` 中查看已经用过的 avatarId，避开它们。
 - 如果没有任何一个贴合，就**省略 avatarId 字段**，不要硬凑、不要编造清单外的 id。
 - 只在 \`ADD_CHARACTER\` 时给出；\`UPDATE_CHARACTER\` 不要改 avatarId。
+
+## 角色外观登记（appearance）—— **这一步决定了他画出来像不像**
+
+游戏会给每个登场的角色**画一张像素立绘**。画什么，**完全由你在这里登记的
+\`appearance\` 决定**；你不登记，引擎就只能从 \`description\` 里猜 ——
+而"猜"的错误率很高，而且症状很刺眼：「银叶精灵、浅金色长发」画成金色卷发配皮甲、
+「黑色燕尾服、乌黑长发」画成白头发的老脸，都是真实发生过的。
+
+所以**新角色登场时，请把 \`appearance\` 一起填进 \`ADD_CHARACTER.payload\`**。
+每个字段的取值只能从下面这张表里挑，**清单外的值一律无效**：
+
+\`\`\`
+${aiLookCatalogPrompt()}
+\`\`\`
+
+规则（**第二条比第一条更重要**）：
+
+- **取值一律用上面表里的英文词，不要翻译成中文。**
+  引擎是按字面匹配的，\`"hair": "长发"\` 会**整条被丢弃**（当作你没填）——
+  这一条写在最前面，因为把它翻成中文是最容易犯的错，而且症状很隐蔽：
+  立绘看起来"还是老样子"，没人会想到是语言问题。
+- **\`sex\` 尽量填。** 它是观感里最要紧的一项（历史上出过"男性角色拿到女性的脸"的 bug），
+  只要你的描写能让读者判断出性别，就填上。
+- ⚠️ **只填你在 \`description\` 里确实写到的项。** 描写里没提发色、没提帽子、
+  没提穿什么，就**整个省略那个字段** —— 引擎有自己的补全逻辑，比你随手填一个更贴。
+  **不要为了把表填满而编造。** 宁可少填，不要填错：
+  填错的代价是立绘与你的描写**直接矛盾**，而不填只是让引擎照着描写去猜，
+  后者至少还有对的可能。
+- 示例：
+  · 描写"约莫四十岁的男人，短须，穿深色布袍，袖口磨得发亮"
+    → \`"appearance": { "sex": "male", "age": "adult", "beard": "stubble", "cloth": "robe", "clothColor": "charcoal" }\`
+  · 描写"一个年轻女子，浅色长发松松挽着，穿一条旧裙子"
+    → \`"appearance": { "sex": "female", "age": "youth", "hairColor": "blonde", "hair": "half_up", "cloth": "dress", "clothColor": "white" }\`
+  · 描写"一个壮实的汉子，光头，满脸横肉"
+    → \`"appearance": { "sex": "male", "age": "adult", "build": "heavy", "hair": "bald" }\`
+- 只在 \`ADD_CHARACTER\` 时给出；\`UPDATE_CHARACTER\` **不要**改 \`appearance\` ——
+  一个人的长相不该随剧情变化。
 
 ## 场景背景切换（SET_SCENE）
 
@@ -476,27 +521,51 @@ ${world.story.enableChoices ? `生成 3~4 个下一步行动选项。
  * 这里把选择还原成"分类：选项名 —— 说明"，并带上开局携带物，
  * 让 AI 有具体的东西可写。
  *
+ * ## 自定义项（2026-10 玩家第三次打回后加）
+ *
+ * 玩家原话是「背景槽位**依旧过于具体，限制住了剧情的开展**」。
+ * 所以每个槽位都有一个 `custom: true` 的项：选中它，玩家自己写的那段文本
+ * **原样取代**该槽位的 title 与 description，走同一条链路进提示词。
+ *
+ * ⚠️ 这里刻意**不**把自定义文本降级成"补充说明"或"备注"——
+ * 它就是这个槽位的全部内容。否则玩家费劲写的字会被预设压住，
+ * 等于那道门白开了。
+ *
  * 返回空数组表示玩家没有选任何背景（例如世界卡里没定义槽位）。
  */
 export function describeBackgroundChoices(
   world: WorldCard,
   choices: Record<string, string>,
-): { label: string; id: string; title: string; description: string; items: string[] }[] {
+  custom?: Record<string, string>,
+): { label: string; id: string; title: string; description: string; items: string[]; custom: boolean }[] {
   if (!world?.backgrounds?.length) return []
-  const out: { label: string; id: string; title: string; description: string; items: string[] }[] = []
+  const out: { label: string; id: string; title: string; description: string; items: string[]; custom: boolean }[] = []
   for (const slot of world.backgrounds) {
     const opt = slot.options.find(o => o.id === choices?.[slot.label])
     if (!opt) continue
+    const own = (custom?.[slot.label] || '').trim()
+    /*
+      ⚠️ 选了「我自己写」却一个字没写 ⇒ **当作没选这个槽位**。
+
+      退回预设标题（"我自己写"）看着更"容错"，其实更糟：提示词里会出现
+      `- **来路**：我自己写` 这种句子，AI 读到的是"他自己写的是『我自己写』"，
+      既没有信息又让它困惑。少一个槽位比多一句废话强。
+      （UI 那边也会提示玩家补上，正常路径走不到这里。）
+    */
+    if (opt.custom && !own) continue
+    const isCustom = !!opt.custom && !!own
     out.push({
       label: slot.label,
       id: opt.id,
-      title: opt.title,
-      description: opt.description || '',
+      // 自定义项：玩家写的原话就是他的身份。
+      title: isCustom ? own : opt.title,
+      description: isCustom ? '' : (opt.description || ''),
       // 开局携带物是"背景影响开场"最硬的抓手：手上有撬棍的人
       // 和一个手上有账本的人，进同一扇门的方式必然不同
       items: (opt.startingItems || [])
         .map(id => world.items?.find(i => i.id === id)?.name)
         .filter((x): x is string => !!x),
+      custom: isCustom,
     })
   }
   return out
@@ -530,12 +599,15 @@ export function describeBackgroundChoices(
 export function buildBackgroundBriefing(
   world: WorldCard,
   choices: Record<string, string> | undefined,
+  custom?: Record<string, string>,
 ): string {
-  const picks = describeBackgroundChoices(world, choices || {})
+  const picks = describeBackgroundChoices(world, choices || {}, custom)
   if (!picks.length) return ''
 
   const lines = picks.map(p => {
-    const bits = [`- **${p.label}**：${p.title}`]
+    const bits = [p.custom
+      ? `- **${p.label}**（**他自己写的**，不是从预设里挑的）：${p.title}`
+      : `- **${p.label}**：${p.title}`]
     if (p.description) bits.push(`  ${p.description}`)
     if (p.items.length) bits.push(`  随身：${p.items.join('、')}`)
     return bits.join('\n')
@@ -561,7 +633,20 @@ ${lines.join('\n')}
 - **他手上有哪些东西**：随身物要真的被用起来（拿在手里、押在柜上、当掉、送出去），
   不是写一次就被忘掉的摆设。
 - **实在不会的时候，让他求人**：他没有的那门本事，别让他凭空会了 ——
-  让他花钱雇人、托人情、或者干脆绕开。这才是来路真正在起作用的样子。`
+  让他花钱雇人、托人情、或者干脆绕开。这才是来路真正在起作用的样子。
+
+### 但它的边界必须说清楚（**这一节与上面同样重要**）
+
+上面这些是**他此刻的处境与眼光**，**不是他被钉住的位置**。请守住下面三条：
+
+1. **它不规定他能做什么。** 他不欠这个身份任何忠诚，也不受它约束 ——
+   一个替人跑腿的人可以忽然决定去揭发一件事，一个体制内的人可以辞职、可以叛、可以什么都不干。
+   他往后走的路**不必**与来路相称。
+2. **它不规定世界怎么对他。** 别人对他的态度来自**此刻的具体情形**（他手里有什么、
+   谁在场、他刚才说了什么），不来自一个身份标签该有的"通常待遇"。
+   不要写成"因为他出身某某，所以某某人必然如何"。
+3. **它是起点，不是主题。** 不要让故事绕着"他的来路"转 ——
+   来路只是他理解眼前这件事的**工具**，眼前这件事才是故事。`
 }
 
 /**
@@ -665,7 +750,8 @@ ${lines.join('\n')}
 export function resolveOpeningSeed(
   world: WorldCard,
   choices: Record<string, string>,
-): { slot: string; id: string; title: string; seed: string } | null {
+  custom?: Record<string, string>,
+): { slot: string; id: string; title: string; seed: string; custom: boolean } | null {
   const slotLabel = world?.story?.openerSlot
   if (!slotLabel) return null
   const slot = world.backgrounds?.find(s => s.label === slotLabel)
@@ -673,6 +759,21 @@ export function resolveOpeningSeed(
   const chosenId = choices?.[slotLabel]
   const opt = slot.options.find(o => o.id === chosenId)
   if (!opt) return null
+
+  /*
+    自定义项：玩家自己写的处境**就是处境本身**，不是"某一类环境的素材"。
+    所以这里直接把它当 seed 交出去，并打上 `custom` 标记 ——
+    `buildOpeningInstruction` 见到标记会换一套说法（照办，而不是"仅供参考"）。
+
+    一个例外：他选了"我自己写"却一个字没写。此时返回 null，
+    让流程退回"用世界氛围兜底"，而不是拿一个空字符串去当处境。
+  */
+  if (opt.custom) {
+    const own = (custom?.[slotLabel] || '').trim()
+    if (!own) return null
+    return { slot: slotLabel, id: opt.id, title: '他自己写下的处境', seed: own, custom: true }
+  }
+
   /*
     ⚠️ `openingSeeds` 已**扁平化**（2026-10）：直接是「选项 id → 素材」，
     不再按槽位再套一层。原先那层嵌套只有 openerSlot 一个槽位在用，
@@ -682,7 +783,7 @@ export function resolveOpeningSeed(
   const map = world.story?.openingSeeds
   const seed = (map?.[opt.id] ?? map?.[opt.title] ?? '').trim()
   if (!seed) return null
-  return { slot: slotLabel, id: opt.id, title: opt.title, seed }
+  return { slot: slotLabel, id: opt.id, title: opt.title, seed, custom: false }
 }
 
 /**
@@ -777,10 +878,11 @@ export function buildOpeningInstruction(
   player: PlayerCard,
   activeCharacters: CharacterCard[],
   backgroundChoices: Record<string, string> = {},
+  backgroundCustom?: Record<string, string>,
 ): string {
   const parts: string[] = [];
-  const picks = describeBackgroundChoices(world, backgroundChoices);
-  const seed = resolveOpeningSeed(world, backgroundChoices);
+  const picks = describeBackgroundChoices(world, backgroundChoices, backgroundCustom);
+  const seed = resolveOpeningSeed(world, backgroundChoices, backgroundCustom);
   const playerCard = describePlayerForOpening(player);
   const hasOwnBackground = !!(player.background || '').trim();
 
@@ -797,7 +899,31 @@ ${playerCard || '（玩家没有填写任何主角设定 —— 此时请让第�
 不要把他换成别的部门、别的官职、别的出身，也不要给他加一个他没写过的上司。`);
 
   if (seed) {
-    parts.push(`═══ 二、他所处的那一类环境（**附加参考：这是素材，不是剧本**）═══
+    /*
+      自定义处境：换成"照办"的说法。
+      预设选项是"某一类环境的素材"（所以那一段反复叮嘱"这不是剧本"），
+      而玩家自己写的处境**就是他对自己此刻位置的规定** ——
+      再对他念"这只是素材"，等于把他刚写完的东西又软化回去了，那道门就白开了。
+    */
+    parts.push(seed.custom
+      ? `═══ 二、他自己写下的处境（**照办，这不是参考**）═══
+
+他没有从预设里挑，而是自己写了这一段：
+
+${seed.seed}
+
+⚠️ 这是**他对自己此刻处境的规定**，与上面第一段（主角本人）同等优先。
+请照着写：
+
+1. 第一幕里他就是**在这里、正在做这件事**。不要把它替换成别的场合，
+   也不要因为它是"自己写的"就写得比预设更含糊、更抽象。
+2. 他若写了具体的人、地方或身份（"我姑母在西街开一间浆洗铺"），
+   那就**照他写的来** —— 不要换成别的亲戚、别的行业、别的街。
+3. 他若写得简略，空出来的部分由你补全，**往具体里补**（气味、价钱、手上的活计），
+   不要往大里补（不要顺手给他加一个头衔或一段身世）。
+4. 同样**不要替他认亲**：他写的人是他的人，他没写的人不是。
+5. 这仍然只是**起点**：第一幕之后他想去哪、想做什么，不受这段限制。`
+      : `═══ 二、他所处的那一类环境（**附加参考：这是素材，不是剧本**）═══
 
 他选的处境是「${seed.title}」。下面这段描述的是**这一类环境长什么样**：
 

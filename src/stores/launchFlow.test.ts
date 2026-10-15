@@ -62,6 +62,65 @@ describe('resetGame 的职责', () => {
   })
 })
 
+describe('addCharacter 的合并：look 不能被沉默抹掉', () => {
+  /*
+    玩家会遇到的症状：某个角色的立绘**某一天忽然画得不像了**，
+    而且换了个发型/衣服/肤色 —— 但世界卡里的 `look` 一个字没改。
+
+    根因是浅合并：AI 偶尔会对一个**已在场**的角色再发一次 `ADD_CHARACTER`
+    （提示词里虽然说了不需要，模型偶尔还是照发），而它重新描述一个角色时
+    **不会带 `look`** —— 那是引擎的字段，不是它的。
+    `{ ...prev, ...char }` 于是把 `look` 显式赋成 `undefined`，
+    立绘静默退回关键词推断。这几条测试锁住修复。
+  */
+  const LOOK = { head: 'heads_human_female', hair: 'hair_braid', hairColor: 'black' }
+
+  it('★ 重复 ADD_CHARACTER 且不带 look ⇒ 保留原来的 look', () => {
+    const g = useGameStore.getState()
+    g.addCharacter({
+      id: 'c1', name: '薇拉', description: '', relationship: '', status: '', look: LOOK,
+    })
+    // AI 又描述了一遍这个角色，没带 look
+    useGameStore.getState().addCharacter({
+      id: 'c1', name: '薇拉', description: '换了身衣服', relationship: '同行', status: '正常',
+    })
+    const c = useGameStore.getState().characters.find(x => x.id === 'c1')!
+    expect(c.look, 'look 被抹掉了 —— 立绘会静默退回关键词推断').toEqual(LOOK)
+    // 其它字段照常更新
+    expect(c.description).toBe('换了身衣服')
+    expect(c.relationship).toBe('同行')
+  })
+
+  it('明确给了 look ⇒ 覆盖（调用方说了算）', () => {
+    const g = useGameStore.getState()
+    g.addCharacter({ id: 'c2', name: '某人', description: '', relationship: '', status: '', look: LOOK })
+    useGameStore.getState().addCharacter({
+      id: 'c2', name: '某人', description: '', relationship: '', status: '',
+      look: { head: 'heads_human_male' },
+    })
+    expect(useGameStore.getState().characters.find(x => x.id === 'c2')!.look)
+      .toEqual({ head: 'heads_human_male' })
+  })
+
+  it('★ 空串是有意义的（"明确不要这件部件"），不能被当成"没给"', () => {
+    const g = useGameStore.getState()
+    g.addCharacter({ id: 'c3', name: '某人', description: '', relationship: '', status: '', look: { hair: 'hair_long' } })
+    useGameStore.getState().addCharacter({
+      id: 'c3', name: '某人', description: '', relationship: '', status: '', look: { hair: '' },
+    })
+    expect(useGameStore.getState().characters.find(x => x.id === 'c3')!.look).toEqual({ hair: '' })
+  })
+
+  it('原来没有 look、后来给了 ⇒ 正常写入', () => {
+    const g = useGameStore.getState()
+    g.addCharacter({ id: 'c4', name: '某人', description: '', relationship: '', status: '' })
+    useGameStore.getState().addCharacter({
+      id: 'c4', name: '某人', description: '', relationship: '', status: '', look: LOOK,
+    })
+    expect(useGameStore.getState().characters.find(x => x.id === 'c4')!.look).toEqual(LOOK)
+  })
+})
+
 describe('正确的开局顺序：先清空，再写入', () => {
   it('先 resetGame 再写入 → 数据全部保留（这是修好后的顺序）', () => {
     // 模拟 beginSetup：进入选角时先清

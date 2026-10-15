@@ -10,7 +10,7 @@
  *
  * ## 迭代用法（本轮新增）
  *
- * 全套 8 套跑一遍要两分钟左右，改一行代码就等两分钟太亏。所以：
+ * 全套 10 套跑一遍要两分钟出头，改一行代码就等两分钟太亏。所以：
  *
  *   node scripts/checks/all.mjs --only-failed   # 只重跑上次失败的那几套
  *   node scripts/checks/all.mjs --list          # 列出所有套件名
@@ -42,6 +42,8 @@ const CHECKS = [
   { name: 'NPC 词表覆盖', file: 'npc-coverage.mjs', port: 9877 },
   // 主角预设（提前设定主角）：建成后能在开局时一键套用
   { name: '我的主角', file: 'heroes.mjs', port: 9878 },
+  // 「我自己写」背景项：选角页真的放出了文本框、输入真的进了 state
+  { name: '自填背景', file: 'background-custom.mjs', port: 9879 },
 ]
 
 // ── 参数解析 ──

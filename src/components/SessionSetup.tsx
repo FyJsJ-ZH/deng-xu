@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, ArrowRight, Play, Users, Check, Compass, UserRound, BookmarkPlus } from 'lucide-react'
-import type { HeroPreset, PlayerCard, WorldCard } from '@/types/cards'
+import { ArrowLeft, ArrowRight, Play, Users, Check, Compass, UserRound, BookmarkPlus, Plus } from 'lucide-react'
+import type { BackgroundSlot, HeroPreset, PlayerCard, WorldCard } from '@/types/cards'
 import { useSessionStore } from '@/stores/session'
 import { useGameStore } from '@/stores/game'
 import { useUIStore } from '@/stores/ui'
@@ -76,6 +76,13 @@ function resolveSeed(world: WorldCard) {
     }
   }
 
+  // 自定义背景文本：只保留本世界真实存在的槽位
+  const backgroundCustom: Record<string, string> = {}
+  for (const [label, text] of Object.entries(seed?.backgroundCustom || {})) {
+    if (!world.backgrounds.some(s => s.label === label)) continue
+    if (typeof text === 'string' && text.trim()) backgroundCustom[label] = text
+  }
+
   // 属性点：只认本世界定义过的属性，且不得超过该世界的点数额度
   const allocation: Record<string, number> = {}
   for (const a of world.attributes) allocation[a.id] = 0
@@ -88,7 +95,7 @@ function resolveSeed(world: WorldCard) {
     budget -= take
   }
 
-  return { player, backgroundChoices, allocation }
+  return { player, backgroundChoices, backgroundCustom, allocation }
 }
 
 export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
@@ -141,6 +148,27 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
     () => seedInit.allocation
   )
 
+  /*
+    ── 「我自己写」的文本 ──
+
+    ⚠️ 用 **ref 镜像**而不是纯 state，理由与上面 player 那一段完全相同：
+    `handleLaunch` 里会先调 `initFromWorld()`，那会触发重渲染 → 本组件重挂载 →
+    `useState` 初值被重新求值。玩家在这里手打的一段话会在那一刻被清空。
+
+    而"我写了两百字，一点开始就没了"是这套流程里最劝退的一种 bug ——
+    它比任何显示错误都更让人不想再开一局。所以新加的这块一开始就用 ref。
+  */
+  const [backgroundCustom, setBackgroundCustomState] = useState<Record<string, string>>(
+    () => seedInit.backgroundCustom
+  )
+  const backgroundCustomRef = useRef<Record<string, string>>(backgroundCustom)
+  const patchBackgroundCustom = (label: string, text: string) => {
+    backgroundCustomRef.current = { ...backgroundCustomRef.current, [label]: text }
+    setBackgroundCustomState(backgroundCustomRef.current)
+  }
+  /** 供 handleLaunch 读取（永远最新，且不随重挂载丢） */
+  const currentCustomTexts = () => backgroundCustomRef.current
+
   // patchPlayer 已在上面定义（同时写 ref 与 state，见那里的注释）
 
   /** 预设快捷条用到的库状态与动作 */
@@ -170,6 +198,19 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
       if (slot && slot.options.some(o => o.id === optId)) nextBg[label] = optId
     }
     setBackgroundChoices(nextBg)
+
+    // 自定义背景文本：同样只认本世界的槽位，并且**整份替换**而不是合并 ——
+    // 预设存的是"那一套主角设定"，把上一套残留的自定义文本留下会串味。
+    const byWorldCustom = preset.choices?.byWorld?.[world.id]?.backgroundCustom
+    const defCustom = preset.choices?.default?.backgroundCustom
+    const mergedCustom = { ...(defCustom || {}), ...(byWorldCustom || {}) }
+    const nextCustom: Record<string, string> = {}
+    for (const [label, text] of Object.entries(mergedCustom)) {
+      if (!world.backgrounds.some(s => s.label === label)) continue
+      if (typeof text === 'string' && text.trim()) nextCustom[label] = text
+    }
+    backgroundCustomRef.current = nextCustom
+    setBackgroundCustomState(nextCustom)
 
     // 属性点同理：只认本世界的属性 id，且不超额度
     const byWorldAlloc = preset.choices?.byWorld?.[world.id]?.attributeAllocation
@@ -203,7 +244,11 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
       ...(existing?.choices || {}),
       byWorld: {
         ...(existing?.choices?.byWorld || {}),
-        [world.id]: { backgroundChoices, attributeAllocation: allocation },
+        [world.id]: {
+          backgroundChoices,
+          backgroundCustom: currentCustomTexts(),
+          attributeAllocation: allocation,
+        },
       },
     }
     if (existing) {
@@ -222,6 +267,23 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
   )
   const remaining = world.attributePoints - totalAllocated
 
+  /**
+   * 该槽位**当前真正生效**的选项。
+   *
+   * ⚠️ 选了「我自己写」却一个字没写 ⇒ 返回 `null`（当作这个槽位没选）。
+   *
+   * 这一条要与提示词层严格一致 —— `describeBackgroundChoices` 与
+   * `useGameEngine` 的 `bgLines` 在同样的情形下都会跳过该槽位。
+   * 若只有提示词层跳过、属性层照给，会出现"他凭空多了两点智识，
+   * 而 AI 完全不知道这来路是什么"这种最难解释的状态。
+   */
+  const effectiveOption = (slot: BackgroundSlot) => {
+    const option = slot.options.find(o => o.id === backgroundChoices[slot.label])
+    if (!option) return null
+    if (option.custom && !(backgroundCustom[slot.label] || '').trim()) return null
+    return option
+  }
+
   /** 汇总最终数值：属性点 + 背景加成；资源 = 初始值 + 背景加成 */
   const finalStats = useMemo(() => {
     const attributes: Record<string, number> = { ...allocation }
@@ -229,8 +291,7 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
     world.resources.forEach(r => { resources[r.id] = r.initial })
 
     world.backgrounds.forEach(slot => {
-      const chosenId = backgroundChoices[slot.label]
-      const option = slot.options.find(o => o.id === chosenId)
+      const option = effectiveOption(slot)
       if (!option) return
       Object.entries(option.attributeBonus || {}).forEach(([k, v]) => {
         if (k in attributes) attributes[k] += v
@@ -247,17 +308,18 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
     })
 
     return { attributes, resources }
-  }, [allocation, backgroundChoices, world])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allocation, backgroundChoices, backgroundCustom, world])
 
   /** 背景带来的开局物品 */
   const startingItems = useMemo(() => {
     const ids = new Set<string>()
     world.backgrounds.forEach(slot => {
-      const option = slot.options.find(o => o.id === backgroundChoices[slot.label])
-      option?.startingItems?.forEach(id => ids.add(id))
+      effectiveOption(slot)?.startingItems?.forEach(id => ids.add(id))
     })
     return world.items.filter(i => ids.has(i.id))
-  }, [backgroundChoices, world])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backgroundChoices, backgroundCustom, world])
 
   const stepIndex = STEPS.findIndex(s => s.id === step)
   const activeCharacters = world.characters.filter(c => activeIds.includes(c.id))
@@ -340,6 +402,12 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
       player: p.name.trim() ? p : { ...p, name: '无名者' },
       activeCharacterIds: activeIds,
       backgroundChoices,
+      /*
+        ⚠️ 读 **ref** 而不是 state：上面第 1 步的 `initFromWorld()` 会触发重渲染 →
+        本组件重挂载 → `backgroundCustom` 这个 state 被重置成初值。
+        玩家手打的那段话就在那一刻丢掉了。原因与 player 完全相同。
+      */
+      backgroundCustom: currentCustomTexts(),
       attributeAllocation: allocation
     })
 
@@ -640,45 +708,85 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
                           <div className="grid sm:grid-cols-2 gap-3">
                             {slot.options.map(option => {
                               const on = backgroundChoices[slot.label] === option.id
+                              /*
+                                ── 「我自己写」项（`custom: true`）──
+                                它占满整行、虚线边框，选中后展开一个文本框。
+                                玩家的文本走 `backgroundCustom` 进 session，
+                                再由 `describeBackgroundChoices` 原样取代该槽位的标题与说明
+                                —— 与预设项**完全同一条链路**，不是"补充说明"。
+
+                                为什么要开这道门（2026-10 玩家第三次打回）：
+                                预设选项再宽也终究是个封闭清单，想演清单外角色的人
+                                只能挑一个最接近的，然后被 AI 照着那个身份写下去。
+                              */
                               return (
-                                <button
-                                  key={option.id}
-                                  onClick={() => setBackgroundChoices(prev => ({ ...prev, [slot.label]: option.id }))}
-                                  className={`text-left p-3 rounded border transition-colors
-                                    ${on
-                                      ? 'bg-accent-lantern/10 border-accent-lantern/40'
-                                      : 'bg-black/20 border-text-muted/20 hover:border-text-muted/40'}`}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm font-bold text-text-primary">{option.title}</span>
-                                    {on && <Check size={12} className="text-accent-lantern" />}
-                                  </div>
-                                  {option.description && (
-                                    <p className="text-xs text-text-secondary mt-1 leading-relaxed">{option.description}</p>
+                                <div key={option.id} className={`space-y-2 ${option.custom ? 'sm:col-span-2' : ''}`}>
+                                  <button
+                                    onClick={() => setBackgroundChoices(prev => ({ ...prev, [slot.label]: option.id }))}
+                                    className={`w-full text-left p-3 rounded transition-colors
+                                      ${option.custom ? 'border border-dashed' : 'border'}
+                                      ${on
+                                        ? 'bg-accent-lantern/10 border-accent-lantern/40'
+                                        : 'bg-black/20 border-text-muted/20 hover:border-text-muted/40'}`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {option.custom && <Plus size={12} className="text-accent-lantern flex-shrink-0" />}
+                                      <span className={`text-sm font-bold ${option.custom ? 'text-accent-lantern' : 'text-text-primary'}`}>
+                                        {option.title}
+                                      </span>
+                                      {on && <Check size={12} className="text-accent-lantern" />}
+                                    </div>
+                                    {option.description && (
+                                      <p className="text-xs text-text-secondary mt-1 leading-relaxed">{option.description}</p>
+                                    )}
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      {Object.entries(option.attributeBonus || {}).map(([k, v]) => {
+                                        const def = world.attributes.find(a => a.id === k)
+                                        if (!def || !v) return null
+                                        return (
+                                          <span key={k} className="text-[10px] px-1.5 py-0.5 rounded border"
+                                            style={{ color: def.color, borderColor: `${def.color}55` }}>
+                                            {def.name} {v > 0 ? '+' : ''}{v}
+                                          </span>
+                                        )
+                                      })}
+                                      {Object.entries(option.resourceBonus || {}).map(([k, v]) => {
+                                        const def = world.resources.find(r => r.id === k)
+                                        if (!def || !v) return null
+                                        return (
+                                          <span key={k} className="text-[10px] px-1.5 py-0.5 rounded border"
+                                            style={{ color: def.color, borderColor: `${def.color}55` }}>
+                                            {def.name} {v > 0 ? '+' : ''}{v}
+                                          </span>
+                                        )
+                                      })}
+                                    </div>
+                                  </button>
+                                  {option.custom && on && (
+                                    <>
+                                      <textarea
+                                        className="w-full bg-black/40 border border-accent-lantern/30 rounded p-3 text-sm
+                                          text-text-primary leading-relaxed resize-y focus:outline-none focus:border-accent-lantern/60"
+                                        rows={4}
+                                        placeholder="他在这里是谁？写下他的来路、营生、立场，或者他此刻的处境。写多少算多少 —— AI 会照它写。"
+                                        value={backgroundCustom[slot.label] || ''}
+                                        onChange={e => patchBackgroundCustom(slot.label, e.target.value)}
+                                      />
+                                      {/*
+                                        空着的时候要说话。
+                                        因为引擎那边的规则是"选了自填却没写 ⇒ 当作没选这个槽位"
+                                        （见 describeBackgroundChoices），所以空着**不会有任何效果** ——
+                                        但玩家看不出来，他只会觉得"我选了啊"。这里把后果讲明白。
+                                      */}
+                                      {!(backgroundCustom[slot.label] || '').trim() && (
+                                        <p className="text-[11px] text-amber-400/90 mt-1.5">
+                                          还没写。空着的话，这一槽不会有任何内容 —— 他既不会因此获得属性，
+                                          AI 也不会知道他的来路。写一句也行。
+                                        </p>
+                                      )}
+                                    </>
                                   )}
-                                  <div className="flex flex-wrap gap-2 mt-2">
-                                    {Object.entries(option.attributeBonus || {}).map(([k, v]) => {
-                                      const def = world.attributes.find(a => a.id === k)
-                                      if (!def || !v) return null
-                                      return (
-                                        <span key={k} className="text-[10px] px-1.5 py-0.5 rounded border"
-                                          style={{ color: def.color, borderColor: `${def.color}55` }}>
-                                          {def.name} {v > 0 ? '+' : ''}{v}
-                                        </span>
-                                      )
-                                    })}
-                                    {Object.entries(option.resourceBonus || {}).map(([k, v]) => {
-                                      const def = world.resources.find(r => r.id === k)
-                                      if (!def || !v) return null
-                                      return (
-                                        <span key={k} className="text-[10px] px-1.5 py-0.5 rounded border"
-                                          style={{ color: def.color, borderColor: `${def.color}55` }}>
-                                          {def.name} {v > 0 ? '+' : ''}{v}
-                                        </span>
-                                      )
-                                    })}
-                                  </div>
-                                </button>
+                                </div>
                               )
                             })}
                             {slot.options.length === 0 && (

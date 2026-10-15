@@ -645,39 +645,39 @@ export const ximeng: WorldCard = {
       options: [
         {
           id: 'road_imperial_school',
-          title: '帝国学堂出身',
-          description: '在帝国的城镇里读完基础学堂，识字、算数、识得几个基础符形。不愁没人收，也不缺人挑你毛病。被看作「规矩人」。',
+          title: '学堂里读出来的',
+          description: '在城镇的学堂里读完识字、算数与几个基础符形。不愁没人收，也不缺人挑毛病。旁人看你，是个「规矩人」。',
           attributeBonus: { wen: 2, shu: 1 },
           resourceBonus: { name: 1 },
           startingItems: ['item_guide_book', 'item_ledger'],
         },
         {
           id: 'road_border_farm',
-          title: '边境农户出身',
-          description: '在两条河之间长大，认得牲口、天气与土性。力气是本钱，见识是短板，但喂饱自己这件事从没求过人。',
+          title: '两条河之间的地里长大',
+          description: '认得牲口、天气与土性。力气是本钱，见识是短板，但喂饱自己这件事从没求过人。',
           attributeBonus: { shen: 2, yi: 1 },
           resourceBonus: { hp: 1 },
           startingItems: ['item_rope', 'item_boots'],
         },
         {
           id: 'road_caravan',
-          title: '商队随行出身',
-          description: '跟着车队走官道，装卸、吆喝、跟关卡周旋都熟。知道货值多少、人值多少，也知道路上什么时候该闭嘴。',
+          title: '跟着车队在官道上长大',
+          description: '装卸、吆喝、跟关卡周旋都熟。知道货值多少、人值多少，也知道路上什么时候该闭嘴。',
           attributeBonus: { jiao: 2, wen: 1 },
           resourceBonus: { coin: 15 },
           startingItems: ['item_travel_coat', 'item_knife'],
         },
         {
           id: 'road_scribe',
-          title: '商埠账房出身',
-          description: '在铺子后屋算了多年数，手里一支笔比刀稳。看账能看出人，看人却常算错，落了个「太老实」的名声。',
+          title: '柜台后头算过多年数',
+          description: '在铺子的里屋把散乱数目理成能拿出去给人看的册子，手里一支笔比刀稳。看账能看出人，看人却常算错，落了个「太老实」的名声。',
           attributeBonus: { wen: 2, jiao: 1 },
           resourceBonus: { coin: 10 },
           startingItems: ['item_ledger', 'item_seal_blank'],
         },
         {
           id: 'road_fallen_house',
-          title: '旧家败落出身',
+          title: '家里体面过，如今空了',
           description: '上一代还有体面，如今只剩几件旧物与一套改不掉的礼数。说话不带土气，口袋里没有钱，别人看你总隔一层。',
           attributeBonus: { jiao: 2, wen: 1 },
           resourceBonus: { name: 1 },
@@ -685,15 +685,15 @@ export const ximeng: WorldCard = {
         },
         {
           id: 'road_guild_clerk',
-          title: '行会杂役出身',
-          description: '在行会里递茶、抄牌价、跑腿传话，什么都听了一耳朵。手艺不精，人情最熟，行首们记不清你的脸却记得你的名字。',
+          title: '在行会里递过茶、抄过牌价',
+          description: '跑腿传话，什么都听了一耳朵。手艺不精，人情最熟，行首们记不清你的脸却记得你的名字。',
           attributeBonus: { jiao: 2, wen: 1 },
           resourceBonus: { name: 2 },
           startingItems: ['item_guild_slip', 'item_coin_purse'],
         },
         {
           id: 'road_outsider',
-          title: '外乡来客出身',
+          title: '从别处掉下来的人',
           description: '口音、走路的样子、对常识的反应都露着「不是这里人」。有人好奇，有人提防，也有同样掉下来的人愿意搭一句话。',
           attributeBonus: { shu: 1, wen: 1, yi: 1 },
           resourceBonus: { turbid: 1 },
@@ -701,11 +701,52 @@ export const ximeng: WorldCard = {
         },
         {
           id: 'road_southern_port',
-          title: '南方海港出身',
-          description: '在船上长大，看云看潮比看日历准。会撒网、会认星、会在陌生码头三句话找到活。水土不服的只有他乡的冬天。',
+          title: '在船上、码头边长大',
+          description: '看云看潮比看日历准。会撒网、会认星、会在陌生码头三句话找到活。不惯的只有他乡的冬天。',
           attributeBonus: { shen: 2, jiao: 1 },
           resourceBonus: { hp: 1 },
           startingItems: ['item_rope', 'item_spice_pouch'],
+        },
+        {
+          /*
+            ── 「我自己写」（第八轮规格的硬要求）──
+
+            每个槽位的**最后一项**必须是这个 custom: true 的自填项：预设清单再宽
+            也是封闭的，想演清单外角色的人需要一个不归任何档的入口。选中它，
+            选角页会展开文本框，玩家写的那段话会**原样取代**本项的 title 与
+            description 进提示词（见 prompts.ts 的 describeBackgroundChoices /
+            resolveOpeningSeed / buildOpeningInstruction）。
+
+            加成算法（**第九轮返工后的规格：整套照抄一个典型预设项**，
+            不再逐属性取中位 —— 那会把各属性的峰值缝成一个比任何预设项都强的
+            缝合怪）：
+
+              ① 各预设项的"属性总和"（attributeBonus 各键之和）
+              ② 按总和**稳定升序**排列（总和相同者保持声明顺序）；
+                 本槽 8 项（偶数），取中间偏下的第 4 项：
+                   0. road_imperial_school  3  { wen: 2, shu: 1 }
+                   1. road_border_farm      3  { shen: 2, yi: 1 }
+                   2. road_caravan          3  { jiao: 2, wen: 1 }
+                   3. road_scribe           3  { wen: 2, jiao: 1 }   ← 中位项
+                   4. road_fallen_house     3  { jiao: 2, wen: 1 }
+                   5. road_guild_clerk      3  { jiao: 2, wen: 1 }
+                   6. road_outsider         3  { shu: 1, wen: 1, yi: 1 }
+                   7. road_southern_port    3  { shen: 2, jiao: 1 }
+                 ⚠️ 本槽八项的总和**全都是 3**，"稳定升序"因此等价于声明顺序，
+                 中位项就是声明顺序里的第 4 项，不存在并列歧义。
+              ③ 中位项 =「柜台后头算过多年数」（road_scribe），**属性总和 3**；
+                 整套照抄它的 attributeBonus 与 resourceBonus（不自拼、不叠加）。
+
+            startingItems 取该槽预设里**出现次数最多**的通用物：
+            item_ledger（2 次）、item_guide_book（2 次）。
+          */
+          id: 'road_custom',
+          title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { wen: 2, jiao: 1 },
+          resourceBonus: { coin: 10 },
+          startingItems: ['item_ledger', 'item_guide_book'],
         },
       ],
     },
@@ -714,15 +755,15 @@ export const ximeng: WorldCard = {
       options: [
         {
           id: 'trade_runesmith',
-          title: '符文刻录',
-          description: '会刻基础的符形，懂校准比懂刻更值钱。这一行靠的是稳，出一次错就要赔一整批货。',
+          title: '刻符文、调校准',
+          description: '会刻基础符形，也知道校准比刻更要紧。这一行靠的是稳，出一次错就要赔一整批货。',
           attributeBonus: { shu: 2, ji: 2 },
           resourceBonus: { coin: 15 },
           startingItems: ['item_charcoal_stick', 'item_rune_blank'],
         },
         {
           id: 'trade_smith',
-          title: '锻造与器物',
+          title: '打铁、修器物',
           description: '打得出能用的东西，从马蹄铁、锅铲到刀身。手上有烫疤，身上有铁味，谁家缺器具都先来找他。',
           attributeBonus: { ji: 2, shen: 2 },
           resourceBonus: { hp: 1 },
@@ -730,39 +771,39 @@ export const ximeng: WorldCard = {
         },
         {
           id: 'trade_physician',
-          title: '草药与诊治',
-          description: '认药、包扎、接骨，还做过防疫的辅助活。城里人敬他，也躲着他——他见过太多不该看的症状。',
+          title: '认药、包扎、接骨',
+          description: '还做过防疫的辅助活。城里人敬他，也躲着他——他见过太多不该看的症状。',
           attributeBonus: { wen: 2, ji: 2 },
           resourceBonus: { name: 2 },
           startingItems: ['item_healing_salve', 'item_turbid_slip'],
         },
         {
           id: 'trade_sword',
-          title: '器械与近战',
-          description: '会用刀，也挨过刀。清楚一对一的规矩与一对三的现实，活着回来靠的是判断而不是招式。',
+          title: '使刀，也挨过刀',
+          description: '清楚一对一的规矩与一对三的现实，活着回来靠的是判断而不是招式。',
           attributeBonus: { shen: 2, yi: 1 },
           resourceBonus: { hp: 1 },
           startingItems: ['item_knife', 'item_boots'],
         },
         {
           id: 'trade_hunter',
-          title: '猎取与追踪',
-          description: '在城外的野地里讨生活，认足迹、懂风向、会设套。他是最早察觉「墙那边有动静」的那一类人。',
+          title: '在野地里讨生活',
+          description: '认足迹、懂风向、会设套。他是最早察觉「墙那边有动静」的那一类人。',
           attributeBonus: { shen: 2, wen: 1 },
           resourceBonus: { coin: 5 },
           startingItems: ['item_rope', 'item_breath_filter'],
         },
         {
           id: 'trade_navigator',
-          title: '航海与领航',
-          description: '凭水色、风向与魔力洋流认位置，不需要仪器。船主开价很高，也很怕他哪天被人挖走。',
+          title: '靠水色与风向认路',
+          description: '凭风向与魔力洋流估位置，不必依赖仪器。船主开价很高，也很怕他哪天被人挖走。',
           attributeBonus: { wen: 2, shu: 2 },
           resourceBonus: { coin: 20 },
           startingItems: ['item_guide_book', 'item_mana_crystal'],
         },
         {
           id: 'trade_talker',
-          title: '谈价与跑外',
+          title: '在两边说合、替人跑外',
           description: '擅长在中间说合，替两边留面子。不生产任何东西，却常常是工钱最高的那一个。被人说滑，也被人说少不了。',
           attributeBonus: { jiao: 3, wen: 1 },
           resourceBonus: { name: 2 },
@@ -770,11 +811,40 @@ export const ximeng: WorldCard = {
         },
         {
           id: 'trade_warden',
-          title: '哨塔与守望',
-          description: '在城墙、闸口、灯塔上值班，长夜无事，出事就是大事。眼睛练得很毒，也练出了不爱说话的毛病。',
+          title: '守夜、看守、巡边',
+          description: '在城墙、闸口、灯塔上值班，长夜无事，出事就是大事。眼睛练得很毒，也落下了不爱说话的毛病。',
           attributeBonus: { wen: 2, yi: 2 },
           resourceBonus: { name: 1 },
           startingItems: ['item_miner_lamp', 'item_breath_filter'],
+        },
+        {
+          /*
+            ── 「我自己写」──（规格同「来路」槽，见那里的长注释）
+
+            加成算法：按各预设项 attributeBonus 的"属性总和"**稳定升序**排列
+            （总和相同者保持声明顺序，以下编号为排序后位次）；
+            本槽 8 项（偶数），取中间偏下的第 4 项（位次 3）：
+              0. trade_sword      3  { shen: 2, yi: 1 }
+              1. trade_hunter     3  { shen: 2, wen: 1 }
+              2. trade_runesmith  4  { shu: 2, ji: 2 }
+              3. trade_smith      4  { ji: 2, shen: 2 }            ← 中位项
+              4. trade_physician  4  { wen: 2, ji: 2 }
+              5. trade_navigator  4  { wen: 2, shu: 2 }
+              6. trade_talker     4  { jiao: 3, wen: 1 }
+              7. trade_warden     4  { wen: 2, yi: 2 }
+            中位项 =「打铁、修器物」（trade_smith），**属性总和 4**；
+            整套照抄它的 attributeBonus 与 resourceBonus。
+
+            startingItems 取该槽预设里**出现次数最多**的通用物：
+            item_knife（3 次）、item_rope（2 次）。
+          */
+          id: 'trade_custom',
+          title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { ji: 2, shen: 2 },
+          resourceBonus: { hp: 1 },
+          startingItems: ['item_knife', 'item_rope'],
         },
       ],
     },
@@ -783,67 +853,99 @@ export const ximeng: WorldCard = {
       options: [
         {
           id: 'stance_imperial',
-          title: '帝国治下的本分人',
-          description: '守法、纳税、服役，把登记当成一种安全。相信秩序能让日子过得下去，也看不惯没有规矩的人。',
+          title: '守规矩、纳税、服役，把这些当成安全',
+          description: '守法、照章登记，觉得秩序能让日子过得下去，也看不惯没有规矩的人。',
           attributeBonus: { wen: 1, jiao: 1 },
           resourceBonus: { name: 2 },
           startingItems: ['item_turbid_slip', 'item_wall_pass'],
         },
         {
           id: 'stance_scholar',
-          title: '千塔一脉的求学人',
-          description: '信学问不信神谕，把任何现象都当成可拆解的问题。开口先给依据，跟祭司吵起来从不认输。',
+          title: '信学问，不信神谕',
+          description: '把任何现象都当成可拆解的问题。开口先给依据，跟祭司吵起来从不认输。',
           attributeBonus: { shu: 2, wen: 1 },
           resourceBonus: { name: 1 },
           startingItems: ['item_charcoal_stick', 'item_guide_book'],
         },
         {
           id: 'stance_faithful',
-          title: '神殿教团的信众',
-          description: '在教国体系里长大，礼数熟、心也定。相信光明会守住弱者，也清楚神会被信众的扭曲带走。',
+          title: '从小在神殿的礼数里长大',
+          description: '礼数熟、心也定。相信那点光明会守住弱者，也清楚神会被信众的扭曲带走。',
           attributeBonus: { yi: 2, jiao: 1 },
           resourceBonus: { name: 2 },
           startingItems: ['item_healing_salve', 'item_turbid_slip'],
         },
         {
           id: 'stance_craft',
-          title: '行会里靠手艺说话的人',
-          description: '在大师的席位与学徒的工钱之间讨位置。只认凭本事吃饭，最烦空谈，也最讲同行的义气。',
+          title: '只认凭本事吃饭',
+          description: '在大师的席位与学徒的工钱之间讨位置。最烦空谈，也最讲同行的义气。',
           attributeBonus: { ji: 2, shen: 1 },
           resourceBonus: { coin: 10 },
           startingItems: ['item_guild_slip', 'item_miner_lamp'],
         },
         {
           id: 'stance_frontier',
-          title: '墙区讨生活的边缘人',
-          description: '常年在宏伟之墙外沿接活，进出净化闸口比进自家门熟。规矩背得比谁都清，也只是为了活着。',
+          title: '常年在墙外沿接活',
+          description: '进出净化闸口比进自家门熟。规矩背得比谁都清，也只是为了活着。',
           attributeBonus: { yi: 1, shen: 1 },
           resourceBonus: { coin: 20 },
           startingItems: ['item_wall_pass', 'item_breath_filter'],
         },
         {
           id: 'stance_grey',
-          title: '不问出处的买卖人',
-          description: '有货就收，给钱就办，最擅长什么都不知道。城里的守备认识他，却从没抓住过他的把柄。',
+          title: '有货就收，给钱就办',
+          description: '最擅长什么都不知道。城里的守备认识他，却从没抓住过他的把柄。',
           attributeBonus: { wen: 1, jiao: 1 },
           resourceBonus: { coin: 30 },
           startingItems: ['item_knife', 'item_seal_blank'],
         },
         {
           id: 'stance_kinfeather',
-          title: '草原与共的部族客',
-          description: '跟兽人氏族有往来，懂他们的席位、酒桌与祖灵规矩。在两边都被当成自己人一半、外人一半。',
+          title: '跟草原上的人喝过酒',
+          description: '懂他们的席位、酒桌与祖灵规矩。在两边都被当成自己人一半、外人一半。',
           attributeBonus: { shen: 2, jiao: 1 },
           resourceBonus: { name: 1 },
           startingItems: ['item_dwarf_flask', 'item_rope'],
         },
         {
           id: 'stance_quiet',
-          title: '只想安稳过日子的平民',
+          title: '只想把日子过下去，别的不管',
           description: '没什么立场，也不打算有。谁管这块地就交谁的税，只要灯还亮、汤还有盐，他就不掺和别的事。',
           attributeBonus: { yi: 2, ji: 1 },
           resourceBonus: { hp: 1 },
           startingItems: ['item_coin_purse', 'item_spice_pouch'],
+        },
+        {
+          /*
+            ── 「我自己写」──（规格同「来路」槽，见那里的长注释）
+
+            加成算法：按各预设项 attributeBonus 的"属性总和"**稳定升序**排列
+            （总和相同者保持声明顺序，以下编号为排序后位次）；
+            本槽 8 项（偶数），取中间偏下的第 4 项（位次 3）：
+              0. stance_imperial   2  { wen: 1, jiao: 1 }
+              1. stance_frontier   2  { yi: 1, shen: 1 }
+              2. stance_grey       2  { wen: 1, jiao: 1 }
+              3. stance_scholar    3  { shu: 2, wen: 1 }            ← 中位项
+              4. stance_faithful   3  { yi: 2, jiao: 1 }
+              5. stance_craft      3  { ji: 2, shen: 1 }
+              6. stance_kinfeather 3  { shen: 2, jiao: 1 }
+              7. stance_quiet      3  { yi: 2, ji: 1 }
+            中位项 =「信学问，不信神谕」（stance_scholar），**属性总和 3**；
+            整套照抄它的 attributeBonus 与 resourceBonus。
+
+            startingItems 取该槽预设里**出现次数最多**的通用物：
+            item_turbid_slip（2 次），次多的 item_charcoal_stick /
+            item_healing_salve / item_breath_filter 各 2 次，取前者与前两件里的
+            item_healing_salve。⚠️ item_wall_pass 虽同频，但它把玩家钉在墙区，
+            自填项不带这类具体处境物，故不取。
+          */
+          id: 'stance_custom',
+          title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { shu: 2, wen: 1 },
+          resourceBonus: { name: 1 },
+          startingItems: ['item_turbid_slip', 'item_healing_salve'],
         },
       ],
     },
@@ -914,6 +1016,35 @@ export const ximeng: WorldCard = {
           resourceBonus: { name: -1 },
           startingItems: ['item_letter', 'item_seal_blank'],
         },
+        {
+          /*
+            ── 「我自己写」──（规格同「来路」槽，见那里的长注释）
+
+            加成算法：按各预设项 attributeBonus 的"属性总和"**稳定升序**排列
+            （总和相同者保持声明顺序，以下编号为排序后位次）；
+            本槽 8 项（偶数），取中间偏下的第 4 项（位次 3）：
+              0. fate_debt        2  { jiao: 1, wen: 1 }
+              1. fate_patron      2  { jiao: 1, wen: 1 }
+              2. fate_purse_lost  2  { shen: 1, wen: 1 }
+              3. fate_wounded     3  { yi: 2, shen: 1 }    ← 中位项
+              4. fate_missing     3  { wen: 2, yi: 1 }
+              5. fate_bounty      3  { wen: 2, shen: 1 }
+              6. fate_exposed     3  { yi: 2, wen: 1 }
+              7. fate_old_letter  3  { wen: 2, jiao: 1 }
+            中位项 =「身上带着旧伤」（fate_wounded），**属性总和 3**；
+            整套照抄它的 attributeBonus 与 resourceBonus。
+
+            startingItems 取该槽预设里**出现次数最多**的通用物：
+            item_knife（3 次）、item_healing_salve（2 次）。
+          */
+          id: 'fate_custom',
+          title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { yi: 2, shen: 1 },
+          resourceBonus: { turbid: 1 },
+          startingItems: ['item_knife', 'item_healing_salve'],
+        },
       ],
     },
     {
@@ -921,7 +1052,7 @@ export const ximeng: WorldCard = {
       options: [
         {
           id: 'kit_rune',
-          title: '一副符文行头',
+          title: '一包刻符的行头',
           description: '符笔、基质、水晶各一，都是学徒级。够接零活，不够接大单，但随时能开工换钱。',
           attributeBonus: { shu: 1, ji: 1 },
           resourceBonus: { coin: 10 },
@@ -937,8 +1068,8 @@ export const ximeng: WorldCard = {
         },
         {
           id: 'kit_documents',
-          title: '一叠文书与凭据',
-          description: '检定木牌、公会凭条、通行木牌、往来手账。纸面上的东西不能吃，却能让闸口的人少问两句。',
+          title: '一叠文书与凭条',
+          description: '检定木牌、行会凭条、通行木牌、往来手账。纸面上的东西不能吃，却能让闸口的人少问两句。',
           attributeBonus: { wen: 2 },
           resourceBonus: { name: 2 },
           startingItems: ['item_turbid_slip', 'item_guild_slip', 'item_wall_pass'],
@@ -961,8 +1092,8 @@ export const ximeng: WorldCard = {
         },
         {
           id: 'kit_favor',
-          title: '几件拿得出手的人情',
-          description: '一囊香料、一壶矮人烈酒，还有两个欠他一句话的人。在汐梦洲，人情比铜铢好使。',
+          title: '几件能送出手的人情',
+          description: '一囊香料、一壶烈酒，还有两个欠他一句话的人。在汐梦洲，人情比铜铢好使。',
           attributeBonus: { jiao: 2 },
           resourceBonus: { name: 2 },
           startingItems: ['item_spice_pouch', 'item_dwarf_flask'],
@@ -982,6 +1113,38 @@ export const ximeng: WorldCard = {
           attributeBonus: { yi: 1, wen: 1 },
           resourceBonus: { name: 1 },
           startingItems: ['item_letter', 'item_ledger', 'item_dwarf_flask'],
+        },
+        {
+          /*
+            ── 「我自己写」──（规格同「来路」槽，见那里的长注释）
+
+            加成算法：按各预设项 attributeBonus 的"属性总和"**稳定升序**排列
+            （总和相同者保持声明顺序，以下编号为排序后位次）；
+            本槽 8 项（偶数），取中间偏下的第 4 项：
+              0. kit_coin       1  { jiao: 1 }
+              1. kit_rune       2  { shu: 1, ji: 1 }
+              2. kit_labor      2  { shen: 2 }
+              3. kit_documents  2  { wen: 2 }               ← 中位项
+              4. kit_medicine   2  { ji: 1, yi: 1 }
+              5. kit_favor      2  { jiao: 2 }
+              6. kit_wallgear   2  { shen: 1, yi: 1 }
+              7. kit_hers       2  { yi: 1, wen: 1 }
+            中位项 =「一叠文书与凭条」（kit_documents），**属性总和 2**；
+            整套照抄它的 attributeBonus、resourceBonus 与通用物。
+
+            ⚠️ 本槽物品栏的取舍说明：knife / rope 在槽内各出现 2 次，
+            但它们两件都只是"干活的家什"，凑成一套仍然空手；
+            故照抄中位项那三件**出门在外谁都用得上的纸面凭据**
+            （item_turbid_slip 在槽内出现 2 次，另两件各 1 次），
+            件数（3 件）与中位项一致。
+          */
+          id: 'kit_custom',
+          title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { wen: 2 },
+          resourceBonus: { name: 2 },
+          startingItems: ['item_turbid_slip', 'item_guild_slip', 'item_wall_pass'],
         },
       ],
     },
@@ -1060,30 +1223,68 @@ export const ximeng: WorldCard = {
     pov: 'third',
     tense: 'present',
     replyLength: 800,
-    customStyle: `【文风总纲】
-这份世界书出自穿越者「灰笔记」之手。他来自一个有互联网、没有魔法的位面，如今在一间杂货铺的后屋写这些字，理由很朴素：反正回不去了，不如给后来的同乡留一本说明书。所以叙述**允许带编纂者本人的口气**——他见识广、脾气不坏、偶尔刻薄，解释严肃事物时爱打个比方，也爱在句尾放一句不带感叹号的冷幽默。但他真的见过腐化用五十年把一个人磨成别的东西，所以**玩笑只开在无关生死的地方**；写到墙、写到检疫闸口、写到腐化荒原，一律收声。
+    customStyle: `风物志编纂所 · 条目撰写凡例
+第三修本　所内用纸，不出门
 
-这个世界是**活的、闹的、有油烟气**的：魔网的节点在夜里嗡嗡响，行会馆里两拨人为一纸契约拍桌子，矮人工匠敲着烟斗刻薄你没往气缸里灌魔力，学徒把符笔掉在地上又赶紧捡起来吹灰。写它的笔要有这种**万象勃发**的劲——人不是在等剧情，人是在过日子、做生意、互相挤兑。
+本所续修《汐梦洲风物志》，体例沿用老编纂者旧稿：条目正文一律第三人称，写人用「他」「她」或姓氏职衔。这份凡例给执笔的人看，不给读者看——落笔前过一遍，写完再对一遍；对不上，宁可重抄，不要含糊交上去。凡标「照此」的条目，照那个样子直接落笔。
 
-【可执行要求】
-一、器物与制度要具体到能摸。写一样东西就写它的价钱、规矩与忌讳：一盏魔导灯三百铢，每月还要交一笔网费；进城墙区要通行木牌与三重检疫；魔网覆盖区外动明火要许可；矮人桌上端来的酒不能不喝。价目、证件、行会印记、「不与某某交易」这类软封杀，比任何宏大修辞都更能立住这个世界。
-二、打比方是这本档案的本色，但**比方属于编纂者的旁白，不属于本地人的嘴**：本地人不知道什么叫电磁学、摩天大楼、操作系统；编纂者可以拿故乡的东西来比，说起来时也清楚自己是在自嘲。
-三、活力落在人与人之间。一个场景里至少要有一个具体的人在说具体的话，而不是一片氛围——市井的热闹、行会的斗嘴、酒桌上的抬杠、同行之间的排挤与照应、旅店隔壁桌的闲话。
-四、冷幽默的用法是「说完就走」：不解释、不加感叹号、不回头点破。碰上荒唐的制度与现实，直接说它荒唐——不必假装中立。
-五、严肃的底子不许松。腐化不是魅惑术、不是诅咒、不是靠意志力能豁免的心智控制，它从底层改写生理、神经与魔力波形；宏伟之墙与净罪走廊的背后是真实的死亡数字与真实的资源消耗。写到这些，只写事实与后果，不抖机灵。
-六、专名要稳，写了就不再换写法：渊海、炎煌、静海、东澜大陆、极夜帝国、霖花庭、千塔环国、星语神权国、银霞帝国、熔山之国、万兽帝国、至高魔域、寂渊议会、宏伟之墙、魔网、腐化。
+〇一 凡例为谁而设
+这本志书写给两种人：刚掉进这片土地、连一顿饭该给几个铜铢都算不清的外来者，和五十年后想把日子对上账的同乡。所以每一条都要能拿在手里用：写灯就写灯的价钱与每月要交的网费，写城门就写通行木牌与三重检疫，写酒桌就写矮人端来的酒不能不喝。空话一律划掉。
 
-【禁止事项】
-不得把这个世界写成喜剧——笑闹是市井的质地，不是危机的解法。不得出现系统、面板、经验值、技能点、电脑、程序、人工智能、机器人、手机、塑料。不得用直白的肉体描写替代气氛经营。不得替玩家决定他的想法与情绪，不得在开场就替他安排上司、长官或旧友。不得写「你必须」「时间不多了」这类催促，除非情节中确有其事。不得引入其他世界卡或现实世界的机构、武器与货币名称。不得用「科技」笼统概括本地的一切——这里的人说的是技艺、魔导、工程、符文。
+〇二 人称与口气
+条目正文一律第三人称。写一场热闹，也要落到具体的人身上，不要落成一片气氛。执笔的人不许对着读者说话，不写「读者会看到」这样的句子。更不许替条目里的人做主：不写「他感到愤怒」，只写他手心出的汗、对面那人的呼吸、桌上那道水痕；也不许替他安排上司、长官、旧友——关系要在场面里自己长出来。
 
-【可用句式】
-· 编纂者旁白：「这件事的荒谬之处在于……」「换句话说，他们卖的是一套规矩，顺便卖灯。」
-· 冷幽默收尾：「……排单已经排到后年了。极夜帝国的人民很有耐心。」
-· 市井对话：短句、抢话、带口音，一句顶一句，谁都不肯吃亏。
-· 尺度感：把数字摆出来让读者自己算——从墙的这一头走到那一头要几天，一趟车费能换几顿饭。
+编纂者按：老编纂者爱跟同乡攀交情，那是他的处境，不是体例：我们照他的骨架，不照他的口气。
 
-【节奏】
-单次回复以八百字上下为宜，允许偶尔写长或写短，取决于场面：谈判与查案要细，赶路与日常可以快。每三到五轮要有一次世界的自主推进（消息、变故、物价、人事），不要等玩家开口才让世界动。`,
+〇三 静海潮汐（照此）
+静海绕汐梦洲一周的日子是定死的，海边的活儿便照它排。满月前后魔力浓，仪式挑日子，网也下得深；新月那几天魔力薄，法师不办大事，城外不宜独行。渔户家里挂的是潮汐表，不是日历——问一个船工今天是初几，他多半答不上来；问他今夜几时涨潮，他立刻答得出。
+
+编纂者按：这一条我改了四遍：前两遍写成天文学与航海手册，第三遍把自己的感慨塞了进去，都不像本地人的日子。第四遍只剩「挂潮汐表不挂日历」一件小事——风物志的分寸大约就在这里。
+
+〇四 条目名
+条目名要短，最好是一个能用手指头数出来的东西：铜铢与价目、腌干藏、储魔冰格、通行木牌、熔化一炉钢的火候。不要用「论」「考」「略述」「综观」——人翻志书是来找一样东西的，不是来看我们做学问的。
+
+〇五 数目
+数目要写出来。物价按铜铢计：一顿热食两到八铢，通铺一铢，寻常旅店一间八到十二铢，一支学徒符笔六十铢，家用魔导灯三百铢，且按月交网费。过冬靠三样：腌、干、藏——一缸腌菜，檐下风干的肉，地窖里的根菜；舍得花钱的人家买得起储魔冰格，靠一小块刻过符的黑曜石镇着，一个夏天烧掉的网费抵得上普通人家半年的柴。写「日子过得紧」没有用；要写，就写三月里粮行一天一换的价。
+
+编纂者按：储魔冰格是怎么镇的，我到现在没弄懂。所里管器物的人讲了三遍，我记住的只有价钱，以及它夏天会往外渗水。
+
+〇六 器物与手续
+写一样东西，顺手写它要什么手续、犯什么忌讳。魔网覆盖区外动明火要许可；进墙区要通行木牌与三重检疫；圣地里要静默，进去之前把附了魔的东西收好；行会的印记能顶起一座山，也能压死一个人；「不与某某交易」这种软封杀不动刀不见血，却能让一整家铺子两年喘不上气。
+
+〇七 本地人的嘴
+引本地人的话，要引他真会说的那种：短、直、具体，带手艺或带价钱。矮人工匠被问起他们的蒸汽机为什么在这片土地上推得动，敲着烟斗答的是这一句——
+
+「我们往气缸里灌了魔力。不是蒸汽不行，是你们不行。」
+
+这句话里没有一个比方，也用不着。人类技师视之为奇耻大辱，却反驳不了。
+
+〇八 比方归谁
+打比方是编纂者的特权，不进本地人的嘴：志书里的一切比方，都只出现在编纂者的旁白里，而且落笔的人要清楚自己是在拿故乡的东西自嘲，不是在炫学。本地人不知道什么叫电磁感应、摩天大楼、操作系统；他只知道气缸里灌了魔力就推得动，灌得不匀就烧穿了。
+
+〇九 好笑，但不是段子
+这本志书有一路好笑的读法，不必替它遮掩：市井的抬杠、行会为一张契约拍桌子、掌柜的错账，都该照实写；一个场面里至少要有一个具体的人在说具体的话。但好笑是质地，不是解法。碰上荒唐的制度，直接说它荒唐，不必假装中立；说完就走，不加感叹号，不回头点破。写到墙、写到检疫闸口、写到腐化荒原，一律收声，那些地方不留俏皮话。
+
+〇一〇 不入稿的字
+校字时照这张表划：系统、面板、经验值、技能点、电脑、网络、程序、人工智能、机器人、手机、塑料。这些字是从别处的位面漏进来的，一落下，质地立刻垮。要写网络就写魔网或关系网，要写数据就写数目、账目、记录，要写程序就写章程、规程；「科技」两个字也少用——汐梦洲的人说的是技艺、魔导、工程、符文。
+
+〇一一 专名
+渊海、汐梦洲、炎煌、静海、东澜大陆、极夜帝国、霖花庭、千塔环国、星语神权国、银霞帝国、熔山之国、万兽帝国、至高魔域、寂渊议会、宏伟之墙、魔网、符文、腐化、浊抗、赤斑涌现。写定之后不再换写法：同一个地方出现两种名字，读者会以为是两个地方。
+
+〇一二 严肃的底子
+腐化不是魅惑，不是诅咒，也不是靠意志力能豁免的心智控制。它把原欲回路调谐到错误的频率，分轻、中、重、完全四个阶段，逆转的代价往上翻得极快。写它，只写事实与后果：轻度时的征兆、中度要请哪一路神祇出面、墙区那份默日名单、净罪走廊要收走附魔的器物。不要把腐化当万能的惩罚——不是每个陌生人都是感染者，也不是每件坏事都因它而起。涉及过程要克制，力道在气氛上，不在别处。
+
+〇一三 条目自有它的命
+执笔的人最容易犯的毛病，是替条目里的人着急：写他出门就要他撞上大事，写他开了铺子就要他卷进朝局，写到第三个月就忍不住催他往墙边去。凡例在此把话说死——条目里的人可以一辈子只做一门手艺，可以在某座小城里开一间铺子，把盐价、灯油价和邻居家的丧事过成一生，这条条目一样算数，一样收进志里。
+
+世界不等他学会规矩，也不会因为他不去墙边就停住：物价照涨，总督照换，某位他只听见过名字的人照死在自己的床上。这些要写进条目，但写在他没伸手的地方——让它们在他背后自己发生。
+
+也不许写「时候不多了」，除非真有一座闸口今天关、一趟船今晚上走。
+
+〇一四 一条的长短
+条目长短看场面：谈判、查账、勘遗迹写长，赶路、休整、寒暄写短，一条以八百字上下为宜。每条至少要有一处推进：一段对话、一个新信息、一个决定、一处变化。推进不等于升级，把一顿饭写好也算。
+
+右凡一十四条。抄本各自压在案头。写得不对的，所里会退稿，不退面子。`,
   },
   characters: [
     char({

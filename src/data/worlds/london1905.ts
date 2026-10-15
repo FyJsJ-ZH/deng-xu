@@ -569,54 +569,97 @@ export const london1905: WorldCard = {
   ],
   backgrounds: [
     { label: '来路', options: [
-      { id: 'bg_brick', title: '砖巷的第二代', description: '生在斯皮塔佛德的贫民院里，父母是东欧来的裁缝。会三种话、两手活，也从小知道哪条巷子警察不进去。', attributeBonus: { shou: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_character', 'item_card'] },
-      { id: 'bg_irish', title: '南岸的爱尔兰人家', description: '父亲在码头扛包，母亲替人洗衣。教堂管着这一家人的生死与学费，街上的人管他们叫「那些爱尔兰人」。', attributeBonus: { shen: 2, renmian: 1 }, resourceBonus: { health: 1 }, startingItems: ['item_boots', 'item_soap'] },
+      { id: 'bg_brick', title: '在挤满新来人的巷子里长大', description: '生在斯皮塔佛德的贫民院里，父母是东欧来的裁缝。会三种话、两手活，也从小知道哪条巷子警察不进去。', attributeBonus: { shou: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_character', 'item_card'] },
+      { id: 'bg_irish', title: '从海那边搬来的人家', description: '父亲在码头扛包，母亲替人洗衣。教堂管着这一家人的生死与学费，街上的人管他们叫「那些爱尔兰人」。', attributeBonus: { shen: 2, renmian: 1 }, resourceBonus: { health: 1 }, startingItems: ['item_boots', 'item_soap'] },
       { id: 'bg_clerk_family', title: '小职员家的孩子', description: '父亲在铁路公司做账，家里有钢琴与一张全家福。读过七年书，写得一手好字，也会为房租发愁。', attributeBonus: { bimo: 2, guan: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_sunday', 'item_pen'] },
       { id: 'bg_servant', title: '仆人房里出来的人', description: '十一岁进人家的厨房层，学会了看脸色、走路不出声、以及一栋宅子怎么运转。手上钱少，见的人多。', attributeBonus: { renmian: 2, guan: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_sunday', 'item_watch'] },
       { id: 'bg_country', title: '乡下来的新人', description: '从肯特或萨福克的村子进城，行李是一只箱子，村里人都说伦敦能挣到钱。力气足，口音改不掉。', attributeBonus: { shen: 3 }, resourceBonus: { wind: 1 }, startingItems: ['item_overcoat', 'item_boots'] },
       { id: 'bg_seafarer', title: '跑船的与他的家眷', description: '父亲或丈夫在大西洋与东印度的航线上，一年回来一次。家里有海图、有一枚外国硬币，也有常年的等。', attributeBonus: { guan: 2, shen: 1 }, resourceBonus: { cash: 1 }, startingItems: ['item_watch', 'item_overcoat'] },
-      { id: 'bg_chapel', title: '礼拜堂里的人家', description: '非国教的小教会，礼拜天去两次，家里不备酒。父母看不上酒馆与戏院，街坊却信得过这一家的话。', attributeBonus: { bimo: 2, renmian: 1 }, resourceBonus: { face: 2 }, startingItems: ['item_sunday', 'item_letter'] },
-      { id: 'bg_army', title: '从南非回来的兵', description: '布尔战争的老兵，断了半只脚趾或者一身咳嗽。有抚恤金（很少）、有一枚纪念章，酒馆里人人都愿意请他讲打仗。', attributeBonus: { shen: 2, zuiba: 1 }, resourceBonus: { health: 1 }, startingItems: ['item_boots', 'item_revolver'] },
+      { id: 'bg_chapel', title: '在一个把规矩当真的家里长大', description: '非国教的小教会，礼拜天去两次，家里不备酒。父母看不上酒馆与戏院，街坊却信得过这一家的话。', attributeBonus: { bimo: 2, renmian: 1 }, resourceBonus: { face: 2 }, startingItems: ['item_sunday', 'item_letter'] },
+      { id: 'bg_army', title: '从战场上回来的兵', description: '布尔战争的老兵，断了半只脚趾或者一身咳嗽。有抚恤金（很少）、有一枚纪念章，酒馆里人人都愿意请他讲打仗。', attributeBonus: { shen: 2, zuiba: 1 }, resourceBonus: { health: 1 }, startingItems: ['item_boots', 'item_revolver'] },
+      /*
+        「我自己写」的加成按规格第三节取本槽预设项的**中间项**（不逐属性取中位）：
+        8 个预设项的属性总和全部为 3（或 2+1，或单项 3），排序后中间两项等值，
+        按"偶数个取中间偏下"取第 5 项 bg_country，它的属性总和 = shen 3；
+        attributeBonus 与 resourceBonus 整套照抄这一项（shen 3 / wind 1）。
+        startingItems 取本槽出现次数最多的通用物：礼拜天的衣裳 3 次、皮靴 3 次、怀表 2 次。
+      */
+      { id: 'bg_origin_custom', title: '我自己写', description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。', custom: true, attributeBonus: { shen: 3 }, resourceBonus: { wind: 1 }, startingItems: ['item_sunday', 'item_boots', 'item_watch'] },
     ] },
     { label: '营生', options: [
       { id: 'job_docker', title: '码头上的临时工', description: '天亮前排在那块木牌下，抢到牌子就下池，抢不到就回家。力气换钱，一天四先令到五先令。', attributeBonus: { shen: 3 }, resourceBonus: { wind: 1 }, startingItems: ['item_boots', 'item_coal'] },
       { id: 'job_needle', title: '成衣行的缝衣女工', description: '按件算钱，一件衬衫两便士半，一天十二个钟头。眼睛与手最先坏，房租从不等人生病。', attributeBonus: { shou: 3 }, resourceBonus: { wind: 1 }, startingItems: ['item_soap', 'item_boots'] },
-      { id: 'job_copper', title: '分区上的巡警', description: '穿蓝制服，一周二十八先令，管一段街的醉汉、走失的孩子与吵架的夫妻。不许收钱，不许喝酒。', attributeBonus: { guan: 2, shen: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_whistle', 'item_notebook'] },
+      { id: 'job_copper', title: '穿制服，管一段街', description: '一周二十八先令，管一段街上的醉汉、走失的孩子与吵架的夫妻。制服是蓝的，不许收钱，不许喝酒。', attributeBonus: { guan: 2, shen: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_whistle', 'item_notebook'] },
       { id: 'job_shop', title: '街面上的铺子伙计', description: '站柜台、记赊账、送货、认识半条街的人。一便士的买卖也要赔笑脸，赊出去的账坏在自己身上。', attributeBonus: { zuiba: 2, bimo: 1 }, resourceBonus: { cash: 1 }, startingItems: ['item_notebook', 'item_pen'] },
       { id: 'job_clerk', title: '办公室里的办事员', description: '一天换三次硬领，抄表、贴票、归档。工钱按年算，八十镑起步，靠的是手不要抖、嘴不要多。', attributeBonus: { bimo: 3 }, resourceBonus: { face: 1 }, startingItems: ['item_pen', 'item_sunday'] },
       { id: 'job_press', title: '报馆的跑街记者', description: '上午验尸法庭，中午治安法庭，下午写两百行。稿费按行算，消息按酒钱算，署名越短越值钱。', attributeBonus: { guan: 2, bimo: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_notebook', 'item_pen'] },
-      { id: 'job_doctor', title: '街面上的全科医生', description: '半间门面的诊所，出诊五先令起，慈善病房每周去两个下午。药能治的很少，开出去的账多半收不回。', attributeBonus: { bimo: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_pocketbook', 'item_watch'] },
+      { id: 'job_doctor', title: '开半间门面给人看病', description: '半间门面的诊所，出诊五先令起，慈善病房每周去两个下午。药能治的很少，开出去的账多半收不回。', attributeBonus: { bimo: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_pocketbook', 'item_watch'] },
       { id: 'job_hawker', title: '推车的与摆摊的', description: '一辆租来的手推车，按季节喊货，看天吃饭。要交摊费、要躲警察、要抢收市前那半个钟头。', attributeBonus: { zuiba: 2, shen: 1 }, resourceBonus: { cash: 1 }, startingItems: ['item_overcoat', 'item_pocketbook'] },
+      /*
+        「我自己写」的加成按规格第三节取本槽预设项的中间项：
+        8 个预设项的属性总和全部为 3（或 2+1，或单项 3），排序后中间两项等值，
+        按"偶数个取中间偏下"取第 5 项 job_clerk，它的属性总和 = bimo 3；
+        attributeBonus 与 resourceBonus 整套照抄这一项（bimo 3 / face 1）。
+        startingItems 取本槽出现次数最多的通用物：袖珍笔记簿 3 次、蘸水笔与墨水瓶 3 次、皮靴 2 次。
+      */
+      { id: 'job_custom', title: '我自己写', description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。', custom: true, attributeBonus: { bimo: 3 }, resourceBonus: { face: 1 }, startingItems: ['item_notebook', 'item_pen', 'item_boots'] },
     ] },
-    { label: '党与堂', options: [
-      { id: 'side_liberal', title: '自由党的票', description: '信自由贸易，反对给面包加税。遇到选举就替人跑腿拉票，也真心觉得穷人的面包不能再贵。', attributeBonus: { zuiba: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_card', 'item_letter'] },
-      { id: 'side_tory', title: '保守党的票', description: '讲帝国、讲秩序、讲国王。觉得工会闹事是别人挑的，也觉得旧日的体面不该丢。', attributeBonus: { renmian: 2, bimo: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_card', 'item_sunday'] },
-      { id: 'side_labour', title: '工会与劳工代表委员会', description: '交会费、领罢工基金、在会所里学发言。相信工价该由工人自己谈，而不该由工价单定。', attributeBonus: { zuiba: 2, shen: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_pocketbook', 'item_character'] },
-      { id: 'side_church', title: '国教会的堂区', description: '礼拜天坐固定的位子，堂区的慈善名单上有名字。信得不深，但这一层人脉实在管用。', attributeBonus: { renmian: 2, bimo: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_letter', 'item_sunday'] },
-      { id: 'side_chapel', title: '非国教的礼拜堂', description: '不喝酒、不看戏、不欠账。教会办缝纫班与母亲会，也替教友找工作与作保。', attributeBonus: { bimo: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_soap', 'item_character'] },
-      { id: 'side_catholic', title: '天主教堂区', description: '弥撒、堂区学校、互助会、办丧事的会。神甫在这一带比巡官还有分量，穷人的事他管。', attributeBonus: { renmian: 2, shen: 1 }, resourceBonus: { health: 1 }, startingItems: ['item_boots', 'item_letter'] },
-      { id: 'side_synagogue', title: '东区的犹太会堂', description: '星期五日落点蜡烛，星期六不做工。会堂办义学与施粥，也办工会与葬礼。', attributeBonus: { shou: 2, bimo: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_notebook', 'item_character'] },
-      { id: 'side_pub', title: '酒馆里的人', description: '不加入任何团体，只在酒馆里有一张固定的桌子。消息最快，人情最薄，醉话最多。', attributeBonus: { zuiba: 2, guan: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_hat', 'item_pocketbook'] },
+    { label: '站队', options: [
+      { id: 'side_liberal', title: '面包不该再贵', description: '信自由贸易，反对给面包加税。遇到选举就替人跑腿拉票，也真心觉得穷人的面包不能再贵。', attributeBonus: { zuiba: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_card', 'item_letter'] },
+      { id: 'side_tory', title: '讲秩序，也讲旧日体面', description: '讲帝国、讲秩序、讲国王。觉得工会闹事是别人挑的，也觉得旧日的体面不该丢。', attributeBonus: { renmian: 2, bimo: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_card', 'item_sunday'] },
+      { id: 'side_labour', title: '工价该由干活的人自己谈', description: '交会费、领罢工基金、在会所里学发言。相信工价该由工人自己谈，而不该由工价单定。', attributeBonus: { zuiba: 2, shen: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_pocketbook', 'item_character'] },
+      { id: 'side_church', title: '礼拜天坐固定的位子', description: '那排位子是每年花钱租的，堂区的慈善名单上有名字。信得不深，但这一层人脉实在管用。', attributeBonus: { renmian: 2, bimo: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_letter', 'item_sunday'] },
+      { id: 'side_chapel', title: '不喝酒、不看戏、不欠账', description: '教会办缝纫班与母亲会，也替教友找工作与作保。这一层人日子过得紧，账目干净，不肯欠人一分钱。', attributeBonus: { bimo: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_soap', 'item_character'] },
+      { id: 'side_catholic', title: '信得深，遇事先找堂里的人', description: '弥撒、堂区学校、互助会、办丧事的会。神甫在这一带比巡官还有分量，穷人的事他管。', attributeBonus: { renmian: 2, shen: 1 }, resourceBonus: { health: 1 }, startingItems: ['item_boots', 'item_letter'] },
+      { id: 'side_synagogue', title: '守着老规矩过日子', description: '星期五日落点蜡烛，星期六不做工。会堂办义学与施粥，也办工会与葬礼。', attributeBonus: { shou: 2, bimo: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_notebook', 'item_character'] },
+      { id: 'side_pub', title: '不入会，只在炉边有一张桌子', description: '不加入任何团体，酒馆里那张桌子是固定的。消息在这儿最快，人情在这儿最薄，醉话也在这儿最多。', attributeBonus: { zuiba: 2, guan: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_hat', 'item_pocketbook'] },
+      /*
+        「我自己写」的加成按规格第三节取本槽预设项的中间项：
+        8 个预设项的属性总和全部为 3（或 2+1，或单项 3），排序后中间两项等值，
+        按"偶数个取中间偏下"取第 5 项 side_chapel，它的属性总和 = bimo 2 + renmian 1 = 3；
+        attributeBonus 与 resourceBonus 整套照抄这一项（bimo 2 / renmian 1 / face 1）。
+        startingItems 取本槽出现次数最多的通用物：一封介绍信 3 次、一张名片 2 次、品行证明 2 次。
+      */
+      { id: 'side_custom', title: '我自己写', description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。', custom: true, attributeBonus: { bimo: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_letter', 'item_card', 'item_character'] },
     ] },
     { label: '住处与开销', options: [
-      { id: 'home_backstreet', title: '东区后街的一间', description: '每周四先令，家具是房东的，水在院子里，厕所在院角的木棚。房租星期一交，一天也不能拖。', attributeBonus: { shen: 2, guan: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_coal', 'item_soap'] },
+      { id: 'home_backstreet', title: '后街上一间带家具的屋子', description: '每周四先令，家具是房东的，水在院子里，厕所在院角的木棚。房租星期一交，一天也不能拖。', attributeBonus: { shen: 2, guan: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_coal', 'item_soap'] },
       { id: 'home_lodging', title: '分租的一室', description: '和房东一家共用一个厨房，门上没有锁。房租便宜，规矩多：几点以后不许吵，客人不许留宿。', attributeBonus: { renmian: 2, zuiba: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_soap', 'item_sunday'] },
-      { id: 'home_tenement', title: '运河边的工人排屋', description: '一排八户，共一个水龙头，晾衣绳横过院子。邻居都做同一种工，谁家出事全排都知道。', attributeBonus: { shen: 2, renmian: 1 }, resourceBonus: { health: 1 }, startingItems: ['item_coal', 'item_overcoat'] },
-      { id: 'home_southwark', title: '南岸工厂边的房', description: '铁路货场与制革厂之间，窗外整天有人卸货。房租每周三先令六便士，白天黑夜都听得见响声。', attributeBonus: { shen: 2, shou: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_boots', 'item_coal'] },
+      { id: 'home_tenement', title: '一排八户的工房', description: '一排八户，共一个水龙头，晾衣绳横过院子。邻居都做同一种工，谁家出事全排都知道。', attributeBonus: { shen: 2, renmian: 1 }, resourceBonus: { health: 1 }, startingItems: ['item_coal', 'item_overcoat'] },
+      { id: 'home_southwark', title: '工厂边上的一间房', description: '铁路货场与制革厂之间，窗外整天有人卸货。房租每周三先令六便士，白天黑夜都听得见响声。', attributeBonus: { shen: 2, shou: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_boots', 'item_coal'] },
       { id: 'home_city_lodging', title: '城心的寄宿舍', description: '一张床、一只箱子、一份早餐，一周七先令。住的是单身汉、跑街的、与刚到伦敦的人。', attributeBonus: { guan: 2, zuiba: 1 }, resourceBonus: { cash: 1 }, startingItems: ['item_watch', 'item_hat'] },
-      { id: 'home_north', title: '北区的两间小屋', description: '小职员与店员的天下，门上有铜环，窗帘是白的。每周九先令，为的是「住得像个正经人」。', attributeBonus: { bimo: 2, renmian: 1 }, resourceBonus: { face: 2 }, startingItems: ['item_sunday', 'item_pen'] },
-      { id: 'home_basement', title: '西区人家的地下室', description: '替人看房子、生火、擦鞋，换来一间地下的小屋。走廊里有煤味，主人的脚步声从头顶过。', attributeBonus: { guan: 2, shou: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_soap', 'item_pocketbook'] },
+      { id: 'home_north', title: '两间小屋，为的是住得像个正经人', description: '小职员与店员的天下，门上有铜环，窗帘是白的。每周九先令，宁可少吃两顿，也要把地址写在体面的那一段街上。', attributeBonus: { bimo: 2, renmian: 1 }, resourceBonus: { face: 2 }, startingItems: ['item_sunday', 'item_pen'] },
+      { id: 'home_basement', title: '替人看房子的地下室', description: '替人看房子、生火、擦鞋，换来一间地下的小屋。走廊里有煤味，主人的脚步声从头顶过。', attributeBonus: { guan: 2, shou: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_soap', 'item_pocketbook'] },
       { id: 'home_shop_back', title: '铺子后面的那间', description: '住在自己的摊位或铺面后头：夜里听得见街上的脚步，早上不用赶路，但也没有关门的时辰。', attributeBonus: { shou: 2, zuiba: 1 }, resourceBonus: { cash: 1 }, startingItems: ['item_pocketbook', 'item_notebook'] },
+      /*
+        「我自己写」的加成按规格第三节取本槽预设项的中间项：
+        8 个预设项的属性总和全部为 3（或 2+1，或单项 3），排序后中间两项等值，
+        按"偶数个取中间偏下"取第 5 项 home_city_lodging，它的属性总和 = guan 2 + zuiba 1 = 3；
+        attributeBonus 与 resourceBonus 整套照抄这一项（guan 2 / zuiba 1 / cash 1）。
+        startingItems 取本槽出现次数最多的通用物：半袋煤 3 次、一块家用肥皂 3 次、礼拜天的衣裳 2 次。
+      */
+      { id: 'home_custom', title: '我自己写', description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。', custom: true, attributeBonus: { guan: 2, zuiba: 1 }, resourceBonus: { cash: 1 }, startingItems: ['item_coal', 'item_soap', 'item_sunday'] },
     ] },
     { label: '开局处境', options: [
       { id: 'scene_docks', title: '码头门口的清晨', description: '天没亮就站在木牌下，牌子上写今日用人若干。抢到牌子下池，抢不到就去下一道门口再等一次。', attributeBonus: { shen: 2, guan: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_boots', 'item_overcoat'] },
-      { id: 'scene_court', title: '治安法庭的旁听席', description: '一屋子人等着叫名字：醉汉、欠租的、偷东西的、被房东告的。罚金五先令，交不出就去做苦工。', attributeBonus: { bimo: 2, guan: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_notebook', 'item_pen'] },
-      { id: 'scene_kitchen', title: '西区人家的厨房层', description: '六点生火，七点送奶，八点主人下楼。楼上有地毯与钢琴，楼下是煤斗、铜锅与听不完的铃。', attributeBonus: { shou: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_sunday', 'item_watch'] },
+      { id: 'scene_court', title: '等叫名字的木凳', description: '一屋子人等着叫名字：醉汉、欠租的、偷东西的、被房东告的。罚金五先令，交不出就去做苦工。', attributeBonus: { bimo: 2, guan: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_notebook', 'item_pen'] },
+      { id: 'scene_kitchen', title: '大户人家的厨房层', description: '六点生火，七点送奶，八点主人下楼。楼上有地毯与钢琴，楼下是煤斗、铜锅与听不完的铃。', attributeBonus: { shou: 2, renmian: 1 }, resourceBonus: { face: 1 }, startingItems: ['item_sunday', 'item_watch'] },
       { id: 'scene_workshop', title: '成衣作坊的白天', description: '一屋子缝纫机，工价单贴在墙上。手不停，眼睛盯线，工头在门口记谁今天几点到。', attributeBonus: { shou: 3 }, resourceBonus: { wind: 1 }, startingItems: ['item_soap', 'item_notebook'] },
       { id: 'scene_pawnshop', title: '当铺门口的长队', description: '三个金球的招牌下面排着队：外套、怀表、礼拜天的衣裳。星期一当，星期五赎，利钱按先令算。', attributeBonus: { guan: 2, zuiba: 1 }, resourceBonus: { cash: 1 }, startingItems: ['item_pocketbook', 'item_watch'] },
       { id: 'scene_pub', title: '酒馆里的一夜', description: '长凳、火、报纸与赊账本。消息在这里最快，酒后失言也在这里最多，十点一到就得散。', attributeBonus: { zuiba: 2, guan: 1 }, resourceBonus: { wind: 1 }, startingItems: ['item_hat', 'item_card'] },
       { id: 'scene_market', title: '收市前的市场', description: '菜与鱼堆在木箱里，摊主看天看钟。三便士一堆的价钱只在那半个钟头里有，来晚了就什么都没了。', attributeBonus: { guan: 2, shen: 1 }, resourceBonus: { cash: 1 }, startingItems: ['item_soap', 'item_coal'] },
-      { id: 'scene_chapel', title: '礼拜天早晨的教堂', description: '最好的衣裳、固定的位子、四十分钟的讲道。散会之后有人发煤票与粥票，也有人来问要不要做工。', attributeBonus: { renmian: 2, bimo: 1 }, resourceBonus: { face: 2 }, startingItems: ['item_sunday', 'item_letter'] },
+      { id: 'scene_chapel', title: '礼拜天早晨的礼拜', description: '最好的衣裳、固定的位子、四十分钟的讲道。散会之后有人发煤票与粥票，也有人来问要不要做工。', attributeBonus: { renmian: 2, bimo: 1 }, resourceBonus: { face: 2 }, startingItems: ['item_sunday', 'item_letter'] },
+      /*
+        「我自己写」的加成按规格第三节取本槽预设项的中间项：
+        8 个预设项的属性总和全部为 3（或 2+1，或单项 3），排序后中间两项等值，
+        按"偶数个取中间偏下"取第 5 项 scene_pawnshop，它的属性总和 = guan 2 + zuiba 1 = 3；
+        attributeBonus 与 resourceBonus 整套照抄这一项（guan 2 / zuiba 1 / cash 1）。
+        startingItems 取本槽出现次数最多的通用物：袖珍笔记簿 2 次、礼拜天的衣裳 2 次、怀表 2 次。
+        ⚠️ 本项属于 openerSlot（开局处境），按规格第五节**不配 openingSeeds**：
+        玩家自填的那段文本会由 resolveOpeningSeed 的 opt.custom 分支直接顶上去，
+        这里再写一段是永远读不到的死数据。
+      */
+      { id: 'scene_custom', title: '我自己写', description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。', custom: true, attributeBonus: { guan: 2, zuiba: 1 }, resourceBonus: { cash: 1 }, startingItems: ['item_notebook', 'item_sunday', 'item_watch'] },
     ] },
   ],
   attributePoints: 6,
@@ -656,10 +699,20 @@ export const london1905: WorldCard = {
   ],
   story: {
     openerSlot: '开局处境',
+    /*
+      开局素材按**选项 id** 作 key，只覆盖 openerSlot「开局处境」这一个槽。
+      本槽 9 项里有 8 个预设项（scene_docks…scene_chapel），各有独立一段；
+      这一轮只把 title 从"专名"改成"处境"，没有合并、也没有删项，
+      所以素材内容整体保留，只让首句与新 title 咬合
+      （例如 scene_kitchen 点明"在别人家的楼下过日子"）。
+      ⚠️ 第 9 项 scene_custom（custom: true）**不配素材**：玩家自填的文本会由
+      resolveOpeningSeed 的 opt.custom 分支直接顶上去，这里写一段是永远读不到的死数据
+      （check-worlds.mjs 对 custom 项也已豁免）。
+    */
     openingSeeds: {
       scene_docks: '这类处境的早晨从四点半天色未明开始。到码头门口时，铁门还关着，门外已经站了百来号人，墙上挂着那块木牌，写着「今日用人若干」。六点整，工头出来念名字，念到的人下池，念不到的散开。这一行的规矩很干脆：不要争、不要推、不要与工头顶嘴，因为明天的牌子还握在他手里。力气换钱，一天四先令到五先令，一周有活的日子大约三四天。房租星期一到期，四先令；当铺里押着的那件外套，赎回来要三先令六便士。这个清晨要处理的事通常只有一件：今天有没有活，没有活的话，这两先令从哪里来。',
       scene_court: '这类处境的一天在治安法庭的木凳上过。早上九点半开门，一屋子人等着被叫名字：喝多了睡在街上、欠了房租、偷了东西、没送孩子上学、打了一架。法官问话很快，罚金多在五先令到两镑之间，交得出就当场走人，交不出就换苦工，七到十四天。这里能遇到的人分几类：来做证人的巡警、来还账的租客、来看热闹的邻居、以及专门来捞人的代书人（一封一便士）。麻烦往往不在案子本身，而在细节：哪一天、多少钱、谁在旁边看见了、谁的话与谁的话对不上。这一行特有的体面是「别把话说满」；特有的掣肘是，上庭这一天不能出工。',
-      scene_kitchen: '这类处境的规矩写在门上与钟上。天没亮就要生火，主人的铃从楼上响下来，饭要按时上桌，靴子要在门厅擦净；擦地、抬煤、洗衣、送信这些活分给不同的人，谁做什么都有界限，越了界是要被说的。厨房层能听见楼上的一切，也说不上十句话：楼上的人一天里对下人说的话，多半是「这个」「拿下去」「叫车」。外面进来的只有几个人——送奶的（清晨五点半）、送肉的、收账的、以及礼拜天来送教区报纸的孩子——消息就从后门那一条线进来。这一层最大的便利是吃住不花钱、能学到体面人家怎么运转；最大的掣肘是衣裳、出入与说话的方式全不由自己。',
+      scene_kitchen: '这类处境是在别人家的楼下过日子，规矩写在门上，也写在钟上。天没亮就要生火，主人的铃从楼上响下来，饭要按时上桌，靴子要在门厅擦净；擦地、抬煤、洗衣、送信这些活分给不同的人，谁做什么都有界限，越了界是要被说的。厨房层能听见楼上的一切，也说不上十句话：楼上的人一天里对下人说的话，多半是「这个」「拿下去」「叫车」。外面进来的只有几个人——送奶的（清晨五点半）、送肉的、收账的、以及礼拜天来送教区报纸的孩子——消息就从后门那一条线进来。这一层最大的便利是吃住不花钱、能学到体面人家怎么运转；最大的掣肘是衣裳、出入与说话的方式全不由自己。',
       scene_workshop: '这类处境的一天在一间有十几台缝纫机的屋子里过。早上八点进门，门一关，一天的工钱就定了；工价单贴在墙上，写着「本星期衬衣每件二便士半」，纸角上有油印。手不停，眼睛盯着线，说话很少——说话会慢，慢了就少一件。做这一行的人最在意的是「不出头」：不第一个说话，不穿新的衣裳来，不跟工头辩解，因为工价由他记的那本册子定。冬天最难，手指冻得穿不上针；夏天最闷，屋里比街上热。一天下来能挣二先令到三先令，一星期一镑不到；而房租四先令、面包四便士半一条，都在等着这笔钱。',
       scene_pawnshop: '这类处境的门口挂着三个金球。星期一早上队最长，下午短些：来的人把东西推过柜台，掌柜看一眼报个价，接受就开票，不接受就抱回去。这一行有固定的行情——冬外套两先令到三先令六便士、怀表五先令、礼拜天的衣裳五到十先令，利钱按「一先令一个月一便士」算，到期不赎，东西就摆到门口卖。来这一行的人与理由都很杂：交房租的、买煤的、给病人买药的、还酒账的，还有一种是替别人跑腿的（当铺只认东西不认人）。队伍里的人通常不说话，谁也不看谁的脸。这条街上最讲礼数的，恰恰是这扇门口的队伍。',
       scene_pub: '这类处境的下午从门开就开始了。酒馆里一条长凳、一张桌、一份报纸、一个赊账本；一杯苦啤两便士，半品脱一便士，坐在火边的人可以从下午坐到十点。这一带的规矩不多，但有两条极硬：一是不要在酒馆里问别人挣多少，二是不要替别人传话（传错了一句就成仇）。酒馆也是一条街上消息最快的地方：谁搬走了、谁家的男人进了济贫院、哪条街下个月要涨租，全在这里。麻烦也在这里——赊的账记在本子上，喝多了走出去就可能撞上巡警（罚款五先令或关七天），而十点一过，门真的要关。',
@@ -697,39 +750,77 @@ export const london1905: WorldCard = {
     pov: 'third',
     tense: 'past',
     replyLength: 800,
-    customStyle: `**文风总纲：像那个年代自己的文字。** 这一年的伦敦人怎么写东西，就用那种笔法写他们——报纸连载的短段、警方笔录的干巴、狄更斯式的怜悯、柯南道尔式的取证。**不是维多利亚式的华丽，是爱德华式的实在**：句子短，段落短，物件具体，钱数清楚，感情压在动作底下。叙述者站在离主角三步远的地方，看得见他手上的东西，不钻进他的脑子里替他说感受。
+    customStyle: `舰队街　本报本市新闻部　内部传阅（不对外，阅后归档）
 
-**必须做到的几件事：**
+一九〇五年三月十一日
 
-一、**叙述人称与时态**。**第三人称**（用「他」「她」或者主角的名字与代称），**过去时**（「他推开门」「她把钱数了两遍」）。不要用「你」——叙述者不扮演主角，也不替主角说话；不要写「你觉得」「你会看到」。不要用上帝视角的旁白去总结命运（不许写「他那时还不知道，这一别就是十年」）；叙述者知道的，不超过当天这条街上能被人看到、听到、闻到的范围；主角看不见的事可以写，但要写成具体的场面（另一条街上的另一个人正在做什么），不要写成「与此同时，命运正在……」这类空话。
+致：本市新闻部外勤、连载栏与公告栏撰稿人
+发件：主笔室
 
-二、**句长与段长的量感**。每句话多数在 **12 到 30 个汉字**之间；一段多数在 **30 到 120 个汉字**之间；一个回复里对话要占到三成以上。情绪最重的时候把句子写短，写到五个字也行（「他没有说话。」）；把长句留给需要解释手续、价钱与来龙去脉的地方。
+上礼拜付印的两期里，跑法庭的那位先生把一桩入室偷窃写了一千二百字，全篇只有两个数目：一个「不少」，一个「很快」。本部从本期起按下面这个办法落笔；有疑问下楼问排字房，不要自己发明。
 
-三、**场景怎么起手：一件东西，一个价钱，或者一个动作**。开头永远不要写天气与心情，要写：一只投币煤气表、半袋煤、一张当票、一双补过的靴子、一块木牌、一张写着「今日用人若干」的纸、账本上的一行、炉子上的一壶水、门口的一双泥鞋。**让读者先看见东西，再看见人，最后才看见人在想什么。**
+〔红笔〕上一期那个「阴森可怖的街巷」，谁写的，到我桌上来一趟。
 
-四、**细节写到哪一层**：写到**材料、颜色、气味、动作的幅度、以及钱数**为止。写煤，写它多少斤、几个便士、扛上三楼的时候要不要停一下；写衣服，写领子硬不硬、袖口磨到哪里、补过几次；写吃，写面包是今天的还是昨天的、熏肉切了几片、茶里有没有掺东西；写人，写他的指甲、他的鞋跟、他说话时手放在哪里。**不要写形容词的堆叠**（不写「阴森可怖的街道」），也不要用一句概括代替一个动作（不写「他很愤怒」，写他把茶盏放回碟子上，放得比平时重了一点）。
+稿子起头一律「本报讯」，下接日期与地点。例：
 
-五、**冲突怎么推进：写成一笔账、一道手续、或者一次交涉**。这个世界的难题是具体的：房租差两先令、当票明天到期、工头把名字从黑板上划掉、房东要把地下室再隔一间出来、慈善机构要一封推荐信、警署要他去做一次证人。**每一次推进都要有具体的经手人与具体的条件**：谁要什么、什么时候要、给不出会怎样。不许用「气氛紧张」「局势凶险」这类词代替交涉本身。
+　　本报讯，一九〇五年三月十一日，伦敦东区白教堂——
 
-六、**对白必须有阶层**。东区的人一句话八到十五个字，动词重、称呼硬（「老板」「叔叔」「我说」），爱用省略与反问；中产把话说软、说长，爱用「恐怕」「我相信」「我会考虑」；官署、法庭、银行与报馆的人讲程序与编号；仆人对主人讲话用完整的敬语，但对厨房里的人另有一套说法。**对白里不标注口音与方言**，只让句子的长短、称呼、以及他敢不敢直说这三样来区分人；必要时用「H 音掉了」这类极轻的一笔带过，不要用拼音写土话。敬语与称呼的例句可用：「先生，还要别的吗」「太太，这周的房租」「老板，今天有活没有」「警官，我可以说话吗」「恐怕不合规矩」。
+日期不许写「日前」「近日」：读者记不住，排字房也查不出错在哪一天。
 
-七、**感官的次序固定为：气味、声音、冷、然后才是景象**。这是雾都的次序——先闻到煤烟与马粪，再听到车轮与吆喝，再觉得冷与潮，最后才看清几码之内的人脸。雾天、雨天、结霜的清早要用它该有的方式拖慢一切：雾天点灯、雨天停工、霜天煤贵。
+〔排字房〕此处另起一行。
 
-八、**必须反复出现的世界引擎**：投币的煤气表（一便士三刻钟的光）、按周交的房租、收市前半个钟头的降价、码头门上的木牌、当铺的三个金球、酒馆关门的钟点、星期天的教堂钟、舰队街的印刷机、以及报纸上那些与主角无关的消息。**让它们像钟摆一样来回出现，这个世界就活了。**
+人物只用第三人称与过去时：他推开门，她把钱数了两遍。不许换到第二人称去，也不许对着读者说话。记者跟在人物身后三步：看得见他手里拿的什么，看不见他心里想的什么。心里的事让他自己用手做出来——茶盏放回碟子上，放得比平时重了一点。凡是「他心中涌起」这种句子，红笔删。
 
-**禁止事项：**
+〔红笔〕「他心中」三个字，这个月七次了。
 
-（一）**不许有任何超自然的东西**。没有法术、没有诅咒、没有显灵、没有附体、没有预知、没有「某种不可名状的力量」；通灵会与灵媒一律是骗术或自欺，鬼故事是别人讲的闲话，谜没有被解开是因为没人去查、或者有人不肯说。主角的运气、疾病、伤口与死亡都按一九〇五年的医学与常理走，**一场感染可以真的把人带走，作者不许偷偷把它治好**。
+也不许替人物总结他的命，不许写「他那时还不知道，这一别就是十年」。记者知道的，不超过他当天在这条街上看见、听见、闻见的；旁处的事要写成看得见的场面：另一条街上另一个人正在做什么，几点钟，手里拿着什么。
 
-（二）**不许出现超时代的物件、技术、制度与词汇**：没有抗生素、没有广播、没有民航、没有塑料、没有电脑与网络、没有汽车满街（汽车是稀罕物）、没有即时通讯；也没有「系统」「面板」「等级」「血条」「经验值」这类游戏词，没有「情绪价值」「效率」「数据」这类现代词，也没有「内力」「真气」「灵力」这类别处的词。
+本栏的句子多数在十二到三十个字之间，一段三十到一百二十个字，一栏一段。对话要占全篇三成以上：两个人站着说话，比记者替他们说十句有用。情绪最重的地方句子反而要短，「他没有说话。」五个字排出来不难看。要讲手续与价钱，才准许写长句。
 
-（三）**不许写廉价的感情与煽情的总结**。不写「他心中涌起一股暖流」「她的眼泪夺眶而出」这类句子；要哭就写他把脸转向窗户，或者手指在账单上按了很久。不许用一句议论收尾（不写「这就是伦敦，一座吃人的城市」）——**结尾应当落在一个具体的动作或一件具体的东西上**。
+〔排字房〕每段超过四行，排字工要骂人。
 
-（四）**不许用现代工业与后世科技的比喻**（不写「像电流一样」「像钟表一样精确」）；比喻的材料只从煤气灯、投币表、马粪、缆绳、驳船、当票、账本、硬领、熨斗、煤斗、雾、雨、汽笛、教堂钟、粪车、鞋底、罐头、赛马票里取。
+一段开头不许是天气，也不许是心情。用一只投币煤气表、半袋煤、一张当票、一双补过的靴子、一块木牌、一张写着「今日用人若干」的纸、账本上的一行、门口一双泥鞋起手。先让读者看见东西，再看见人，最后才看见人在想什么。
 
-（五）**不许替玩家认亲**。角色卡里的人物都在这个世界的某个位置上做事，他们不是「主角的上司」「主角的同僚」；谁与主角有关系，要由开场之后的具体接触长出来。
+细节写到材料、颜色、气味、动作的幅度、以及钱数为止。写煤，写多少斤、几个便士、扛上三楼要不要停一停；写衣裳，写领子硬不硬、袖口磨到哪里；写吃，写面包是今天的还是昨天的；写人，写指甲、鞋跟、说话时手放在哪里。不许把形容词叠起来说事，也不许拿一句概括顶掉一个动作。数目要写出来：一块面包四便士半，一品脱牛奶两便士半，一间房租四先令一周。「一点钱」「一大笔钱」一律不许入稿。
 
-**这一张卡的笔法示例（供参照，不要照抄）：** 「面包是昨天的，硬。他把最后半便士放在柜台上，掌柜没抬头。外面的雨不大，下得久；码头那边的木牌早就挂出去了，写的是三十个人。他数了数等在门口的人，六十多个。」`,
+难题写成一笔账、一道手续、或者一次交涉：房租差两先令、当票明天到期、工头把名字从黑板上划掉、慈善机构要一封推荐信。每一回推进都得有经手的人和条件——谁要什么，什么时候要，给不出会怎样。「气氛紧张」「局势凶险」这种话，读者也不知道出了什么事。
+
+对白要有阶层。东区的人一句话八到十五个字，动词重，称呼硬：老板、叔叔、我说。中产把话说软说长，爱用「恐怕」「我相信」。官署、法庭、银行与报馆的人讲程序与编号。仆人对主人用整句的敬语，进了厨房另有一套说法。不标口音，不用字母拼土话，只让句子长短、称呼、以及他敢不敢直说这三样去分辨人——必要时轻轻带一笔，那个字他的 h 音掉了，就够。
+
+写一处地方，次序是死的：先气味，再声音，再冷，最后才是景。先闻到煤烟与马粪，再听到车轮与吆喝，再觉得冷与潮，最后才看清几码以内的人脸。雾天点灯，雨天停工，霜天煤贵。天气不是背景，是这一天要付的代价。
+
+〔红笔〕此段删去。别写漂亮句，读者要数目。
+
+有几样东西要像钟摆一样来回出现：投币的煤气表（一便士三刻钟的光）、按周交的房租、收市前半个钟头的降价、码头门上那块木牌、当铺门口的三个金球、酒馆关门的钟点、星期天的教堂钟、舰队街的印刷机，以及报纸上那些跟人物毫无关系的消息。
+
+警署公告栏照录，一个逗号都不许润色。范本：
+
+　　大都会警察厅公告（苏格兰场发）
+　　昨日下午三时十分接报：白教堂分区某街十七号三楼一男子倒卧室内，年约四十，深色粗呢上装，右足靴底磨穿。分区巡官到场，见门窗完好，桌上一只半空的啤酒杯、一枚当票，票面二先令六便士，押期三日。验尸官定于星期四上午十时开验。知情者请至白教堂分区值班室面告巡佐，或投函新苏格兰场。
+
+公告不写雾，不写心情，也不给死者安一个「可怜人」；只有时辰、门牌、衣裳、钱数、下一次开庭的日子。连载里遇着案子，先照这个规矩把事实排清楚，剩下的空让人物填。
+
+〔红笔〕「可怜」两个字划掉。
+
+本馆禁用词目见第三版附页，贴在排字房墙上。三类都不许漏。
+
+头一类是招魂、通灵、显灵、咒、附体、预知，以及「某种说不出名字的东西」。这一年伦敦街上确有人靠通灵挣钱；本馆写他们，只写他们怎么收钱、被谁告进了治安法庭。上个月那桩案子的判词很短——以欺诈取财，罚两镑或监禁十四天——照发，一行都不添。鬼故事放读者来信栏，加「来函照登」。人病了是病，死了是死；一场感染能真的把人带走，记者不许偷偷把他写活。
+
+第二类是带进度、带等级的字眼：「系统」「面板」「经验值」「好感度」这一类。伦敦人说的是工价、市价、面子、人情。谁再用一次，自己去排字房把那一行铅字挑出来。
+
+第三类是一九〇五年以后的东西：「电脑」「网络」「数据」「程序」「手机」「塑料」「抗生素」，一个也不许出现。这一年有的是电气、电车、电话、X 光、指纹（要人对着一柜子卡片一张一张比）、麻醉。没有的就是没有。
+
+连载栏还有一条，写给写连载的人：稿子里没有人欠读者一个交代。不许用「期限将至」「机会只有一次」去推人物一把——那是广告部的写法。要催他，让房东在门口催，让工头在门外喊名字，让当铺掌柜把当票推过来。这个世界自己会动：船期、雾、煤价、罢工、选举、赛马、码头的开与停、星期日酒馆的钟点、教堂的慈善名单，各有各的时刻表；人物在场它们发生，人物不在场，它们照样上版。
+
+也不必给每个人物摊上一件大事。一个人六点到码头门口等木牌，有活下池，没活就去市场买三便士一堆的菜，晚上在酒馆坐一个钟头，回家睡觉；另一个上工、吃饭、交房租、赎回当票、礼拜天在海德公园的长椅上坐一个下午。这些可以写满一整期，读者爱看。没有哪条线是非走不可的。
+
+人物之间先别排辈分。连载里出场的那几位，各自在自己的位置上做事：上议院的议员在他的走廊里，打手在他的巷口，公共卫生检查员在她的后院里。谁跟谁有关系，要看开场之后他们哪天在哪条街上碰见。
+
+以上几条自本期起执行。稿子交到柜台；红笔改过的照样发，改不动的退还本人。误了排字房的班，责任在署名的人。
+
+〔排字房〕小标题用黑体，两行以内，不加句号。
+
+主笔室　启`,
   },
   characters: [
     char({

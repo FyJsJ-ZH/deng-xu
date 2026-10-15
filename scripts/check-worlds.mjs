@@ -279,6 +279,20 @@ const GATE = {
   maxBackgroundSlots: 5,
   minOptionsPerSlot: 8,
   /*
+    每槽选项数的**上限**（2026-10 第九轮补）。
+
+    下限 8 是早就有的（用户更早一轮要过"身份种类要多样"，
+    注释里那句「不许靠砍选项来精简」至今有效）。但**上限一直缺失** ——
+    深核的「开局处境」与帷幕的「开局处境」一度各有 **16 项**，一屏根本铺不完；
+    而"选项铺满一屏"本身就在暗示"你必须从这些里面挑一个"，
+    这正是用户这一轮说的「背景槽位依旧过于具体，限制住了剧情的开展」的一部分。
+
+    12 不是拍的：下限 8 与它之间留了足够余量，同时能拦住
+    "把所有细分身份逐条列出来"的倾向。超出的正确做法是**合并同类** ——
+    把几个细分身份合成一项，把各自的具体细节揉进那一项的 description，不是删掉。
+  */
+  maxOptionsPerSlot: 12,
+  /*
     ⚠️ 这里**故意是低门槛**（曾经是 100 字）。
     玩家第三次打回时说的是：
       「背景槽位太详细、太固定了，连详细的背景都有就没有自设主角什么空间了」
@@ -433,6 +447,40 @@ for (const exp of EXPECTED) {
   for (const slot of w.backgrounds || []) {
     if (slot.options.length < GATE.minOptionsPerSlot) {
       fail(exp.label, '背景选项太少', `「${slot.label}」只有 ${slot.options.length} 个选项`)
+    }
+    if (slot.options.length > GATE.maxOptionsPerSlot) {
+      fail(exp.label, '背景选项太多',
+        `「${slot.label}」有 ${slot.options.length} 个选项 > ${GATE.maxOptionsPerSlot} —— ` +
+        `请**合并同类**（把几个细分身份合成一项，把各自的具体细节揉进那一项的 description），` +
+        `不要直接删选项`)
+    }
+    /*
+      ── 每个槽位必须有、且只能有一个「我自己写」项（2026-10 第九轮）──
+
+      用户原话：「背景槽位**依旧过于具体，限制住了剧情的开展**」。
+      这一条的根子是**清单封闭**：预设选项写得再宽，也终究是一个有限集合，
+      想演集合外角色的人只能挑一个最接近的，然后被 AI 照着那个身份写下去。
+
+      所以每个槽位都配一个 `custom: true` 的项，选中后由玩家自己写，
+      那段文本与预设项走**完全同一条链路**进提示词（见 `prompts.ts` 的
+      `describeBackgroundChoices`）。少一个，那个槽位就少一道门；
+      多一个，选角页上会出现两个语义重复的入口。
+
+      位置也钉在**最后**：读者从上往下看，先看到"可以挑的"，最后看到"也可以自己写"，
+      顺序反了会让人以为自填是主推选项。
+    */
+    const customs = (slot.options || []).filter(o => o.custom)
+    if (customs.length === 0) {
+      fail(exp.label, '背景槽缺「我自己写」入口',
+        `「${slot.label}」没有 custom: true 的选项 —— ` +
+        `预设清单是封闭的，玩家想演清单外的角色就无处可去`)
+    } else if (customs.length > 1) {
+      fail(exp.label, '背景槽有多个「我自己写」入口',
+        `「${slot.label}」有 ${customs.length} 个 custom: true 的选项`)
+    } else if (slot.options[slot.options.length - 1]?.custom !== true) {
+      fail(exp.label, '「我自己写」不在槽位末尾',
+        `「${slot.label}」的自填项应排在最后一项（现在在第 ` +
+        `${slot.options.findIndex(o => o.custom) + 1} 项，共 ${slot.options.length} 项）`)
     }
   }
 
@@ -608,6 +656,15 @@ for (const exp of EXPECTED) {
         const tooShort = []
         const seeds = []
         for (const o of openerSlot.options) {
+          /*
+            ⚠️ `custom: true` 的「我自己写」项**豁免**开局素材（2026-10 第九轮）。
+
+            它永远不需要 seed：玩家自己写下的那段文本会由 `resolveOpeningSeed`
+            直接顶上去（见那里 `if (opt.custom)` 的分支），
+            这里再补一段是**永远读不到的死数据** ——
+            而"为了过校验而写死数据"正是这个脚本最该避免的事。
+          */
+          if (o.custom) continue
           const text = (seedMap?.[o.id] ?? seedMap?.[o.title] ?? '').trim()
           if (!text) { missing.push(o.title); continue }
           const n = cjk(text)

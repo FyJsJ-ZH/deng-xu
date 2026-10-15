@@ -51,11 +51,30 @@ export function createEmptyWorld(): WorldCard {
       { id: 'energy', name: '精力', description: '行动与专注的储备', initial: 5, max: 5, color: PALETTE[0] }
     ],
     backgrounds: [
+      /*
+        ⚠️ 每个槽位的**最后一项**必须是 `custom: true` 的「我自己写」——
+        这是给"想演预设之外角色"的玩家留的门（2026-10 玩家第三次打回：
+        「背景槽位依旧过于具体，限制住了剧情的开展」）。
+
+        新建卡在这里只放 3 个占位选项（`check-worlds.mjs` 要求每槽 ≥8 个，
+        写正式卡时补到 8 个以上；合并同类时容易误删自填项，所以先放好）。
+
+        另外：`title` 里**不要写世界观专名**（组织/派别/职官名）。
+        写"这一类人的日子与心气"，把"他属于哪个组织"留给玩家自己写。
+      */
       {
         label: '出身',
         options: [
-          { id: 'origin_a', title: '选项一', description: '描述这个出身。', attributeBonus: {}, startingItems: [] },
-          { id: 'origin_b', title: '选项二', description: '描述这个出身。', attributeBonus: {} }
+          { id: 'origin_a', title: '选项一', description: '描述这一类人的日子与心气。', attributeBonus: {}, startingItems: [] },
+          { id: 'origin_b', title: '选项二', description: '描述这一类人的日子与心气。', attributeBonus: {} },
+          {
+            id: 'origin_custom',
+            title: '我自己写',
+            description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换。',
+            custom: true,
+            attributeBonus: {},
+            startingItems: []
+          }
         ]
       }
     ],
@@ -278,7 +297,23 @@ export function CardEditor() {
     patch({ resources: draft.resources.map((r, idx) => (idx === i ? { ...r, ...p } : r)) })
 
   const addBackgroundSlot = () => patch({
-    backgrounds: [...draft.backgrounds, { label: `槽位 ${draft.backgrounds.length + 1}`, options: [] }]
+    /*
+      新槽位直接带上「我自己写」项。
+      不带的话作者十有八九会忘 —— 而忘掉的后果不是报错，
+      是那个槽位对玩家**永久封闭**（他只能从预设里挑一个），
+      症状轻微到没人会注意到。`check-worlds.mjs` 会拦，但不如一开始就给对。
+    */
+    backgrounds: [...draft.backgrounds, {
+      label: `槽位 ${draft.backgrounds.length + 1}`,
+      options: [{
+        id: makeId('bg'),
+        title: '我自己写',
+        description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换。',
+        custom: true,
+        attributeBonus: {},
+        startingItems: [],
+      }],
+    }]
   })
 
   const updateSlot = (i: number, p: Partial<BackgroundSlot>) =>
@@ -292,7 +327,17 @@ export function CardEditor() {
       attributeBonus: {},
       startingItems: []
     }
-    updateSlot(i, { options: [...draft.backgrounds[i].options, opt] })
+    /*
+      ⚠️ 新选项要插在「我自己写」**之前**，不能直接 push。
+
+      自填项必须永远在槽位末尾（`check-worlds.mjs` 会查；而且顺序反了，
+      玩家会以为自填是主推选项）。直接 push 的话，第一次加选项没问题，
+      **第二次**就会把自填项挤到中间去 —— 这种"用两次才出问题"的 bug
+      最难被发现，所以在这里一次做对。
+    */
+    const cur = draft.backgrounds[i].options
+    const at = cur.findIndex(o => o.custom)
+    updateSlot(i, { options: at < 0 ? [...cur, opt] : [...cur.slice(0, at), opt, ...cur.slice(at)] })
   }
 
   const updateBackgroundOption = (slotIdx: number, optIdx: number, p: Partial<BackgroundOption>) => {
@@ -909,6 +954,26 @@ export function CardEditor() {
                         <div className="flex items-center gap-2">
                           <input className={`${inputCls} flex-1`} value={opt.title}
                             onChange={e => updateBackgroundOption(si, oi, { title: e.target.value })} placeholder="标题" />
+                          {/*
+                            「我自己写」开关。
+                            勾上之后，这一项在选角页会展开一个文本框，玩家写的那段话
+                            **原样取代**它的标题与描述（见 BackgroundOption.custom）。
+                            每个槽位应当**有且只有一个**，并放在最后 —— 这两点
+                            `check-worlds.mjs` 会查。
+                          */}
+                          <button
+                            type="button"
+                            title={opt.custom
+                              ? '这是「我自己写」项：玩家可自行填写，写的内容取代上面的标题与描述'
+                              : '标记为「我自己写」项（每个槽位应有且只有一个，放最后）'}
+                            onClick={() => updateBackgroundOption(si, oi, { custom: opt.custom ? undefined : true })}
+                            className={`flex-shrink-0 px-1.5 py-1 rounded border text-[10px] transition-colors
+                              ${opt.custom
+                                ? 'border-accent-lantern/50 text-accent-lantern bg-accent-lantern/10'
+                                : 'border-text-muted/20 text-text-muted hover:text-text-secondary'}`}
+                          >
+                            自填
+                          </button>
                           <IconButton danger title="删除选项" onClick={() => {
                             updateSlot(si, { options: slot.options.filter((_, i) => i !== oi) })
                           }}>

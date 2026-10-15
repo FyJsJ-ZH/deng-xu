@@ -406,8 +406,21 @@ export function WorldbookPreview({
                             .map(id => world.items?.find(i => i.id === id)?.name)
                             .filter((x): x is string => !!x)
                           return (
-                            <div key={o.id} className="p-2.5 rounded border border-text-muted/20 bg-black/20">
-                              <div className="text-xs text-text-primary mb-0.5">{o.title}</div>
+                            <div key={o.id}
+                              className={`p-2.5 rounded border bg-black/20
+                                ${o.custom ? 'border-dashed border-accent-lantern/40' : 'border-text-muted/20'}`}>
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="text-xs text-text-primary">{o.title}</span>
+                                {/*
+                                  「我自己写」项要有标记：它在选角页长成什么样（虚线框 + 展开一个文本框）
+                                  跟普通选项完全不同，预览里不标出来，作者会以为它就是个普通选项。
+                                */}
+                                {o.custom && (
+                                  <span className="text-[9px] px-1 rounded border border-accent-lantern/40 text-accent-lantern">
+                                    自填
+                                  </span>
+                                )}
+                              </div>
                               {o.description && (
                                 <div className="text-[10px] text-text-muted leading-relaxed">{o.description}</div>
                               )}

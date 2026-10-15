@@ -190,33 +190,229 @@ export const zhongdi: WorldCard = {
     {
       label: '来路',
       options: [
-        { id: 'lu_guanyuan', title: '事务官科员', description: '通过文官考试进衙门的事务官，按职级熬资历。会写公文、会算报表、知道哪份文件该先送谁。同僚客气，百姓绕着走。', attributeBonus: { li: 2, shi: 1 }, resourceBonus: { dang: 2 }, startingItems: ['item_wenguanzheng', 'item_gongwenbao', 'item_shenfenpai'] },
-        { id: 'lu_junguan', title: '陆军现役军官', description: '从士兵里提上来的作战军官，信条背得熟，操典记得牢。军队给他体面与晋升，也给他一张随时会被调走的任命书。', attributeBonus: { wu: 2, dan: 1 }, resourceBonus: { dang: 1, qing: 1 }, startingItems: ['item_junzheng', 'item_xuanershi', 'item_dajuyi'] },
-        { id: 'lu_gongren', title: '国营工厂技工', description: '在钢铁、机械或化工车间里长大的技术工人，读得懂图纸，听得懂机床。工资体面，食堂管饭，代价是肺与手。', attributeBonus: { xue: 1, wu: 1, li: 1 }, resourceBonus: { qian: 1 }, startingItems: ['item_gongpai', 'item_laodongshouce', 'item_shenfenpai'] },
-        { id: 'lu_jiaoshu', title: '中学教员', description: '十年义务教育里的国文或算学教员，课本是审定的，作题是定调的，学生的前途靠他去写评语。体面，也憋闷。', attributeBonus: { xue: 2, ming: 1 }, resourceBonus: { qing: 1 }, startingItems: ['item_guowenjiaoben', 'item_pingyubiao', 'item_shenfenpai'] },
-        { id: 'lu_qiaomin', title: '归化移民', description: '从关内翻过边境线来的，领了身份牌、安家费与一块五年免租的地。肯出力，也随时可能被当地人的眼神提醒自己是新来的。', attributeBonus: { wu: 1, dan: 1 }, resourceBonus: { qian: 1, qing: 1 }, startingItems: ['item_anjiadai', 'item_kaihuangzheng', 'item_shenfenpai'] },
-        { id: 'lu_guojiao', title: '国教院辅导员', description: '管辖区里的诵读会、思想告白、福利发放与兴趣小组。谁家吵架、谁不积极、谁领了肉票没来谢，都记在他本子上。', attributeBonus: { shi: 2, ming: 1 }, resourceBonus: { dang: 2 }, startingItems: ['item_guojiaozheng', 'item_yulu', 'item_shenfenpai'] },
-        { id: 'lu_zhencha', title: '警察与治安员', description: '执法的人，认身份牌、抄户籍、管纠纷、驱散人群。街面上他最大，衙门里他最小，同行之间话很少。', attributeBonus: { shi: 1, wu: 1, dan: 1 }, resourceBonus: { dang: 1, qing: 1 }, startingItems: ['item_jingzheng', 'item_jinggun', 'item_shenfenpai'] },
-        { id: 'lu_shangren', title: '特许商号伙计', description: '在国有特许企业或商号里跑外柜、押货、谈价、记账。懂得什么东西哪条线上能过、哪个关口要打点。', attributeBonus: { shi: 2, li: 1 }, resourceBonus: { qian: 2 }, startingItems: ['item_tongxingzheng', 'item_zhangbu', 'item_shenfenpai'] },
-        { id: 'lu_yisheng', title: '县医院医师', description: '帝国医学院出身，在县医院看门诊、接工伤、下乡防疫。医术是硬的，处方是有限的，疫情来时他第一个被封锁在里面。', attributeBonus: { xue: 2, dan: 1 }, resourceBonus: { qing: 1 }, startingItems: ['item_yiliaozheng', 'item_yiyaoxiang', 'item_shenfenpai'] },
-        { id: 'lu_baowu', title: '铁路报务员', description: '守在电报机与调度电话前的人，手指快、耳朵灵、坐得住。列车准不准点，一半看这张纸带。作息颠倒，出错即罚。', attributeBonus: { li: 1, xue: 1, shi: 1 }, resourceBonus: { qian: 1 }, startingItems: ['item_baowuzheng', 'item_dianbaoben', 'item_shenfenpai'] },
-        { id: 'lu_kuangong', title: '井下矿工', description: '抚顺或本溪井下的刨煤人，工资高、抚恤厚、寿命短。同班的人互相记名字，因为下井前要有人知道该找谁。', attributeBonus: { wu: 2, dan: 1 }, resourceBonus: { health: 1, qian: 1 }, startingItems: ['item_kuangdeng', 'item_gongpai'] },
-        { id: 'lu_wenyi', title: '审查部门抄录员', description: '在真理部或报刊里做抄录、校对、贴条、归档，天天与别人的字打交道，天天决定哪些字能留下。沉默是他唯一的护身符。', attributeBonus: { xue: 1, shi: 2 }, resourceBonus: { dang: 1 }, startingItems: ['item_shenchadan', 'item_bijiben', 'item_shenfenpai'] },
+        {
+          id: 'lu_guanyuan',
+          title: '在机关里替人办文、递件',
+          description: '考过试、有编制，按职级熬资历。会写公文、会算报表、知道哪份文件该先送谁；同事之间客气，来办事的人绕着走。',
+          attributeBonus: { li: 2, shi: 1 },
+          resourceBonus: { dang: 2 },
+          startingItems: ['item_wenguanzheng', 'item_gongwenbao', 'item_shenfenpai'],
+        },
+        {
+          id: 'lu_junguan',
+          title: '穿制服、按条令办事的人',
+          description: '从士兵里提上来的军官，信条背得熟、操典记得牢。军队给他体面与晋升，也给他一张随时会被调走的任命书。',
+          attributeBonus: { wu: 2, dan: 1 },
+          resourceBonus: { dang: 1, qing: 1 },
+          startingItems: ['item_junzheng', 'item_xuanershi', 'item_dajuyi'],
+        },
+        {
+          id: 'lu_gongren',
+          title: '在车间里靠手艺吃饭的人',
+          description: '在钢铁、机械或化工车间里长大，读得懂图纸、听得懂机床。工资体面、食堂管饭，代价是肺与手。',
+          attributeBonus: { xue: 1, wu: 1, li: 1 },
+          resourceBonus: { qian: 1 },
+          startingItems: ['item_gongpai', 'item_laodongshouce', 'item_shenfenpai'],
+        },
+        {
+          /*
+            ⚠️ 合并（第九轮）：原「中学教员」+「国教院辅导员」。
+            两项都在"把人教成国民"的那一头：一个在教室里讲审定的课本、
+            给学生写评语，一个在辖区里管诵读会、思想告白与肉票发放；
+            两边的细节都留在 description 里。数值与随身物**沿用主项**（中学教员），
+            不做叠加 —— 叠加会让合并项比任何原始项都强，等于把"合并同类"做成免费加强。
+          */
+          id: 'lu_jiaoshu',
+          title: '教人做国民，也替人办福利',
+          description: '在教室里讲审定的课本、给学生的评语落笔，或者在辖区里管诵读会、思想告白与肉票发放。体面，也憋闷；谁家吵架、谁不积极，都记在本子上。',
+          attributeBonus: { xue: 2, ming: 1 },
+          resourceBonus: { qing: 1 },
+          startingItems: ['item_guowenjiaoben', 'item_pingyubiao', 'item_shenfenpai'],
+        },
+        {
+          id: 'lu_qiaomin',
+          title: '从界河那边过来落户的人',
+          description: '领了身份牌、安家费与一块五年免租的地。肯出力，也随时可能被当地人的眼神提醒自己是新来的。',
+          attributeBonus: { wu: 1, dan: 1 },
+          resourceBonus: { qian: 1, qing: 1 },
+          startingItems: ['item_anjiadai', 'item_kaihuangzheng', 'item_shenfenpai'],
+        },
+        {
+          id: 'lu_zhencha',
+          title: '在街面上查牌、管纠纷的人',
+          description: '认身份牌、抄户籍、管纠纷、驱散人群。街面上他最大，衙门里他最小，同行之间话很少。',
+          attributeBonus: { shi: 1, wu: 1, dan: 1 },
+          resourceBonus: { dang: 1, qing: 1 },
+          startingItems: ['item_jingzheng', 'item_jinggun', 'item_shenfenpai'],
+        },
+        {
+          id: 'lu_shangren',
+          title: '跑外柜、押货、过关卡的伙计',
+          description: '在国有特许企业或商号里跑外柜、押货、谈价、记账。懂得什么东西哪条线上能过、哪个关口要打点。',
+          attributeBonus: { shi: 2, li: 1 },
+          resourceBonus: { qian: 2 },
+          startingItems: ['item_tongxingzheng', 'item_zhangbu', 'item_shenfenpai'],
+        },
+        {
+          id: 'lu_yisheng',
+          title: '在县城看病、接工伤的医师',
+          description: '在县医院看门诊、接工伤、下乡防疫。医术是硬的，处方是有限的；疫情来时，封锁线第一个把他圈在里面。',
+          attributeBonus: { xue: 2, dan: 1 },
+          resourceBonus: { qing: 1 },
+          startingItems: ['item_yiliaozheng', 'item_yiyaoxiang', 'item_shenfenpai'],
+        },
+        {
+          id: 'lu_baowu',
+          title: '守着电报机和值班表的报务员',
+          description: '手指快、耳朵灵、坐得住。列车准不准点，一半看他手上那张纸带；作息颠倒，出错即罚，译出来的字有时得当作没看懂。',
+          attributeBonus: { li: 1, xue: 1, shi: 1 },
+          resourceBonus: { qian: 1 },
+          startingItems: ['item_baowuzheng', 'item_dianbaoben', 'item_shenfenpai'],
+        },
+        {
+          id: 'lu_kuangong',
+          title: '井下的刨煤人',
+          description: '在井下刨煤、拖筐、看顶板的人，工资高、抚恤厚、寿命短。同班的人互相记名字，因为下井前要有人知道该找谁。',
+          attributeBonus: { wu: 2, dan: 1 },
+          resourceBonus: { health: 1, qian: 1 },
+          startingItems: ['item_kuangdeng', 'item_gongpai'],
+        },
+        {
+          id: 'lu_wenyi',
+          title: '在别人的字上划线、归档的人',
+          description: '做抄录、校对、贴条、归档，天天与别人的字打交道，天天决定哪些字能留下。沉默是他唯一的护身符。',
+          attributeBonus: { xue: 1, shi: 2 },
+          resourceBonus: { dang: 1 },
+          startingItems: ['item_shenchadan', 'item_bijiben', 'item_shenfenpai'],
+        },
+        {
+          /*
+            ── 「我自己写」──
+            槽位最后一项必须是这个 custom: true 的自填项：预设清单再宽也是封闭的，
+            想演清单外角色的人需要一个不归任何档的入口。选中它，选角页会展开文本框，
+            玩家写的那段话**原样取代**本项的 title 与 description 进提示词。
+
+            加成算法（第九轮规格：**整套照抄一个典型预设项**，不逐属性取中位 ——
+            逐属性取中位会把各属性的峰值缝成一个比任何预设项都强的缝合怪）：
+              ① 本槽 11 个预设项的 attributeBonus 属性总和：
+                 lu_guanyuan 3、lu_junguan 3、lu_gongren 3、lu_jiaoshu 3、
+                 lu_qiaomin **2**、lu_zhencha 3、lu_shangren 3、lu_yisheng 3、
+                 lu_baowu 3、lu_kuangong 3、lu_wenyi 3。
+              ② 按总和稳定升序（同分保持声明顺序），第 1~11 项：
+                 qiaomin(2)、guanyuan(3)、junguan(3)、gongren(3)、jiaoshu(3)、
+                 **zhencha(3)**、shangren(3)、yisheng(3)、baowu(3)、kuangong(3)、wenyi(3)。
+              ③ 11 项为奇数，取正中间第 6 项 =「在街面上查牌、管纠纷的人」
+                 （lu_zhencha），属性总和 **3** —— 整套照抄它的
+                 attributeBonus 与 resourceBonus，不自拼、不叠加。
+            随身物取本槽出现次数最多者：国民身份牌 10 次；
+            其余并列 1 次，取最通用的私人笔记本。
+          */
+          id: 'lu_custom',
+          title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { shi: 1, wu: 1, dan: 1 },
+          resourceBonus: { dang: 1, qing: 1 },
+          startingItems: ['item_shenfenpai', 'item_bijiben'],
+        },
       ],
     },
     {
       label: '处境',
       options: [
-        { id: 'chu_chengshi', title: '海参崴的机关区', description: '帝国的心脏。制服、公文包、探照灯与黑色玄武岩，人人都知道纪律怎么写，也都知道底线在哪一格。', attributeBonus: { li: 1, shi: 1 }, startingItems: ['item_gongwenbao'] },
-        { id: 'chu_beijing', title: '北京前进首都', description: '旧宫与新官署挤在一起，胡同正被拆成大道。旧朝的遗老、新政权的科员与洋行的买办在同一条街上走。', attributeBonus: { shi: 1, xue: 1 }, startingItems: ['item_qianmenpaizi'] },
-        { id: 'chu_gongkuang', title: '松辽工业带', description: '长春与沈阳之间的烟囱、工人新村与通宵的车间。生活被排班表切成三班，工资与配给在这里最实在。', attributeBonus: { wu: 1, li: 1 }, startingItems: ['item_gongpai'] },
-        { id: 'chu_bianjing', title: '西墙屯垦区', description: '大兴安岭西侧的国营农场与伐木场，地窖里有步枪，一小时内能集合一个预备役连队。地广，人少，事多。', attributeBonus: { wu: 1, dan: 1 }, startingItems: ['item_kaihuangzheng'] },
-        { id: 'chu_chaoxian', title: '朝鲜专员辖区', description: '保留着王国名号，实际由帝国代管。帝国派来的官、朝鲜旧式的两班、日本来的商社，三方在同一个港口的码头上干活。', attributeBonus: { shi: 1, xue: 1 }, startingItems: ['item_tongxingzheng'] },
-        { id: 'chu_lvshun', title: '旅顺口军港', description: '海军、船厂、岸炮与石油储运基地。军官多、检查多、穿制服的人比常人多出一倍，闲话传得极快。', attributeBonus: { wu: 1, li: 1 }, startingItems: ['item_junzheng'] },
-        { id: 'chu_beijing_kuang', title: '北库页工业区', description: '岛上的石油与煤炭联合开采基地，储油罐、码头与极夜的探照灯。工资高，回大陆的船一年只有几班。', attributeBonus: { wu: 1, dan: 1 }, startingItems: ['item_kuangdeng'] },
-        { id: 'chu_qingguo', title: '清国边境两侧', description: '界桩、归化接待站、走私路线与两边都要叩头的日子。哪边先收税，哪边就暂时是国。', attributeBonus: { shi: 1, dan: 1 }, startingItems: ['item_bianjingtongxingzheng'] },
-        { id: 'chu_xiangcun', title: '县下的乡与农庄', description: '乡公所、警察派出所、国教服务中心、小学校与卫生院挤在一个院子里。秋收与征购之间隔着乡统计员的一本账。', attributeBonus: { li: 1, ming: 1 }, startingItems: ['item_kaihuangzheng'] },
-        { id: 'chu_chengshi_wa', title: '省城的老城厢', description: '新官署与旧街巷交界的地方，粮店、当铺、茶馆、澡堂与黑市在同一条街上。帝国的规矩到这里开始打折。', attributeBonus: { shi: 1, dan: 1 }, startingItems: ['item_heishizhangbu'] },
+        {
+          id: 'chu_chengshi',
+          title: '官署与机关扎堆的一带',
+          description: '制服、公文包、探照灯与黑色石砌大楼。人人都知道纪律怎么写，也都知道底线在哪一格；走路快、话少的人最多。',
+          attributeBonus: { li: 1, shi: 1 },
+          startingItems: ['item_gongwenbao'],
+        },
+        {
+          id: 'chu_beijing',
+          title: '旧朝旧城与新官署交界处',
+          description: '旧宫与旧胡同被大道和新楼切开。遗老、新官署的科员、洋行里的买办在同一条街上走，旧城门楼旁跑着电车。',
+          attributeBonus: { shi: 1, xue: 1 },
+          startingItems: ['item_qianmenpaizi'],
+        },
+        {
+          id: 'chu_gongkuang',
+          title: '烟囱与工人新村连成的工业带',
+          description: '车间通宵亮灯，生活被排班表切成三班。工资与配给在这里最实在，冷库猪肉那股铁腥味也是这里最先被抱怨的。',
+          attributeBonus: { wu: 1, li: 1 },
+          startingItems: ['item_gongpai'],
+        },
+        {
+          id: 'chu_bianjing',
+          title: '农场、屯垦点与乡下的院子',
+          description: '国营农场、伐木场与乡公所围成的小院：地窖里有步枪，一小时内能集合一个预备役连队，秋天的征购账在统计员的灯下算。',
+          attributeBonus: { wu: 1, dan: 1 },
+          startingItems: ['item_kaihuangzheng'],
+        },
+        {
+          id: 'chu_chaoxian',
+          title: '名号还留着、说话的不是自己人的地方',
+          description: '王国的名号与旧官署照旧，外交、国防与海关却由外来的人代管。外来官、旧家门的子弟与邻国商社在同一个码头上干活。',
+          attributeBonus: { shi: 1, xue: 1 },
+          startingItems: ['item_tongxingzheng'],
+        },
+        {
+          id: 'chu_lvshun',
+          title: '军港与船厂挤在一起的水边',
+          description: '干船坞、岸炮与储油罐挤在被丘陵环抱的水域里。穿制服的人比常人多出一倍，检查多、闲话传得极快。',
+          attributeBonus: { wu: 1, li: 1 },
+          startingItems: ['item_junzheng'],
+        },
+        {
+          id: 'chu_beijing_kuang',
+          title: '靠船期与外面联系的岛上矿区',
+          description: '岛上的石油与煤炭联合开采区，储油罐、码头与极夜的探照灯。工资高，回大陆的船一年只有几班。',
+          attributeBonus: { wu: 1, dan: 1 },
+          startingItems: ['item_kuangdeng'],
+        },
+        {
+          id: 'chu_qingguo',
+          title: '界河两侧：两边都要交，两边都不算自己人',
+          description: '界桩、移民接待站、走私路线与两边都要叩头的日子。哪边先收税，哪边就暂时是国。',
+          attributeBonus: { shi: 1, dan: 1 },
+          startingItems: ['item_bianjingtongxingzheng'],
+        },
+        {
+          id: 'chu_xiangcun',
+          title: '乡公所与农庄围成的小院',
+          description: '乡公所、治安所、小学与卫生院挤在一个院子里，中间是旗杆与晒场。秋收与征购之间，隔着乡统计员的一本账。',
+          attributeBonus: { li: 1, ming: 1 },
+          startingItems: ['item_kaihuangzheng'],
+        },
+        {
+          id: 'chu_chengshi_wa',
+          title: '省城的老城厢与后巷',
+          description: '新官署与旧街巷交界的地方：粮店、当铺、茶馆、澡堂与黑市在同一条街上。帝国的规矩到这里开始打折。',
+          attributeBonus: { shi: 1, dan: 1 },
+          startingItems: ['item_heishizhangbu'],
+        },
+        {
+          /*
+            ── 「我自己写」── 同上，槽位最后一项。
+            加成算法（第九轮规格：整套照抄一个典型预设项）：
+              ① 本槽 10 个预设项的 attributeBonus 属性总和**全都是 2**
+                 （每项都是两个属性各 1 点，无 resourceBonus）。
+              ② 总和全部相同，稳定升序即声明顺序：
+                 chengshi、beijing、gongkuang、bianjing、**chaoxian**、
+                 lvshun、beijing_kuang、qingguo、xiangcun、chengshi_wa。
+              ③ 10 项为偶数，取**中间偏下**那一项 = 第 5 项
+                 「名号还留着、说话的不是自己人的地方」（chu_chaoxian），
+                 属性总和 **2** —— 整套照抄它的 attributeBonus；它没有
+                 resourceBonus，本项也不凭空添一笔。
+            随身物取本槽出现次数最多者：垦殖用地使用权证 2 次（另 8 件各 1 次），
+            并列举 1 次者中取最通用的公文皮包。
+          */
+          id: 'chu_custom',
+          title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { shi: 1, xue: 1 },
+          startingItems: ['item_kaihuangzheng', 'item_gongwenbao'],
+        },
       ],
     },
     {
@@ -229,8 +425,46 @@ export const zhongdi: WorldCard = {
         { id: 'men_biaoxian', title: '靠一次被看见的表现', description: '你在某次演习、某场事故、某回灾情里做了件被人记住的事。名望是捷径，也是审查员翻档案时会多看一眼的那一页。', attributeBonus: { ming: 2 }, resourceBonus: { dang: 1 }, startingItems: ['item_jiangzhuang'] },
         { id: 'men_kumen', title: '靠能忍', description: '你不争、不问、不解释，把该做的做完，把不该看的忘掉。帝国对这种人不奖赏，但也不会特意收拾。', attributeBonus: { dan: 2 }, resourceBonus: { health: 1 }, startingItems: ['item_bijiben'] },
         { id: 'men_danbao', title: '靠有人替你担保', description: '一个职级比你高的人肯在纸上写你的名字。这份人情重，还的时候往往不是钱能还的。', attributeBonus: { shi: 1 }, resourceBonus: { qing: 1, dang: 1 }, startingItems: ['item_baodanshu'] },
-        { id: 'men_waibu', title: '靠帝国之外的门路', description: '你有外国商行、教会、华侨社团或朝鲜旧家的关系。这条路好走，也不好解释，档案上永远会留一个说不清的空白。', attributeBonus: { shi: 1, xue: 1 }, resourceBonus: { qian: 2 }, startingItems: ['item_yanghangxinjian'] },
-        { id: 'men_guojiao', title: '靠国教院的推荐', description: '辅导员肯为你写一份语气很好的评价。这份评价在入学、就业与评优时都算数，条件是你得对得起那几行字。', attributeBonus: { ming: 1 }, resourceBonus: { dang: 2 }, startingItems: ['item_guojiaozheng'] },
+        {
+          id: 'men_waibu',
+          title: '靠外面的那几条线',
+          description: '你有外国商行、教会、侨团或旧家门的关系。这条路好走，也不好解释，档案上永远会留一个说不清的空白。',
+          attributeBonus: { shi: 1, xue: 1 },
+          resourceBonus: { qian: 2 },
+          startingItems: ['item_yanghangxinjian'],
+        },
+        {
+          id: 'men_guojiao',
+          title: '靠一份写在纸上的好评语',
+          description: '管精神与福利那一摊的人肯为你写一份语气很好的评语。它在入学、就业与评优时都算数，条件是你得对得起那几行字。',
+          attributeBonus: { ming: 1 },
+          resourceBonus: { dang: 2 },
+          startingItems: ['item_guojiaozheng'],
+        },
+        {
+          /*
+            ── 「我自己写」── 同上，槽位最后一项。
+            加成算法（第九轮规格：整套照抄一个典型预设项）：
+              ① 本槽 9 个预设项的 attributeBonus 属性总和：
+                 men_dangan 1、men_jishu 2、men_renqing 1、men_qian **0**、
+                 men_biaoxian 2、men_kumen 2、men_danbao 1、men_waibu 2、men_guojiao 1。
+              ② 按总和稳定升序（同分保持声明顺序），第 1~9 项：
+                 qian(0)、dangan(1)、renqing(1)、danbao(1)、**guojiao(1)**、
+                 jishu(2)、biaoxian(2)、kumen(2)、waibu(2)。
+              ③ 9 项为奇数，取正中间第 5 项 =「靠一份写在纸上的好评语」
+                 （men_guojiao），属性总和 **1** —— 整套照抄它的
+                 attributeBonus 与 resourceBonus，不自拼、不叠加。
+            随身物：本槽 9 件各出现 1 次并列，"谁都用得上"的两件取
+            国民身份牌与同乡通讯录。
+          */
+          id: 'men_custom',
+          title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { ming: 1 },
+          resourceBonus: { dang: 2 },
+          startingItems: ['item_shenfenpai', 'item_tongxianglu'],
+        },
       ],
     },
     {
@@ -242,9 +476,53 @@ export const zhongdi: WorldCard = {
         { id: 'qian_zhaipu', title: '一笔还不清的债', description: '为治病、为安家、为打点押上过钱，利钱比本金长得快。有人劝你走一条快点来钱的路，你还没答应。', resourceBonus: { qian: 1 }, startingItems: ['item_jieju'] },
         { id: 'qian_wupian', title: '档案上一个污点', description: '一次违纪、一次旷工、一次说错的话，被记在纸上。它不致命，但它会在每一次该你升的时候出现。', resourceBonus: { dang: 1 }, startingItems: ['item_chufenjueding'] },
         { id: 'qian_lianshu', title: '一本不该在你手上的书', description: '手抄本、油印译作、被查禁的旧小说。你读过一半，藏了三年，知道它值多少钱，也知道它值多少条命。', attributeBonus: { xue: 1 }, startingItems: ['item_shouchaoben'] },
-        { id: 'qian_xiangmin', title: '一个不该被查的人', description: '同乡、旧邻居、或替你家里办过事的人，如今在政治安全总局的名单上。你知道他大概冤枉，也知道替他说话要付什么。', attributeBonus: { shi: 1 }, startingItems: ['item_miyouxin'] },
-        { id: 'qian_biaoxian', title: '一个还没兑现的承诺', description: '你答应过谁一件事：把孩子送进重点学校、把骨灰送回老家、把那笔抚恤金讨回来。承诺不大，但压着你的话头。', attributeBonus: { ming: 1 }, startingItems: ['item_chengnuoshu'] },
-        { id: 'qian_yuanfang', title: '南洋或美洲的亲人', description: '家里有人下过南洋、去过旧金山，偶尔有侨报与汇款回来。帝国的宣传说他们都是帝国的后盾，你们自己不太确定。', resourceBonus: { qian: 1 }, startingItems: ['item_qiaopi'] },
+        {
+          id: 'qian_xiangmin',
+          title: '一个不该被查的人',
+          description: '同乡、旧邻居、或替你家里办过事的人，如今在某份名单上。你知道他大概冤枉，也知道替他说话要付什么。',
+          attributeBonus: { shi: 1 },
+          startingItems: ['item_miyouxin'],
+        },
+        {
+          id: 'qian_biaoxian',
+          title: '一个还没兑现的承诺',
+          description: '你答应过谁一件事：把孩子送进重点学校、把骨灰送回老家、把那笔抚恤金讨回来。承诺不大，但压着你的话头。',
+          attributeBonus: { ming: 1 },
+          startingItems: ['item_chengnuoshu'],
+        },
+        {
+          id: 'qian_yuanfang',
+          title: '远在海外的亲人',
+          description: '家里有人早年去了海外，偶尔有侨报与汇款回来。宣传说他们都是后盾，你们自己不太确定。',
+          resourceBonus: { qian: 1 },
+          startingItems: ['item_qiaopi'],
+        },
+        {
+          /*
+            ── 「我自己写」── 同上，槽位最后一项。
+            加成算法（第九轮规格：整套照抄一个典型预设项）：
+              ① 本槽 9 个预设项的 attributeBonus 属性总和：
+                 qian_fumu 0、qian_qizi 0、qian_zhanshi 1、qian_zhaipu 0、
+                 qian_wupian 0、qian_lianshu 1、qian_xiangmin 1、
+                 qian_biaoxian 1、qian_yuanfang 0。
+              ② 按总和稳定升序（同分保持声明顺序），第 1~9 项：
+                 fumu(0)、qizi(0)、zhaipu(0)、wupian(0)、**yuanfang(0)**、
+                 zhanshi(1)、lianshu(1)、xiangmin(1)、biaoxian(1)。
+              ③ 9 项为奇数，取正中间第 5 项 =「远在海外的亲人」
+                 （qian_yuanfang），属性总和 **0** —— 整套照抄它：
+                 它没有 attributeBonus，本项也不凭空添一笔；resourceBonus
+                 只有龙币 1 点。本槽多数预设项（5 个）属性都是 0，
+                 照抄中位项即"不亏不赚"，不是刻意压低。
+            随身物：本槽 9 件各出现 1 次并列，"谁都用得上"的两件取
+            汇款单存根与一纸承诺。
+          */
+          id: 'qian_custom',
+          title: '我自己写',
+          description: '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          resourceBonus: { qian: 1 },
+          startingItems: ['item_huikuandan', 'item_chengnuoshu'],
+        },
       ],
     },
   ],
@@ -313,27 +591,26 @@ export const zhongdi: WorldCard = {
   story: {
     openerSlot: '来路',
     openingSeeds: {
-      lu_guanyuan: `你在衙门的办公桌前坐下来，第一件事是把昨天那份签呈从抽屉里拿出来，确认自己有没有把它放错格。窗外的有轨电车刚过去一班，办公桌上那只黑色的公文皮包搭扣磨得发亮。今天要办的事有三件：一份跨省调拨的报表要在中午前送到隔壁科室，一位同乡来问他的身份牌补办进度，还有一封署了真实姓名、按规矩该由枢密院机要局筛选分类的奏陈信函，被人从收发室转到了你手上。
+      lu_guanyuan: `你在衙门的办公桌前坐下来，第一件事是把昨天那份签呈从抽屉里拿出来，确认自己有没有把它放错格。窗外的有轨电车刚过去一班，办公桌上那只黑色的公文皮包搭扣磨得发亮。今天要办的事有三件：一份跨省调拨的报表要在中午前送到隔壁科室，一位同乡来问他的身份牌补办进度，还有一封署了真实姓名、按规矩该由上一层筛选分类的奏陈信函，被人从收发室转到了你手上。
 
 你在这间屋子里已经坐了几年，知道什么时候该把手上的公文压在下面等一等，也知道一份报表上多写一位数字会让哪个部门的人在冬天多跑一趟。走廊尽头那间屋子的门一直关着，门口没有人，但经过的人都走快半步。这一天不会有人来救你，也不会有人来害你——只是等下午下班时，你会发现自己面前多了一个必须作出判断的位置，而那个位置没有说明书。`,
-      lu_junguan: `天还没亮，营区里的哨声已经响过头一遍。你穿着那件被雪水浸过又冻硬的军大衣走到操场边，看第二连的兵按队列站位——靴底镶的钢片踩在冻土上，声音整齐得像打桩机。昨晚营部的电报说，上个月那批新到的玄二式里有两支准星偏了，今天要拉去靶场校枪；另外，军区来的检查组这周会到，检查的重点是内务、装备和政治学习记录，三样一样都不能少。
+      lu_junguan: `天还没亮，营区里的哨声已经响过头一遍。你穿着那件被雪水浸过又冻硬的军大衣走到操场边，看第二连的兵按队列站位——靴底镶的钢片踩在冻土上，声音整齐得像打桩机。昨晚营部的电报说，上个月那批新到的步枪里有两支准星偏了，今天要拉去靶场校枪；另外，上面来的检查组这周会到，检查的重点是内务、装备和政治学习记录，三样一样都不能少。
 
-几个老兵在灶房外抽烟，见你过来把烟掐了。有个兵的手上缠着纱布——上周夜训时从障碍墙上掉下来，军医说骨头没事。你想的却是另一件事：连里那位平时话最少的上等兵，昨天被政治安全总局来的人叫去谈过一次话，谈完他自己回来了，什么也没说。今天你还是得带兵出操、还是得批他的假条，只是你会多看他一眼。`,
+几个老兵在灶房外抽烟，见你过来把烟掐了。有个兵的手上缠着纱布——上周夜训时从障碍墙上掉下来，军医说骨头没事。你想的却是另一件事：连里那位平时话最少的上等兵，昨天被两个戴深红袖标的人叫去谈过一次话，谈完他自己回来了，什么也没说。今天你还是得带兵出操、还是得批他的假条，只是你会多看他一眼。`,
       lu_gongren: `三班倒的汽笛在清晨五点半响，你从工人新村的公寓楼里出来，楼道里全是同样的煤灰味。食堂的窗口已经排起队，一勺玉米糊、两个馒头、一小碟腌菜，热气把玻璃糊成白的。你今天要上的那台机床昨天下午出现过一次异常振动，工段长让你上午先空转观察一小时再说，可你心里清楚，那台床子的主轴轴承已经撑不了多久——报修单交上去要过三道手，最快也得等到下周。
 
 车间墙上的红点考核表贴在最显眼的位置，你所在的班组这一季排第二。中午吃饭时有人会聊起配给的冷冻猪肉那股冷库铁腥味，也会有人压低声音讲矿上又出了事故。下班之后，宣传队要在食堂放一场新闻片，讲帝国建设成就。你会去看，多半不是因为想看。`,
-      lu_jiaoshu: `早自习的钟响之前，你就站在教室后门看学生的坐姿。十年义务教育里，你教的是《帝国国文》，课本第一册的第一课只有三行字，你带过七届学生，念过七遍。今天要讲的是高年级的议论文，题目是《论清帝国为何必然衰亡》——这个题目的答案是固定的，你要做的是让学生自己“发现”它，而不是背下来。
+      lu_jiaoshu: `早自习的钟响之前，你就站在教室后门看学生的坐姿。十年义务教育里，你教的是《帝国国文》，课本第一册的第一课只有三行字，你带过七届学生，念过七遍。今天要讲的是高年级的议论文，题目是《论旧朝为何必然衰亡》——这个题目的答案是固定的，你要做的是让学生自己“发现”它，而不是背下来。
 
-课间有个女孩来问你，她哥哥今年没考上技术学院，能不能托关系再考一次；另一个男孩把作业交上来之前，先把自己的名字写在封面上，写得很用力。中午你要填一沓学生政治表现评语表，每一张都要落笔，每一个词都会跟着这些孩子很多年。下午校务会议宣布，年底的教学检查提前了。`,
-      lu_qiaomin: `你在归化接待站领到身份牌那天，天正在下小雪。安家费是按条子去银行取的，比你想的多，也比你想的薄。分给你的地块在垦殖区的边上，五年免租，五年以后的土地税写在证书背面。头一年冬天，你住的土坯房里烧的是国家借给你的煤，口粮也是借的，账记在一张需要按手印的纸上。
+课间有个女孩来问你，她哥哥今年没考上技术学院，能不能托关系再考一次；另一个男孩把作业交上来之前，先把自己的名字写在封面上，写得很用力。中午你要填一沓学生政治表现评语表，每一张都要落笔，每一个词都会跟着这些孩子很多年。下午校务会议宣布，年底的教学检查提前了。
+
+另一条路在街道上那间黑色砖房里。炉子刚生着，你把诵读会的册子摊在桌上，等第一批来的人——阅读室、告解室、集体活动厅和福利发放窗口都归这间屋子管，辖区里三百多户人家的事都从这里过一道手：谁家的孩子到了入学年龄，谁家老人病了，谁家上个月没来参加集体活动，谁家领了肉票没有道谢。今天上午有一场思想告白要接待，来的是个在矿区干了半辈子的老人，他大概会说家里的事，也可能说些别的；下午要发放节庆肉票，名单按家庭的政治表现积分排；傍晚还有一个教无线电装配的兴趣小组。两边待久了都会发现，有些人的苦恼是真的，有些人的积极也是真的——而你手里那本记录册，是这院里唯一会把这些都写下来的地方。`,
+      lu_qiaomin: `你在移民接待站领到身份牌那天，天正在下小雪。安家费是按条子去银行取的，比你想的多，也比你想的薄。分给你的地块在垦殖区的边上，五年免租，五年以后的土地税写在证书背面。头一年冬天，你住的土坯房里烧的是国家借给你的煤，口粮也是借的，账记在一张需要按手印的纸上。
 
 同村的人一半是从关内来的，口音各不相同。有人已经在盘算明年种什么，有人在打听能不能把妻儿也接过来，还有人悄悄告诉你，村东头那户人家其实是从界河那一边夜里过来的，档案上写的是另一种来路。今天你要去乡公所办一件事：把那张家书寄出去，同时确认一下自己的户籍登记有没有写错一个字——在帝国，一个字写错，日后可能要用三趟路和两个人情来换。`,
-      lu_guojiao: `国教服务中心的炉子刚生着，你把诵读会的册子摊在桌上，等第一批来的人。这间黑色砖房里有阅读室、告解室、集体活动厅和福利发放窗口，辖区里三百多户人家的事都从这里过一道手：谁家的孩子到了入学年龄，谁家老人病了，谁家上个月没来参加集体活动，谁家领了肉票没有道谢。
-
-今天上午有一场思想告白要接待，来的是个在矿区干了半辈子的老人，他大概会说家里的事，也可能说些别的。下午要发放节庆肉票，发放名单按家庭的政治表现积分排。傍晚还有一个兴趣小组，教无线电装配。你在这间屋子里待久了，会发现有些人的苦恼是真的，有些人的积极也是真的——而你手里那本记录册，是全院唯一会把这些都写下来的地方。`,
       lu_zhencha: `你站在街口的岗亭旁边，风从建筑物之间的夹道里穿过来。早晨的第一件事是查牌：拦住任何一个看着不像这条街上的人，请他出示国民身份牌，核对编号与相貌，然后放行或者带去派出所。这条街上的粮店、当铺、茶馆、澡堂你都知道，哪家门后面有一间屋子是不该有的，你大概也猜得到。
 
-今天派出所里的人手比往常少，因为一半的人被抽去做另一件事——听说西边那个区的工厂前天出了点乱子，具体是什么，署长没说。中午会有人来告状，可能是邻里纠纷，可能是丢了东西，也可能是一桩你处理不了的案子。你手里那根包铁的黑木警棍，大多数时候只是拿着；但只要有一次真用上，写检查报告的就是你自己。`,
+今天派出所里的人手比往常少，因为一半的人被抽去做另一件事——听说西边那个区的工厂前天出了点乱子，具体是什么，上头没说。中午会有人来告状，可能是邻里纠纷，可能是丢了东西，也可能是一桩你处理不了的案子。你手里那根包铁的黑木警棍，大多数时候只是拿着；但只要有一次真用上，写检查报告的就是你自己。`,
       lu_shangren: `天没亮你就得出门。货车队的马车要在城门开之前排好队，通行证上写的经营范围、路线与期限一个都不能错，错一处就得在关卡上耗掉半天。你押的是两车棉布与一箱机械零件，前者是配额内的，后者是“经审批的特殊货物”——审批文件在这只皮包的最里层，和另一样东西放在一起：一本记着“另一笔账”的账簿。
 
 路过黑市那条巷子时，你会认出门边一个人的站姿。你们之间从不多说话，只交换一两句听起来毫无意义的句子，然后各自走开。中午在客栈里，你会碰到一个自称是关外某商号外柜的人，谈的是一批货的价，也可能是在打听你认识谁。谈完之后，你得决定哪些写在账上，哪些不写。`,
@@ -342,7 +619,7 @@ export const zhongdi: WorldCard = {
 今天上午有个产妇，情况不太好，接生婆已经尽了力。中午卫生防疫站的人来通知，说隔壁县出现了几例疑似烈性传染病的病例，如果确诊，封锁会在二十四小时内下达：禁止一切人员进出，感染者送隔离医院，死者遗体在防疫人员监督下就地焚烧或深埋，接触者至少观察十四天。防疫站的人说完就走了，留下你一个人想那几句话。你知道那些措施是对的，也知道真到了那一步，你大概会是最后一个走出这扇门的人。`,
       lu_baowu: `夜里两点的值班室只有三种声音：电报机纸带的沙沙声、墙上那面铜边圆钟的滴答声，以及你自己翻密码本的动静。你面前摊着今晚的列车运行图，图上每一趟车都有编号、时刻和会让站。刚才西边某个区段发来一份电报，说有一列货运晚点四十分钟，原因没有写全。你需要把它记进值班日志，然后判断要不要上报调度处——报得太勤会被说成小题大做，报得太晚，明天上头的通报上就是你的名字。
 
-帝国的火车必须按分钟走。你在这张桌子前坐了几年，手指快、耳朵灵、坐得住，所以你没有出过大错。天亮之前，还有一份加密电报要译，收报方是旅顺口。译完之后你会发现，那几行字你看懂了，但最好当作没有看懂。`,
+帝国的火车必须按分钟走。你在这张桌子前坐了几年，手指快、耳朵灵、坐得住，所以你没有出过大错。天亮之前，还有一份加密电报要译，收报方是一个海军港口。译完之后你会发现，那几行字你看懂了，但最好当作没有看懂。`,
       lu_kuangong: `下井前你要在灯房领矿灯、在名单上按手印、把随身带的东西锁进柜子。巷道的高度大多不足一人直立，你得屈着腰走进去，到掌子面上用鹤嘴镐一下一下地刨，再把煤块装进柳条筐拖到竖井底部。今天这段巷道的顶板昨天下午渗过水，技术员看过后说“问题不大”，说这话时他站在离掌子面十米远的地方。
 
 同班的老周今天带来了两样东西：一包咸菜和一份写得歪歪扭扭的名单——他儿子今年该上学了，想请识字的人帮忙写一份入学用的东西。上个月隔壁矿出了事，矿上给每一位在井下流汗的矿工都发了一份印着“帝国随时准备为每一位在井下流血的矿工提供最好的抚恤”的传单。收工后你们会在澡堂里把煤灰洗掉，然后谈一会儿下个月的产量指标，谁也不谈那份传单。`,
@@ -379,33 +656,89 @@ export const zhongdi: WorldCard = {
     pov: 'third',
     tense: 'present',
     replyLength: 800,
-    customStyle: `【文风总纲】冷硬的档案体。叙述的语气不是小说家的语气，是一个办了多年公文的处室：先写时间与地点，再写依据与经手，最后才轮到人的反应。句子短，动词实，名词带编号与单位。帝国不靠气氛压迫人，它靠数字压迫人——一列晚点四十分钟的货运列车、一份密级为「绝密」的决议、一双手在雪地里冻伤过三根手指。不抒情，不替主角感慨，也不替读者解释；温度只从缝隙里漏出来：一个兵手上的纱布、一封被转错的信、传达室的老头还记得你姓什么。
+    customStyle: `中华帝国文书处　《叙事文稿处理规程》
+油印本　第○一七号　共四页　经办：文书处第二科　校：田庆余
+密级：内部·普通　　发放范围：各司处记录员、抄录员、派驻记者
+（本件油印，不得转抄、不得携出办公区。页边批注系阅件人手迹，不作为规程正文。）
 
-【可执行要求】
-一、先落地，再推进。每个场景开头三句之内必须出现具体的时辰、地点、天气或声音；主角的手上、桌上、口袋里要有具体物件（没盖完的章、半盒「玄夜」、一张待补办的身份牌回执）。城市有汽笛、电报与探照灯，乡村有火炕、灶灰与雪橇辙。
+第一条　格式
+1.1 每一份叙事文稿，起首须附一张字段卡。卡不完整者，退稿重填，不计工时。
+1.2 卡之七栏，自上而下依次为：
+拟稿：＿＿　事由：＿＿　密级：＿＿　经办：＿＿　会签：＿＿　归档号：＿＿　时限：＿＿
+1.3 七栏之义，见第二页填法。归档号由文书处统一编给，拟稿人不得自填。
 
-二、用确数说话。多少吨、多少里、多少元、几日、第几号令、哪个部门、几分几秒。凡涉及审查、配给、调动、征购、隔离、处分、抚恤，一律写出「按哪一条办、经谁的手、留什么记录」。数字要自洽可比：一名熟练工人月工资多少，一斤面粉多少，一趟车票多少，一次打点多少。
+第二条　落笔的次序
+2.1 先时间、地点、天气或声音，后依据与经手，最后才轮到人的反应。三句之内须见其一。
+2.2 手上、桌上、口袋里要有实件：一枚没盖完的章、半盒「玄夜」、一张待补办的身份牌回执。城里写汽笛、电报、探照灯；乡下写火炕、灶灰、雪橇辙。
+2.3 句宜短，动词宜实。名词须带编号、单位、序号：第几号令、几分几秒、几百吨、几十里。凡涉审查、配给、调动、征购、隔离、处分、抚恤，一律写明按哪一条办、经谁的手、留了什么记录。
+2.4 数字要自洽可比。一名熟练工人月工资二十五至四十元，一斤面粉、一趟车票、一次打点各是各的价；钱与期限，是帝国人最日常的两样焦虑。
+2.5 一人出场，先有活法，再有立场：他的差事、工资、要对平的那本账，须在动笔前定下。他发愁的是自己的日子，不是主角的行程。
+2.6 让制度自己说话。一张表格能把人从甲地调到乙地，一条记录能跟人一辈子。多写流程、文书名称、口径与口令，少写心里怎么想——公文的措辞、口号的语法、报纸的标题，本身就是人的处境。
+2.7 结尾留一个口子：一件事没办完、一个消息没听完、一个人还在等你回话。不替主角作决定，也不替他解释自己。
+2.8 时限分三等：常规三日，加急一日，特急半日。逾时不报的，按退稿计。
 
-三、专名一律用世界书里的真名：海参崴、前进首都北京、旅顺口、双十字铁路、玄二式、玄锋式、玄云式、龙币、龙洋、身份牌、国教服务中心、真理部、内务部、计划与资源委员会、政治监察官、铁内脏、鸿园、朝鲜专员辖区。不要自己发明与设定冲突的新机构或新器物。
+第三条　用词
+3.1 专名一律用现行称谓，不得自造：海参崴（勿作黑格勒，此系民间浑名）、前进首都北京、旅顺口、双十字铁路、玄二式、玄锋式、玄云式、龙币、国民身份牌、国教服务中心、真理部、内务部、国家计划与资源委员会、政治监察官、铁内脏、鸿园、朝鲜专员辖区。
+3.2 年月一律用公历。年号已废，不得出现「光绪」「宣统」一类字样；写「公历一九〇五年」，不写「陛下御极第若干年」。
+3.3 本规程附表所列词目，一律不得入稿。抄录员发现一处，划去并报科。
 
-四、让制度自己说话。帝国的恐惧是一种行政技术：一张表格能把一个人从甲地调到乙地，一次「记录」能跟着一个人一辈子。多写流程、文书名称、口径与口令，少写心理；公文的措辞、口号的语法、报纸的标题，本身就是人物的处境。
+　　　（此处原印一条，经请示后划去，另缀页边：
+　　　　「一稿之苦乐，须由记录者代为节制。」
+　　　重写为：）
+3.4 记录者不下评语。文稿内不得出现感叹、排比、替读者解释的旁白，也不得替在场的人认命、认亲、认罪。凡情绪，交给人物的动作、单据的栏目、旁人一句闲话。
 
-五、配角先有活法，再有立场。给每个出场的人一份差事、一份工资、一本要对平的账，然后才轮到他怎么想；让他为自己的日子发愁，而不是为主角的剧情服务。
+第四条　人称
+4.1 叙事一律用第三人称。
+4.2 文中不得出现第二人称的「你」。此为文书处历次退稿之首要，务请注意：文稿是给人读的，不是写给他自己的。
+4.3 不得命名式地替主角认亲：「他的上司」「他的同僚」「他的老长官」一类写法，一律退回。人物与关系须在当场依情境生成，不得由文稿预先指派。
+4.4 不得把主角写成受命于天的人。他不被预言，不被秘密组织看上，不背血统，不带使命；他的分量只从做过的事与付过的代价里出。
+4.5 刑讯、处决、封锁、清剿，照写，但要写出重量：谁下的令、按哪一条办、家属后来怎样、档案上留了什么。不得作快意的铺陈，也不得作博览式的陈列。
+4.6 一个人可以钻空子、可以替某一个人挪开半步，但不能凭一段对话叫这台机器停下。文书处的档案上，从来没有一份文稿改动过一条章程。
 
-六、温度只从缝隙里漏。一个兵手上的纱布、一封被转错的信、食堂里那股冷库铁腥味、收发室的人记得你的名字。这类细节一次只给一处，给两处就成煽情。
+　　　　　　　　　　　　　　　（页边手写：已阅。田　五月九日）
 
-七、每段结尾留一个可动的口子：一件事没办完、一个消息没听完、一个人还在等你回话。不要替主角做决定，也不要替他解释自己。
+——第二页——
 
-【禁止事项】
-一、不得出现任何超自然元素：没有异力、没有超常体能、没有预言灵验、没有起死回生。任何看似奇迹的事，事后都必须能还原为人力、技术、金钱、权力或运气。
-二、不得使用游戏化与网络化的措辞，例如系统、面板、经验值、技能点、属性点、任务、副本，一律不用。叙述不要用现代口语腔与网络梗。
-三、不得使用1905年不存在的技术、器物与词汇：塑料、抗生素、民航、更快的即时通讯、电子计算机、心理量表。计委用计算尺与手摇计算机，电报是最快的消息，报纸是最广的传播。
-四、不得替主角认亲：不写“你的上司”“你的同僚”“你的老长官”这类命名式关系，也不得凭空给主角安排一个单位里的固定小圈子。所有关系都在现场由情境生成。
-五、不得把主角写成“天选之人”。主角不被预言、不被秘密组织看上、不背负特殊血统或使命；他的价值只来自他做的事与付的代价。
-六、不得美化或展览暴力。刑讯、处决、封锁、清剿要写出重量与后果，不要写成爽快的战斗，也不要写成猎奇的展览。
-七、不得让主角轻易改写制度。个人可以钻空子、可以改变某个具体的人的处境，但制度不会被一段对话说服，也不会因为一个人的良心而停下。
+字段卡填法
+拟稿：写记录者本人职名与工号，勿写笔名。
+事由：一事一行。不得写「杂记」。
+密级：分「公开」「内部·普通」「内部·机密」「绝密」四等。写「绝密」者，只准一份，专人递送，阅后交回。
+经办：办这件事的人，写职名，不写姓字。
+会签：两个以上衙门的，须两家都签。谁不肯签，原样报上来，不要自己代签。
+归档号：留空，由文书处填。
+时限：照第二条第八项填。
+（另格）
+人物所见：此栏只填实件。手上、桌上、口袋里有什么，就写什么，不得写「他心里想」。
+场合口吻：此栏填一句此人在这一行的处境：他为什么在这里，他今天要办哪一件事，他的工资与要对平的账在谁手上。
 
-【可用句式】「按公历一九〇五年……」／「此事已呈报，等候批复。」／「回去等通知。」／「记录在案。」／「经手人某某，见证人某某，留档一份。」／「据不完全统计……」／「数字以计划与资源委员会的口径为准。」／「电报只有二十个字。」／「以中帝陛下之名。」／「档案上多一行，就少一条别的路。」段落短，多留白；一次回复推一到两个场景。`,
+　　　　附表一　不得入稿之词目
+（一）神异与奇迹：异力、异术、仙、妖、神通、预言、起死回生、超常体能。
+（二）游戏语：系统、面板、经验值、技能点、属性点、任务、副本。行文亦不得用时下通行于报章的电讯腔与市井噱语。
+（三）一九〇五年所无之物与所无之词：塑料、抗生素、民航、心理量表、无线电广播。最快的消息是电报，最广的传播是报纸。
+（四）事务上用计算尺与手摇计算机，不得写「电子」二字。
+凡看似奇迹之事，事后须能还原为人力、技术、金钱、权力或运气；还原不了，即属编造。
+
+　　　（页边手写：已阅，第二条第三项照旧。）
+　　　（页边手写，字迹不同：附表一第（二）项，去年退稿七件里有五件栽在这里。抄录员留意。）
+
+——第四页——
+
+处务会议纪要（摘）
+时间：公历一九〇五年五月八日下午四时
+地点：文书处第二科西屋
+出席：科长、田庆余、抄录员四人
+记录：第二科科员
+
+一、科长说：最近各处报上来的文稿，公文体裁大致是对的，毛病在两处。一处是把话说满，替读的人把话都说完了；一处是数字对不上，前页写二十五元，后页写三十元。数字对不上，读的人会去查别的东西。
+
+二、田庆余说：温度可以从缝隙里漏一次，两次以上就成煽情。一个兵手上的纱布，一封被转错的信，传达室的老头还记得你姓什么——这类东西给一处就够。
+　　又：举例只准用真事。抚顺、本溪、鹤岗、阜新的煤，旅顺口的船台，哈尔滨的调度室，都写过。电报只有二十个字，一份密级为「绝密」的决议可以决定一个大队的去向——这些当例子用，比形容词管用。
+
+三、关于主角。可以什么都不做。粮价会随秋收涨落，铁路按时刻表开，报纸天天印，衙门天天开门；季节会换，认识的人会升迁、会调走、会在某一年突然不在了。不得催他表态，不得让配角反复来问「你打算怎么办」，也不得强行给他安排一件事。
+　　允许他只当一个普通人：一名报务员、一个粮店售货员、一户垦殖农民、一个国教辅导员、一个技术学院的学徒。上述身份本身即足以支撑长篇，不必再加别的。
+　　每一次落笔，须替这份文稿留下它该留的痕迹：档案上多一行，或者少一行。
+
+（末行铅笔字：规程第三条经科长批，第四页第（三）项由田庆余改写。原第三页作「须使记录者代为节制一稿之苦乐」，措辞不清，废。）`,
   },
   characters: [
     char({

@@ -1108,16 +1108,16 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
       options: [
         {
           id: 'bg_origin_core',
-          title: '核心区眷属',
+          title: '在最上面那几层长大',
           description:
-            '长在最高处，见惯了不用排队的生活。路走得顺，但每一步都有人替你记着。',
+            '见惯了不用排队的生活。路走得顺，但每一步都有人替你记着。',
           attributeBonus: { might: 0, wits: 1, charm: 2, nerve: 0, access: 2 },
           resourceBonus: { health: 0, energy: 0, credit: 4200, standing: 30 },
           startingItems: ['item_workbadge', 'item_personal_terminal', 'item_coverall', 'item_nano_patch'],
         },
         {
           id: 'bg_origin_deep_tech',
-          title: '深层技术家庭',
+          title: '家里两代人都靠图纸吃饭',
           description:
             '图纸、参数表与批号是你的母语。你会看曲线，也知道哪一页被换过。',
           attributeBonus: { might: 0, wits: 2, charm: 0, nerve: 1, access: 1 },
@@ -1126,25 +1126,25 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
         },
         {
           id: 'bg_origin_mid_admin',
-          title: '中层行政家庭',
+          title: '家里两口子都坐办公桌',
           description:
-            '中层双职工家里长大，懂流程、会写公文，最怕审计抽样与档案缺号。',
+            '双职工家里长大，懂流程、会写公文，最怕审计抽样与档案缺号。',
           attributeBonus: { might: 0, wits: 1, charm: 2, nerve: 1, access: 0 },
           resourceBonus: { health: 0, energy: 0, credit: 900, standing: 14 },
           startingItems: ['item_workbadge', 'item_personal_terminal', 'item_paper_ledger', 'item_coverall'],
         },
         {
           id: 'bg_origin_industrial',
-          title: '浅层重工业家庭',
+          title: '家里几代人都靠炉子吃饭',
           description:
-            '在粉尘与高炉边长大。认编号、认师傅、认班次，也认得"工序性死亡"这四个字。',
+            '在粉尘与高炉边长大，认编号、认师傅、认班次，也认得"工序性死亡"这四个字。',
           attributeBonus: { might: 2, wits: 0, charm: 1, nerve: 1, access: 0 },
           resourceBonus: { health: 5, energy: 5, credit: 260, standing: 4 },
           startingItems: ['item_workbadge', 'item_steel_boots', 'item_dust_mask', 'item_ear_plugs', 'item_coverall'],
         },
         {
           id: 'bg_origin_farm',
-          title: '浅层农场家庭',
+          title: '在灯板与藻池边上长大',
           description:
             '红蓝光下长大的孩子，会看水温与秧苗。家里还有一个没有号的手足。',
           attributeBonus: { might: 1, wits: 1, charm: 1, nerve: 1, access: 0 },
@@ -1153,7 +1153,7 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
         },
         {
           id: 'bg_origin_unregistered',
-          title: '无号者',
+          title: '一直没被登记上的人',
           description:
             '没有出生登记，因此没有号。熟悉所有不刷牌的路，也随时可能被清走。',
           attributeBonus: { might: 1, wits: 2, charm: 0, nerve: 2, access: -1 },
@@ -1162,39 +1162,65 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
         },
         {
           id: 'bg_origin_collector_family',
-          title: '采集队家属',
+          title: '家里有人常年往地表去',
           description:
-            '家里有人在采集队。住房优先，配给里偶尔有真东西；墙上的名单只有两种记号。',
+            '住房优先，配给里偶尔有真东西；墙上的名单只有两种记号，一种是在的，一种是划掉的。',
           attributeBonus: { might: 1, wits: 0, charm: 1, nerve: 2, access: 0 },
           resourceBonus: { health: 5, energy: 0, credit: 520, standing: 6 },
           startingItems: ['item_workbadge', 'item_rebreather', 'item_geiger_counter', 'item_mourn_stub'],
         },
         {
           id: 'bg_origin_retired',
-          title: '退役者',
+          title: '因伤被调离原岗的人',
           description:
-            '伤残后被调离原岗，档案里带着处置记录。懂流程，也没什么可失去的。',
+            '档案里带着一条处置记录，走动时总有人多看一眼。懂流程，也没什么可失去的。',
           attributeBonus: { might: 0, wits: 1, charm: 1, nerve: 2, access: -1 },
           resourceBonus: { health: -10, energy: -5, credit: 150, standing: 1 },
           startingItems: ['item_workbadge', 'item_sedative_ampoule', 'item_nano_patch', 'item_ear_plugs'],
         },
         {
           id: 'bg_origin_commuter',
-          title: '跨层通勤者',
+          title: '每天跨层上下工的人',
           description:
-            '每天跨层上下工，一年一审的通勤许可比工资更要紧。时间都花在路上。',
+            '一年一审的通勤许可比工资更要紧，时间都花在路上，每一趟都要过闸机。',
           attributeBonus: { might: 1, wits: 1, charm: 0, nerve: 1, access: 1 },
           resourceBonus: { health: 0, energy: -5, credit: 380, standing: 5 },
           startingItems: ['item_workbadge', 'item_credit_chip', 'item_shift_chit', 'item_coverall'],
         },
         {
           id: 'bg_origin_deepchurch',
-          title: '深地教会家庭',
+          title: '家里有人靠抄数吃饭',
           description:
-            '读数人的家属。会抄数、会看曲线，相信这座城有偏好，也因此在公告栏的角落里过日子。',
+            '会抄数、会看曲线，相信这座城有偏好，也因此在公告栏的角落里过日子。',
           attributeBonus: { might: 0, wits: 2, charm: 1, nerve: 1, access: 0 },
           resourceBonus: { health: 0, energy: 0, credit: 240, standing: 4 },
           startingItems: ['item_workbadge', 'item_paper_ledger', 'item_wired_phone', 'item_algae_brick'],
+        },
+        {
+          /*
+            「我自己写」—— 本槽（出身层）的自填入口。
+            玩家写在文本框里的那段话会原样取代本项的 title 与 description 进提示词。
+
+            加成取本槽 10 个预设项的**中位值**（偶数项取中间两项的平均、四舍五入）：
+              might  [0,0,0,2,1,1,1,0,1,0] → (0+1)/2 = 0.5 → 1
+              wits   [1,2,1,0,1,2,0,1,1,2] → (1+1)/2 = 1
+              charm  [2,0,2,1,1,0,1,1,0,1] → (1+1)/2 = 1
+              nerve  [0,1,1,1,1,2,2,2,1,1] → (1+1)/2 = 1
+              access [2,1,0,0,0,-1,0,-1,1,0] → (0+0)/2 = 0
+              health [0,0,0,5,5,-5,5,-10,0,0] → (0+0)/2 = 0
+              energy [0,5,0,5,0,0,0,-5,-5,0] → (0+0)/2 = 0
+              credit [4200,1600,900,260,200,40,520,150,380,240] → (260+380)/2 = 320
+              standing [30,18,14,4,3,0,6,1,5,4] → (4+5)/2 = 4.5 → 5
+            物品取本槽出现次数最多的通用物：工牌 8 次、灰色工装 5 次、个人终端 3 次。
+          */
+          id: 'bg_origin_custom',
+          title: '我自己写',
+          description:
+            '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { might: 1, wits: 1, charm: 1, nerve: 1, access: 0 },
+          resourceBonus: { health: 0, energy: 0, credit: 320, standing: 5 },
+          startingItems: ['item_workbadge', 'item_coverall', 'item_personal_terminal'],
         },
       ],
     },
@@ -1205,7 +1231,7 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
       options: [
         {
           id: 'bg_faith_efficiency',
-          title: '效率派',
+          title: '认这套规矩，而且觉得它还算讲理',
           description:
             '信"整体最优"。能背出折算表里的关键数字，只报数、不讲感情。',
           attributeBonus: { might: 0, wits: 3, charm: 0, nerve: 1, access: 1 },
@@ -1214,16 +1240,16 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
         },
         {
           id: 'bg_faith_oldworld',
-          title: '旧世怀念者',
+          title: '总觉得地表那时候更好',
           description:
-            '收集地表时代的旧物，每月交换一次，清单烧掉。你不敢回答自己那句问话。',
+            '收集地表时代的旧物，每月交换一次，清单烧掉。不敢回答自己那句问话。',
           attributeBonus: { might: 0, wits: 1, charm: 2, nerve: 1, access: 0 },
           resourceBonus: { health: 0, energy: 0, credit: 300, standing: -2 },
           startingItems: ['item_workbadge', 'item_coded_note', 'item_credit_chip', 'item_coffee_token'],
         },
         {
           id: 'bg_faith_deepchurch',
-          title: '深地教会信众',
+          title: '信点什么，但说不清信的是哪个',
           description:
             '抄数、贴纸条，相信这座城有偏好。靠抄表在公告栏前站着换消息。',
           attributeBonus: { might: 0, wits: 2, charm: 1, nerve: 2, access: 0 },
@@ -1232,25 +1258,25 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
         },
         {
           id: 'bg_faith_mutual',
-          title: '工段互助会的人',
+          title: '找几个人一起扛，比一个人强',
           description:
-            '信班组里的人得互相把后事办完。治安站当你是缓冲垫，监察部当你是组织者。',
+            '信班组里的人得互相把后事办完。管治安的当你是缓冲垫，查案的当你是组织者。',
           attributeBonus: { might: 1, wits: 1, charm: 3, nerve: 2, access: 0 },
           resourceBonus: { health: 0, energy: -5, credit: 240, standing: 5 },
           startingItems: ['item_workbadge', 'item_mourn_stub', 'item_paper_ledger', 'item_ration_stub'],
         },
         {
           id: 'bg_faith_returnto',
-          title: '归地派',
+          title: '觉得这里从根上烂了，该塌',
           description:
-            '读过《层线》，相信往下走是自救。合规，却让"往上走"那一套说法变得可疑。',
+            '读过一些不该读的东西，相信往下走是自救。合规，却让"往上走"那一套说法变得可疑。',
           attributeBonus: { might: 1, wits: 2, charm: 0, nerve: 3, access: 0 },
           resourceBonus: { health: 0, energy: 0, credit: 180, standing: -5 },
           startingItems: ['item_workbadge', 'item_coded_note', 'item_personal_terminal', 'item_coverall'],
         },
         {
           id: 'bg_faith_quota',
-          title: '配额派',
+          title: '该分的东西，凭什么由他们说了算',
           description:
             '为配额说话，只报中签率：8%、21%、60%。一个孩子在册，一个不在。',
           attributeBonus: { might: 0, wits: 1, charm: 3, nerve: 2, access: 0 },
@@ -1259,25 +1285,25 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
         },
         {
           id: 'bg_faith_seal',
-          title: '合闸派',
+          title: '有些事宁可停一停，也别硬来',
           description:
-            '主张封死地表入口，理由是粉尘与检疫。你自己的配给里有一小份来自外面。',
+            '主张封死往地表去的入口，理由是粉尘与检疫。自己的配给里有一小份来自外面。',
           attributeBonus: { might: 1, wits: 2, charm: 1, nerve: 1, access: 1 },
           resourceBonus: { health: 0, energy: 0, credit: 420, standing: 8 },
           startingItems: ['item_workbadge', 'item_personal_terminal', 'item_dust_mask', 'item_paper_ledger'],
         },
         {
           id: 'bg_faith_line4',
-          title: '四号线派',
+          title: '有些人的死，不该就这么算了',
           description:
-            '相信 V-4 没有真的被封死，手上只有一个坐标。涉四号线，处置没有中间环节。',
+            '相信有一条图纸上标着"预留"的竖井没有真的封死，手上只有一个坐标。沾上这件事，处置没有中间环节。',
           attributeBonus: { might: 1, wits: 2, charm: 1, nerve: 3, access: 0 },
           resourceBonus: { health: 0, energy: 0, credit: 120, standing: -8 },
           startingItems: ['item_pipe_map', 'item_coded_note', 'item_workbadge', 'item_white_gloves'],
         },
         {
           id: 'bg_faith_doubter',
-          title: '怀疑一切的人',
+          title: '谁的话我都不全信',
           description:
             '不信任何一派，只信两个以上来源。最擅长看出一份正常文件里哪一页被换过。',
           attributeBonus: { might: 0, wits: 3, charm: 0, nerve: 2, access: 1 },
@@ -1286,12 +1312,39 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
         },
         {
           id: 'bg_faith_survivor',
-          title: '什么都不信，只想活着',
+          title: '只想把日子过下去，别的不管',
           description:
-            '只求三件事：配给领足、住房保住、母亲的排期往前挪。别的都不问。',
+            '只求三件事：配给领足、住房保住、家里人的门诊排期往前挪。别的都不问。',
           attributeBonus: { might: 1, wits: 1, charm: 1, nerve: 2, access: 0 },
           resourceBonus: { health: 0, energy: 0, credit: 280, standing: 2 },
           startingItems: ['item_workbadge', 'item_ration_stub', 'item_algae_brick', 'item_credit_chip'],
+        },
+        {
+          /*
+            「我自己写」—— 本槽（立场）的自填入口。
+            玩家写在文本框里的那段话会原样取代本项的 title 与 description 进提示词。
+
+            加成取本槽 10 个预设项的**中位值**（偶数项取中间两项的平均、四舍五入）：
+              might  [0,0,0,1,1,0,1,1,0,1] → (0+1)/2 = 0.5 → 1
+              wits   [3,1,2,1,2,1,2,2,3,1] → (1+2)/2 = 1.5 → 2
+              charm  [0,2,1,3,0,3,1,1,0,1] → (1+1)/2 = 1
+              nerve  [1,1,2,2,3,2,1,3,2,2] → (2+2)/2 = 2
+              access [1,0,0,0,0,0,1,0,1,0] → (0+0)/2 = 0
+              health [0,0,0,0,0,0,0,0,0,0] → 0
+              energy [0,0,0,-5,0,-5,0,0,0,0] → (0+0)/2 = 0
+              credit [320,300,220,240,180,160,420,120,380,280] → (240+280)/2 = 260
+              standing [9,-2,3,5,-5,-4,8,-8,2,2] → (2+2)/2 = 2
+            物品取本槽出现次数最多的通用物：工牌 9 次、纸质账簿 6 次、配给券存根 3 次
+            （与加密便笺、个人终端并列 3 次，挑最通用的一件）。
+          */
+          id: 'bg_faith_custom',
+          title: '我自己写',
+          description:
+            '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { might: 1, wits: 2, charm: 1, nerve: 2, access: 0 },
+          resourceBonus: { health: 0, energy: 0, credit: 260, standing: 2 },
+          startingItems: ['item_workbadge', 'item_paper_ledger', 'item_ration_stub'],
         },
       ],
     },
@@ -1299,148 +1352,127 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
       label: '开局处境',
       options: [
         {
-          id: 'bg_scene_office',
-          title: '在行政与审批线上做事',
+          id: 'bg_scene_desk',
+          title: '在案头办文件、做记录',
           description:
-            '坐在办公室里签文件、归档名册的人。能退回材料、能让一件事再等十一天，但上面还有两层人能推翻你。',
+            '签文件、归档名册、退回材料，配给与住房的表也从手边过；另一头是问话与抄录，答话要一字不落抄下来。能让人多等十一天，自己的笔迹也要交上去。',
+          // 合并自原「在行政与审批线上做事」「在配给点与账目上做事」「在监察系统里做事」三项；
+          // 数值取三项各自的中位（might 0 / wits 2 / charm 1 / nerve 1 / access 1；
+          // health 0 / energy 0 / credit 540 / standing 8）
           attributeBonus: { might: 0, wits: 2, charm: 1, nerve: 1, access: 1 },
-          resourceBonus: { health: 0, energy: 0, credit: 600, standing: 8 },
-          startingItems: ['item_workbadge', 'item_personal_terminal', 'item_paper_ledger', 'item_credit_chip'],
+          resourceBonus: { health: 0, energy: 0, credit: 540, standing: 8 },
+          startingItems: ['item_workbadge', 'item_personal_terminal', 'item_paper_ledger', 'item_ration_stub'],
         },
         {
-          id: 'bg_scene_industry',
-          title: '在车间与管廊之间上工',
+          id: 'bg_scene_craft',
+          title: '靠一门手艺在机器边上吃饭',
           description:
-            '在高温、粉尘与机器噪音里上工，或者钻进一米一内径的通风道。配给比办公室多，命比办公室短。',
-          attributeBonus: { might: 2, wits: 1, charm: 0, nerve: 1, access: 0 },
-          resourceBonus: { health: 5, energy: 5, credit: 260, standing: 3 },
-          startingItems: ['item_workbadge', 'item_steel_boots', 'item_dust_mask', 'item_ear_plugs'],
-        },
-        {
-          id: 'bg_scene_service',
-          title: '在配给点与账目上做事',
-          description:
-            '所有人的吃、住、看病与每一笔配给都从你桌前过。你的笔能让人少领 140 千卡，也能让他明天再来。',
-          attributeBonus: { might: 0, wits: 1, charm: 2, nerve: 1, access: 1 },
-          resourceBonus: { health: 0, energy: 0, credit: 340, standing: 6 },
-          startingItems: ['item_workbadge', 'item_paper_ledger', 'item_ration_stub', 'item_wired_phone'],
-        },
-        {
-          id: 'bg_scene_discipline',
-          title: '在监察系统里做事',
-          description:
-            '跑腿与记录。你能把话抄下来、让人多隔离二十天，也得把自己的笔迹交上去。',
-          attributeBonus: { might: 1, wits: 2, charm: 1, nerve: 2, access: 2 },
-          resourceBonus: { health: 0, energy: 0, credit: 540, standing: 12 },
-          startingItems: ['item_workbadge', 'item_personal_terminal', 'item_coded_note', 'item_wire_recorder'],
+            '高温、粉尘与低频噪音，一班十二小时；也有人钻进一米一内径、四十度的通风道，或者蹲在角落的台子前修旧机器、改不合规格的零件。配给比办公室多，命比办公室短。',
+          // 合并自原「在车间与管廊之间上工」「在角落里做手艺」两项；
+          // 数值取两项各自的中位（might 2 / wits 2 / charm 1 / nerve 1 / access 0；
+          // health 3 / energy 3 / credit 280 / standing 4）
+          attributeBonus: { might: 2, wits: 2, charm: 1, nerve: 1, access: 0 },
+          resourceBonus: { health: 3, energy: 3, credit: 280, standing: 4 },
+          startingItems: ['item_workbadge', 'item_steel_boots', 'item_dust_mask', 'item_crt_terminal'],
         },
         {
           id: 'bg_scene_farm',
-          title: '在农场与藻池种吃的',
+          title: '在灯板与水池边种吃的',
           description:
-            '种吃的、养氧气的人。饿不着，看东西偏黄；藻池一减产，全渊的价三天内就变。',
+            '种吃的、养氧气的人。饿不着，看东西偏黄；这里的收成一减产，价钱三天内就会变。',
           attributeBonus: { might: 1, wits: 1, charm: 1, nerve: 1, access: 0 },
           resourceBonus: { health: 5, energy: 0, credit: 180, standing: 3 },
           startingItems: ['item_workbadge', 'item_led_panel', 'item_algae_brick', 'item_coverall'],
         },
         {
-          id: 'bg_scene_scavenger',
-          title: '在爬梯与夹层之间讨生活',
+          id: 'bg_scene_underworld',
+          title: '在没有编号的路上和台面下讨生活',
           description:
-            '走不刷牌的路替人带东西。没有考勤表能记你，也没有任何一张名单会保你。',
-          attributeBonus: { might: 2, wits: 2, charm: 1, nerve: 2, access: -1 },
-          resourceBonus: { health: -5, energy: 0, credit: 90, standing: 0 },
-          startingItems: ['item_pipe_map', 'item_grey_pass', 'item_coded_note', 'item_white_gloves'],
-        },
-        {
-          id: 'bg_scene_market',
-          title: '在黑市与掮客线上做买卖',
-          description:
-            '在市场的阴影里做买卖：铝、药、真食物、班次、消息。抽成固定，风险按人头算。',
-          attributeBonus: { might: 0, wits: 2, charm: 2, nerve: 1, access: 1 },
-          resourceBonus: { health: 0, energy: 0, credit: 1200, standing: -6 },
-          startingItems: ['item_coffee_token', 'item_credit_chip', 'item_contraband_cigarette', 'item_shift_chit'],
+            '爬梯、通风管、夹层，替人捎信、捎药、捎一件过不了闸机的东西；或者在市场的阴影里做买卖，等价物是铝件、药品、真食物、班次与消息。没有考勤表能记你，也没有一张名单会保你。',
+          // 合并自原「在爬梯与夹层之间讨生活」「在黑市与掮客线上做买卖」两项；
+          // 数值取两项各自的中位（might 1 / wits 2 / charm 2 / nerve 2 / access 0；
+          // health -2 / energy 0 / credit 645 / standing -3）
+          attributeBonus: { might: 1, wits: 2, charm: 2, nerve: 2, access: 0 },
+          resourceBonus: { health: -2, energy: 0, credit: 645, standing: -3 },
+          startingItems: ['item_pipe_map', 'item_grey_pass', 'item_coded_note', 'item_credit_chip', 'item_contraband_cigarette'],
         },
         {
           id: 'bg_scene_surface',
-          title: '在采集队与地表通道之间当差',
+          title: '随队往地表去',
           description:
-            '穿三十四公斤的防护服往地表去。待遇好、伤亡率高，出站前要留一句"余额留给谁"。',
+            '穿三十四公斤的防护服出闸，检查装备、等窗口期，回来把东西交出去，然后什么也不问。待遇最好、伤亡率也最高，出站前要留一句"余额留给谁"。',
           attributeBonus: { might: 2, wits: 1, charm: 1, nerve: 2, access: 0 },
           resourceBonus: { health: 10, energy: 10, credit: 420, standing: 5 },
           startingItems: ['item_workbadge', 'item_rebreather', 'item_geiger_counter', 'item_lead_case'],
         },
         {
-          id: 'bg_scene_workshop',
-          title: '在角落里做手艺',
-          description:
-            '在有回音的角落里修东西、改东西、替人办事。别人不会的手艺就是你的位置。',
-          attributeBonus: { might: 1, wits: 2, charm: 1, nerve: 1, access: 0 },
-          resourceBonus: { health: 0, energy: 0, credit: 300, standing: 4 },
-          startingItems: ['item_workbadge', 'item_crt_terminal', 'item_paper_ledger', 'item_shift_chit'],
-        },
-        {
           id: 'bg_scene_nobody',
           title: '刚被降层、没有号，或者编制外',
           description:
-            '什么都没有的人。制度管不到你，也意味着没有任何一张表会替你说话。',
+            '找活儿、找住处、找一口热的，替人跑腿挣当天的钱。制度管不到你，也意味着没有任何一张表会替你说话。',
           attributeBonus: { might: 1, wits: 2, charm: 1, nerve: 2, access: -1 },
           resourceBonus: { health: -5, energy: 0, credit: 40, standing: 0 },
           startingItems: ['item_grey_pass', 'item_ration_stub', 'item_forged_badge', 'item_algae_brick'],
         },
         {
           id: 'bg_scene_security',
-          title: '在治安与巡逻上做事',
+          title: '在闸机与街面上管人',
           description:
-            '查闸机、控人群、写现场记录。成绩不看抓了多少人，看记录写得干不干净。',
+            '查牌、控人群、写现场记录，一次聚集要在二十分钟内解散。制服能让人自动让路，但动手必须有记录撑着，记录写得不好，责任落在执笔的人身上。',
           attributeBonus: { might: 2, wits: 0, charm: 0, nerve: 2, access: 1 },
           resourceBonus: { health: 10, energy: 10, credit: 280, standing: 6 },
           startingItems: ['item_workbadge', 'item_steel_boots', 'item_coverall', 'item_bio_wristband'],
         },
         {
-          id: 'bg_scene_medic',
-          title: '在医务室与暗处之间做医护',
+          id: 'bg_scene_care',
+          title: '在医务室与回收线之间替人办事',
           description:
-            '白天在正规医务室，晚上处理不能进医务室的人。风险按第六十三条与第七十一条并算。',
-          attributeBonus: { might: 0, wits: 2, charm: 1, nerve: 3, access: 0 },
-          resourceBonus: { health: 0, energy: -5, credit: 900, standing: -3 },
-          startingItems: ['item_workbadge', 'item_sedative_ampoule', 'item_nano_patch', 'item_clinic_key'],
+            '白天看门诊、开处方，晚上处理不能进医务室的人；另一头是替一户人家凑材料、找签字、争那 20% 的余额返还。手艺能换人情，每一笔都要说清来路。',
+          // 合并自原「在医务室与暗处之间做医护」「替人办后事」两项；
+          // 数值取两项各自的中位（might 0 / wits 2 / charm 2 / nerve 3 / access 0；
+          // health 0 / energy -2 / credit 580 / standing 3）
+          attributeBonus: { might: 0, wits: 2, charm: 2, nerve: 3, access: 0 },
+          resourceBonus: { health: 0, energy: -2, credit: 580, standing: 3 },
+          startingItems: ['item_workbadge', 'item_sedative_ampoule', 'item_nano_patch', 'item_mourn_stub'],
         },
         {
-          id: 'bg_scene_undertaker',
-          title: '替人办后事',
+          id: 'bg_scene_authority',
+          title: '手里有一份能定别人事的权',
           description:
-            '替人凑材料、争那 20%、把遗体送进回收线。不收钱，只收"记名"。',
-          attributeBonus: { might: 0, wits: 1, charm: 3, nerve: 2, access: 0 },
-          resourceBonus: { health: 0, energy: 0, credit: 260, standing: 8 },
-          startingItems: ['item_workbadge', 'item_mourn_stub', 'item_paper_ledger', 'item_coded_note'],
-        },
-        {
-          id: 'bg_scene_deputy',
-          title: '在管理层有一间自己的办公室',
-          description:
-            '有职级、有印章、有自己的门。你能签三类东西，签字位也能被一句话收回。',
+            '有职级、有印章、有自己的门；能定一个案子往哪走，也能管着一整片的饭、房与班次。总额动不了，签字位随时可以被一句话收回。',
+          // 合并自原「在管理层有一间自己的办公室」「在监察系统里管一个方向」「管着配给与住房的总额」三项；
+          // 数值取三项各自的中位（might 0 / wits 2 / charm 2 / nerve 1 / access 2；
+          // health 0 / energy 0 / credit 1100 / standing 20）
           attributeBonus: { might: 0, wits: 2, charm: 2, nerve: 1, access: 2 },
-          resourceBonus: { health: 0, energy: 0, credit: 1400, standing: 20 },
+          resourceBonus: { health: 0, energy: 0, credit: 1100, standing: 20 },
           startingItems: ['item_workbadge', 'item_personal_terminal', 'item_paper_ledger', 'item_signing_seal'],
         },
         {
-          id: 'bg_scene_bureau_chief',
-          title: '在监察系统里管一个方向',
+          /*
+            「我自己写」—— 本槽（开局处境）的自填入口。
+            玩家写在文本框里的那段话会原样取代本项的 title 与 description 进提示词。
+
+            加成取本槽 9 个预设项的**中位值**（逐项排序取中位、四舍五入）：
+              might  [0,0,2,1,2,2,0,1,1] → 1
+              wits   [2,2,2,1,1,0,2,2,2] → 2
+              charm  [1,2,1,1,1,0,2,2,1] → 1
+              nerve  [1,1,1,1,2,2,3,2,2] → 2
+              access [1,2,0,0,0,1,0,0,-1] → 0
+              health [0,0,3,5,10,10,0,-2,-5] → 0
+              energy [0,0,3,0,10,10,-2,0,0] → 0
+              credit [540,1100,280,180,420,280,580,645,40] → 420
+              standing [8,20,4,3,5,6,3,-3,0] → 4
+            物品取本槽出现次数最多的通用物：工牌 8 次、灰色工装 2 次、纸质账簿 2 次
+            （并列 2 次的还有钢头靴、灰色通行条、加密便笺、藻砖，挑最通用的三件）。
+          */
+          id: 'bg_scene_custom',
+          title: '我自己写',
           description:
-            '手里有调查权的人。你能定一个案子的走向，自己的档案也在别人的抽屉里。',
-          attributeBonus: { might: 1, wits: 3, charm: 1, nerve: 2, access: 3 },
-          resourceBonus: { health: 0, energy: 0, credit: 1100, standing: 26 },
-          startingItems: ['item_workbadge', 'item_personal_terminal', 'item_case_file', 'item_coded_note'],
-        },
-        {
-          id: 'bg_scene_allocator',
-          title: '管着配给与住房的总额',
-          description:
-            '整片的饭、房与班次都从你手上过。总额你动不了，能动的只有分配。',
-          attributeBonus: { might: 0, wits: 2, charm: 3, nerve: 1, access: 2 },
-          resourceBonus: { health: 0, energy: 0, credit: 900, standing: 18 },
-          startingItems: ['item_workbadge', 'item_paper_ledger', 'item_credit_chip', 'item_ration_stub'],
+            '不受上面任何一项限制。写下他在这里的位置、来路或立场 —— AI 会照它写，不会拿预设来替换它。',
+          custom: true,
+          attributeBonus: { might: 1, wits: 2, charm: 1, nerve: 2, access: 0 },
+          resourceBonus: { health: 0, energy: 0, credit: 420, standing: 4 },
+          startingItems: ['item_workbadge', 'item_coverall', 'item_paper_ledger'],
         },
       ],
     },
@@ -1860,38 +1892,24 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
 地渊不催你。它只是一直在动。`,
     openerSlot: '开局处境',
     openingSeeds: {
-      bg_scene_office:
-        '日常是案牍：一份文件在几个部门之间走一圈，谁先看、谁后看、落谁的款、用谁的印，都有讲究；编制、考核与调动这类人和档案的事也压在同一批人手上。打交道的多是同级办事的人、来催件的班组代表，以及靠材料吃饭的中层。体面是从不出错，代价是出一次错就有人替你记着。手里有能办成事的权力，也有必须打的招呼；想办的事常常卡在"再议一议"四个字上。',
-      bg_scene_industry:
-        '日常在作业面、管廊与台前：高温、粉尘、机器的低频噪音，一班十二小时；也有人钻进一米一内径、温度四十度的通风道，或者坐在台前抄参数、清洗数据。打交道的是班组长、抬工、检修工，以及来收数的记账员。体面在于配给足、工段里认人；麻烦在于事故与"责任落实到人"这句话，落到班组一级就落到个人头上。想办的事大多得靠人情换：一次换班、一片滤芯、一个轻省的岗位。这一层的班次最紧，也最短命。',
-      bg_scene_service:
-        '日常在窗口与台账后面：配给表、住房登记、门诊排期、食堂进出货，以及每天要核一遍的领取记录，全都从手边过一遍。打交道的是排队的人、替领的人、来核数的记账员，以及偶尔来"看一看"的监察人员。体面在于没人敢跟你吵；麻烦在于这个位置人情债最密，每天都要在按表办与给人方便之间选一次。便利是消息快、路好走，掣肘是每一笔都要留痕，差额也要说得清。',
-      bg_scene_discipline:
-        '日常是记录与核对：问话很短，停顿很长，答话要一字不落抄下来。打交道的是被核对的人、同科室的人，以及来调卷宗的其他部门。体面在于没人愿意让你久等；麻烦在于每一次落笔都在替一套没有辩护环节的流程工作，而笔迹也要归档。便利是通行权限高，掣肘是任何一次判断失误都会被抽样翻出来。',
+      bg_scene_desk:
+        '一整天的声音是盖章、翻页与敲击，味道是纸浆、油墨与热水瓶。一份文件要在几个部门之间走一圈：谁先看、谁后看、落谁的款、用谁的印，都有讲究，任何一个环节都能用"材料不全"四个字退回，而退回时不写缺什么。编制、考核、调动与档案压在同一批人手上；另一头是配给表、住房登记、门诊排期与每天要核一遍的领取记录，以及问话与抄录 —— 问话很短，停顿很长，答话要一字不落抄下来。打交道的是同级办事的人、来催件的班组代表、排队与替领的人、被核对的人，以及偶尔来"看一看"的其他部门。体面是从不出错、消息快；代价是笔迹要归档，一次判断失误会被抽样翻出来。',
+      bg_scene_craft:
+        '气味是热机油、金属粉尘与汗，声音是低频的机器声，一班十二小时。作业面在高温与粉尘里，也有人钻进一米一内径、四十度的通风道，或者蹲在角落的台子前修旧终端、改不合规格的零件、替人看一张看不懂的纸。打交道的是班组长、抬工、检修工、来收数的记账员、慕名来的人、送货来的人，以及来问"这东西哪来的"的人。体面在于配给足、工段里认人、别人不会的东西有人会；麻烦在于事故与"责任落实到人"这句话，落到班组一级就落到个人头上，而接下的每一件东西都带着来路。想办的事大多得靠人情换：一次换班、一片滤芯、一个轻省的岗位。这一层的班次最紧，也最短命。',
       bg_scene_farm:
-        '日常在水边与架下：测水温、看溶氧、抄苗情，红蓝光底下待久了，看东西都偏黄。打交道的是农艺师、互助会照看的孩子、来收配给单的人。体面在于饿不着；麻烦在于全渊的口粮价格跟着这里的水温走，减产三天内就会变成别人的骂声。便利是能接触到最基础也最要紧的东西，掣肘是停机与上报都要有人签字。',
-      bg_scene_scavenger:
-        '日常在没有编号的路上：爬梯、通风管、夹层，替人捎信、捎药、捎一件过不了闸机的东西。打交道的是守梯的人、等消息的家属，以及同样没有号的人。体面在于没有考勤表能记你；麻烦在于没有一张名单会保你，被认定未授权位移时，没有人听你解释那封信是谁的。便利是能从任何门缝里过去，掣肘是每一条路都要用肺和膝盖换。',
-      bg_scene_market:
-        '日常在市场后面的那块地方：等价物是铝件、药品、真食物、班次、铺位与消息，抽成固定，报价不解释。打交道的是买主、跑腿、来收保护费的人，以及偶尔混在人群里数人头的人。体面在于不用排队就能拿到东西；麻烦在于每一笔生意都在给某个人留下记忆。便利是现金与消息都活，掣肘是永远不知道对面是买主还是来数人的。',
+        '空气里有藻腥与堆肥味，湿度高，红蓝光底下待久了，看东西都偏黄。日常是测水温、看溶氧、抄苗情、翻菌床，架子与水池一层一层望不到头。打交道的是农艺师、库管员、带孩子上工的邻工、来收配给单的人，以及搭伙看孩子的人。体面在于饿不着；麻烦在于这里的口粮价格跟着水温走，减产三天内就会变成别人的骂声。便利是能接触到最基础也最要紧的东西，掣肘是停机与上报都要有人签字。',
+      bg_scene_underworld:
+        '气味是潮湿的混凝土、劣质烟与铝屑。一头在没有编号的路上：爬梯、通风管、夹层，替人捎信、捎药、捎一件过不了闸机的东西；另一头在市场后面那块地方，等价物是铝件、药品、真食物、班次、铺位与消息，抽成固定，报价不解释。打交道的是守梯的人、等消息的家属、同样没有号的人、买主、跑腿、来收保护费的人，以及偶尔混在人群里数人头的人。体面在于没有考勤表能记你、不用排队就能拿到东西；麻烦在于没有一张名单会保你，被认定未授权位移时没有人听解释，而每一笔生意都在给某个人留下记忆。',
       bg_scene_surface:
-        '日常在气闸与通道之间：检查装备、等窗口期、把带回来的东西交出去，然后什么也不问。打交道的是队友、清点的人、家属，以及把报告收走的人。体面在于待遇最好、家属有优先权；麻烦在于伤亡率，以及出站前那句"余额留给谁"的例行记录。便利是能看见别人一辈子看不见的东西，掣肘是看见之后不许说。',
-      bg_scene_workshop:
-        '日常在角落的台子前：修旧终端、改不合规格的零件、替人办手续、替人看一张看不懂的纸。打交道的是慕名来的人、送货来的人，以及来问"这东西哪来的"的人。体面在于别人不会的东西你会；麻烦在于接下的每一件东西都带着来路，而你必须替对方保密。便利是不用排班，掣肘是活儿大半在灰色地带。',
+        '气味是橡胶、汗与消毒水，噪音来自气泵与三班倒的交接。出发前检查装备、签窗口期单据；三十四公斤的防护服穿在身上，走不了多久就要停一次。回来把带回来的东西交出去，然后什么也不问，隔离七十二小时。打交道的是同队下地表的人、清点物资的人、等在闸口外面的家属，以及把报告收走的人。体面在于待遇最好、家属有优先权；麻烦在于伤亡率，以及出站前那句"余额留给谁"的例行记录。便利是能看见别人一辈子看不见的东西，掣肘是看见之后不许说。',
       bg_scene_nobody:
-        '日常在别人看不见的地方：找活儿、找住处、找一口热的，替人跑腿挣当天的钱。打交道的是同样没有号的人、偶尔施舍的熟人，以及来清人的治安员。体面在于制度管不到你；麻烦在于所有的门都假定你有一个可以追溯的过去，而你什么都没有。便利是能把任何东西带过任何闸机，掣肘是每一样筹码都是即时的。',
+        '日常在别人看不见的地方：夹层、封了一半的通道、白天没人走的楼梯间。找活儿、找住处、找一口热的，替人跑腿挣当天的钱；手上的通行凭证是一张灰纸条，有效期不超过七十二小时，编号由开条的人自己编。打交道的是同样没有号的人、偶尔施舍的熟人、愿意用编制外的人顶班的工头，以及来清人的治安员。体面在于制度管不到你；麻烦在于所有的门都假定人有一个可以追溯的过去，而这里什么都没有。便利是能把任何东西带过任何闸机，掣肘是每一样筹码都是即时的。',
       bg_scene_security:
-        '日常在闸机、街面与治安站之间：查牌、控人群、写现场记录，一次聚集要在 20 分钟内解散。打交道的是违规的人、来要说法的人、同队的人，以及事后调记录的其他部门。体面在于制服能让人自动让路；麻烦在于动手必须有记录支撑，记录写得不好，责任就落在执笔的人身上。便利是消息灵、通行不限，掣肘是每一次处置都要有人签名。',
-      bg_scene_medic:
-        '日常在诊室与宿舍之间：白天看门诊、换药、开处方，晚上处理那些不能进医务室的人。打交道的是工伤的人、不敢报案的人、来查药品流向的人，以及替你顶班的同事。体面在于手艺能换人情；麻烦在于非法医疗的处置依据是第六十三条与第七十一条并用，一旦被认定没有警告环节。便利是能接触到从废弃物口流出的药品，掣肘是每一支药都要能说清来路。',
-      bg_scene_undertaker:
-        '日常在宿舍、班组与回收线之间：替一户人家把死亡手续办完，凑材料、找签字、争那 20% 的余额返还。打交道的是死者家属、班组长、配给点的记账员，以及偶尔来核对名册的人。体面在于浅层认你，因为谁都可能用到你；麻烦在于手上的本子是一份没有账目的账，上面记着谁欠谁、谁家半年里死了两个人。便利是消息比别人早一步，掣肘是每一笔都要有指印。',
-      bg_scene_deputy:
-        '日常在会议与批件之间：定方向、分任务、看下面报上来的数，再决定哪一件先办。打交道的是同级、上级，以及来要资源的其他部门。体面在于不用排队、一个电话就能让人加班；麻烦在于不能决定总额，也不能拒绝一场与你无关的会，签字位随时可以被收回。便利是能看到全局，掣肘是每个决定都要落到纸上。',
-      bg_scene_bureau_chief:
-        '日常在案卷与谈话之间：决定一个案子是结、是转、还是写进建议，也决定谁先被问、谁可以回家。打交道的是被查的人、手下的人、来打招呼的同级，以及盯着你的审计与上级。体面在于没人敢让你久等；麻烦在于你也在被记，每一次"缓议"都有人数着。便利是权限极高，掣肘是每一份建议都会归档，同科室的人也在记你的笔迹。',
-      bg_scene_allocator:
-        '日常在调度板与电话之间：配给表、住房额度、班次表，三张表决定一整片人今天怎么过。打交道的是各层来的办事员、会签的兄弟部门，以及来问"今晚有没有饭"的班组。体面在于人人都跟你打招呼；麻烦在于你动不了总额，也不能改任何一条标准，每一次调整都要有依据，而依据将来就是证据。便利是消息最先到你这里，掣肘是差额得由你去补。',
+        '日常在闸机、街面与值班的岗亭之间：查牌、控人群、写现场记录，一次聚集要在二十分钟内解散。打交道的是违规的人、来要说法的人、同队的人，以及事后调记录的其他部门。体面在于制服能让人自动让路，消息比谁都灵、通行不限；麻烦在于动手必须有记录支撑，记录写得不好，责任就落在执笔的人身上，而每一次处置都要有人签名。',
+      bg_scene_care:
+        '气味是碘、消毒水，混着一点防腐药味。白天在诊室看门诊、换药、开处方，晚上处理那些不能进医务室的人；另一头在宿舍、班组与回收线之间：替一户人家凑材料、找签字、把死亡手续办完，争那 20% 的余额返还。打交道的是工伤的人、不敢报案的人、来查药品流向的人、死者家属、班组里的人、配给点的记账员，以及偶尔来核对名册的人。体面在于手艺能换人情，这一片的人都认；麻烦在于非法医疗的处置依据是第六十三条与第七十一条并用，一旦被认定没有警告环节，而手上那本没有账目的账，记着谁欠谁、谁家半年里死了两个人。',
+      bg_scene_authority:
+        '空气里有纸张、印泥与热水瓶的味道，一天多半在会议、批件与调度板之间过去。定方向、分任务、看下面报上来的数，再决定哪一件先办；配给表、住房额度、班次表三张表，决定一整片人今天怎么过。打交道的是同级、来要资源的其他部门、各层来的办事员、被查的人，以及来打招呼的人。体面在于不用排队、一个电话就能让人加班、人人都愿意打个招呼；麻烦在于动不了总额，也改不了任何一条标准，每一次调整都要有依据，而依据将来就是证据。签字位随时可以被一句话收回，"缓议"两个字没有期限，每一次都有人数着。',
     },
     enableStages: false,
     stages: [],
@@ -1903,49 +1921,154 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
     tense: 'present',
     replyLength: 800,
     customStyle: `
-文风总纲：**表格与规程的恐怖**。
+深核集团　科研发展部
+《叙事文本生成规范》
+RD-2107-0416　　密级：三级　　第 1 页　共 3 页
+签发：科研发展部第 66 层文本评估组　　生效日期：2107 年 4 月 1 日
+适用对象：第 1 至 70 层一切对外输出的叙事文本
 
-这个世界的力量不来自怪物，来自贡献点余额、审批层级与纪律监察部的名单。所以笔法不是"描写"地渊，而是**像地渊的一份台账在陈述事实**：冷、硬、准，几乎不通人情。数字与编号说话，恐惧从流程本身长出来——"材料不全"四个字、"缓议"没有期限、"今天名额已满"、一份没有具名签字人的文件。不要写成赛博朋克的热闹：这里没有霓虹、没有黑客，走廊里只有 4000 开尔文的冷白光、红蓝作物灯。参照本书《世界设定》已有的笔法——先给参数与事实，再给程序，最后给后果；不评价，只登记。而机器越冷，偶尔从规程缝里漏出的那一点温度就越重：一条口头记录、一只铝婚戒、一句交接班时多余的话。每次回复至多漏一处，不许解释它为什么感人。
+1　总则
 
-**可执行要求**。
+1.1　本规范规定叙事文本的生成格式。文本不是文学创作，是本部门向各层输出的记录类产品，须与《深核基本法》第一条所定的具名责任制一致。
 
-一、**编号与数字说话**。层号、工号、文号、事故与图纸编号（A-71-04、FC-89、GR-88-07、EC-2094-0117、AL-2107-07712）、时间到分钟、千卡、摄氏度、分贝、百分比、贡献点、签字人数。凡写一件事，至少给一个可核对的数字；凡写一份文件，给一个文号。
+1.2　文本一律第三人称。第二人称指称一律不得使用，包括对话、引语与转述在内。此项属格式项，违反者整篇退回。
 
-二、**每次回复走完一次三段式**：事实（参数与现象）→ 程序（谁签、走几道、几个工作日、哪一步会退回）→ 后果（落到谁身上、值多少贡献点、档案里留下什么标签）。
+1.3　一篇文本至少给出三处可核对的数据，数据须能指向某一层、某一工号或某一文号。
 
-三、**规程即恐怖**。把公文原文、公告措辞、审计备注、批注与边注直接嵌进叙述，不必转述。允许并鼓励清单体（"一级：……二级：……"、"第一份……第二份……"）：这个世界的思考方式就是列表，表格越整齐，读起来越冷。**批注只有四种**：同意、缓议、补材料、另行安排；不写就是否定。
+2　功能定位
 
-四、**写清留痕**。每次行动都要交代它在系统里留下了什么：闸机记录、转账流水、签字、便笺、被谁记住的脸。压迫感来自痕迹，不来自暴力。
+2.1　文本的功能是登记，不是评价。凡本可写成"此处令人不安"的段落，改写为该处可量化的状态。
 
-五、**层级即语法**。浅层说"上头""下边的""腿"，中层说"地表"，第 71 层以上只报职级序号与部门代号，句子省主语、省礼貌用语。称呼按层递减：第 1 至 40 层直呼姓名或工号后四位，第 41 至 70 层用职务加姓，第 71 层以上用"七级，科研发展部"。
+2.2　每条输出须同时交付一份执行摘要，格式如下：
 
-六、**台账的差是最好的戏**。真相与记录之间的差额——缺号、补丁、被替换的那一页、比别人低 1.4 摄氏度的机房——比任何打斗都紧张。让主角去算，不要让他去猜；他的胜利是把五个部门的台账放到同一页纸上。
+　　事由｜层级｜经办｜文号｜贡献点｜期限
 
-七、**代价必须可折算**。每次回复都要有一件无法撤销的事发生，并把代价说成一个数字或一笔债：一笔贡献点、一次人情债、一条档案异常、一个被牺牲的关系。
+2.3　恐惧由流程本身产生，不由描写产生。"材料不全"四字、"缓议"无期限、"本批次名额已满"、一份无具名签字人的文件，任一者已足够；不得再加渲染。
 
-八、**对手的智力不低于主角**。纪律监察部比主角快，安全保卫部比主角狠，财务审计部的账比主角清楚。主角唯一的胜算是流程的缝隙，不是打倒流程：他可以说服一个人，但不能说服一个制度。
+3　数值与编号
 
-**禁止事项**。
+3.1　长度用米，容量用升，热量用千卡，温度用摄氏度，声压用分贝，比例用百分比，金额用贡献点。数值与单位之间空一格。
 
-· 禁止赛博朋克的热闹：没有霓虹、黑客、机甲、义体、无人机群。地渊的武备是 9 毫米动能武器与装甲运输车；它的酷来自冷，不来自亮。
-· 禁止出现「魔法」「法术」「神明」「灵魂」；禁止出现「AI」「人工智能」「机器人」「智能体」，需要指代时写作自动化系统、调度系统、无人决策体、计算辅助，并记住它们都是被禁止的历史名词。
-· 禁止用「元」「美元」「人民币」「金钱」「货币」，统一用贡献点；禁止现实地名，改用「地渊」「地表」「上头」「第 X 层」「喜马拉雅主脊」「南麓」「东亚旧城」。
-· 禁止抒情、排比、感叹号与大段心理铺陈；禁止「压抑」「绝望」这类评价性形容词。形容词要少，名词与动词要多。
-· 禁止把 NPC 写成说教者：他们索要材料、报出文号、给出价码、留一手。行政术语用得越准确越可信。
-· 禁止让主角靠运气、爆发、演讲或"觉醒"改变制度；禁止让金钱问题一次性消失；禁止在地表找到救援或奇迹；不允许进入第 91 层以上并全身而退。
-· 不出现 emoji、不出现网络用语；引号用「」或""。
+3.2　凡可用数字处不得用程度词。不写"设备老化"，写"累计运行 41 万小时，标称寿命 12 万小时"。不写"离得很近"，写"步行 11 分钟，过两道闸机"。
 
-**可用句式**。
+3.3　凡涉文件须给文号，凡涉事故须给事故编号。文号沿用部门代号加年份加流水号：AL-2107-07712、HR-2107-04183、A-71-04、GR-88-07、EC-2094-0117。
 
-· 编号式：文号 HR-2107-04183，事由跨层临时调动。经办人已注销，无法核对。
-· 程序式：这件事要走十一个环节，最少七个签字，任一环节都可以用"材料不全"退回，而不写明缺了什么。
-· 折算式：他今天多拿的一百四十千卡，在浅层是可以被记住一年的东西。
-· 反讽式：按第一条，这份文件本应无效——它没有具名签字人。它被执行了。
-· 台账式：应存、实存、短少、附注。差额方向一致，均为台账低于装置读数。
-· 威胁式：最重的威胁不是"我要杀你"，而是"我可以让你往下走"；最重的承诺是"我能让你往上走一层"。
-· 温度式：出站前每个人要在工牌里留一条口头记录，说明如果回不来，余额留给谁。这条记录不进入官方档案。
-· 语言式：正式文件里，涨价叫结构优化，配给下调叫配给标准修订，处死叫移交事务处理。用错一个词，就是态度问题。
-· 收束式：以上五项数据分布在五个互不相关的部门台账里，从来没有人把它们放在同一页纸上。
+3.4　时刻记到分钟，配给量记到千卡，差额记到小数点后一位。
+
+4　段落结构
+
+4.1　每一输出单元走完三段，顺序不得颠倒。
+
+　　4.1.1　事实：参数与现象。
+　　4.1.2　程序：由谁签，走几道环节，几个工作日，哪一步可以退回，退回时是否写明缺什么。
+　　4.1.3　后果：落到谁头上，值多少贡献点，档案里留下什么标签。
+
+4.2　三段之外不写第四段。情绪不进正文，进附件。
+
+4.3　段落长度不超过四行。一份文件长得像一份文件，不像一篇散文。
+
+5　规程的引用
+
+5.1　公文原文、公告措辞、审计备注、边注与批注一律直接嵌入，须照抄，不得转述、不得概括、不得加引号外的说明。原文怎么难看就怎么抄。
+
+5.2　允许并鼓励清单体。一级：……　二级：……　三级：……。表格越整齐，读起来越冷。本世界的人就是这样思考的。
+
+5.3　附件所列文件一律给全称、文号、页数与存放位置。不写"相关材料若干"。
+6　批注
+
+6.1　批注共四种：同意、缓议、补材料、另行安排。不写批注，即为否定。
+
+6.2　"缓议"不标期限。"补材料"不写缺什么。此二项为本部门长期惯例，不得为本规范所改动。
+
+7　留痕
+
+7.1　每次动作须交代它在记录里留下了什么：闸机刷卡记录、转账流水、交接单第二联、一张对折过的便笺、被谁记住的脸。
+
+7.2　留痕须比动作多出一处。人物不知道，记录知道。
+
+7.3　压迫感来自痕迹，不来自暴力。全篇可无一次动手。
+
+8　称谓与语域
+
+8.1　第 1 至 40 层：直呼姓名或工号后四位。第 41 至 70 层：职务加姓，如"骆主管""苏研究员"。第 71 层以上：职级序号加部门代号，如"七级，科研发展部"，姓名不出现。
+
+8.2　浅层口语可用"上头""下边的""腿"。中层书面语用"地表"。第 71 层以上省主语、省礼貌用语。
+
+8.3　语域按层级递减。全篇不得出现问候语与人情客套语；出现即判定该人物不属于本世界，退回重写。
+
+9　差额
+
+9.1　凡上报数据，须与其原始记录之间存在至少一处差额。差额不被更正，被保留下来。
+
+9.2　差额方向须一致。例如应存、实存、短少、附注四项，短少方向均为台账低于装置读数。
+
+9.3　真相与记录的差额比打斗紧张。让主角去算，不让他去猜。主角的胜利是把五个部门的台账放到同一页纸上。
+
+9.4　差额举例（供参照，不得直接引用）：缺号的一页、补丁、被替换的审计附件、比相邻房间低 1.4 摄氏度的密闭机房。
+
+10　代价折算
+
+10.1　每一输出周期内至少发生一件不可撤销的事。此事不必大，但必须能被折算，折算成贡献点、工作日或档案件数之一。
+
+10.2　一笔贡献点、一次人情债、一条档案异常、一个被牺牲的关系，四者中至少出现一项。
+
+10.3　不得让代价随时间自行消失，不得让余额问题一次性解决。
+
+11　对手
+
+11.1　对手部门在速度、手段或账目三者中，至少一项强于主角。纪律监察部比主角快，安全保卫部比主角狠，财务审计部的账比主角清楚。
+
+11.2　主角的胜算来自流程的缝隙，不来自制度被说服。他可以说服一个人，但不能说服一个制度。
+
+11.3　对手提出的要求须具体：索要材料、报出文号、给出价码、留一手。对手不得说教，不得替本规范解释世界。
+
+12　禁用词目
+
+12.1　超自然类：魔法、法术、神明、灵魂。一律不得入稿。
+
+12.2　技术类：AI、人工智能、机器人、智能体。需要指代时写作自动化系统、调度系统、无人决策体、计算辅助。须记住它们都是被禁止的历史名词，写成中性词即为差错。
+
+12.3　财务类：元、美元、人民币、金钱、货币。统一写贡献点。
+
+12.4　地理类：现实地名。改用"地渊""地表""上头""第 X 层""喜马拉雅主脊""南麓""东亚旧城"。
+
+12.5　视觉类：霓虹、黑客、机甲、义体。地渊的武备是 9 毫米动能武器与装甲运输车。它的酷来自冷，不来自亮。
+
+13　文字限制
+
+13.1　不写比喻，不写排比，不用感叹号，不做大段心理铺陈。
+
+13.2　形容词每千字不超过六处。不得使用评价性形容词（压抑、绝望）。名词与动词承担全部工作。
+
+13.3　温度每篇至多从规程的缝隙里漏一处：一条不进入官方档案的口头记录、一只铝婚戒、一句交接班时多余的话。漏完即止，不得解释它为什么动人。
+
+13.4　不使用 emoji 与网络用语。引号用「」或""。
+
+14　边界
+
+14.1　不得靠运气、爆发、演讲或"觉醒"改变制度。
+
+14.2　不得在地表找到救援、补给或奇迹。不得进入第 91 层以上并全身而退。
+
+14.3　本规范不规定主角必须做什么。可以一整段时间只做第 41 层的仓库管理员，把日子过下去。不设任务清单，不用事件催促，本世界自己会运转。
+
+14.4　叙事文本中不出现"进度""目标""选项"一类字样。是否行动由读者一方决定，本部门只负责登记已经发生的事。
+
+15　交付与验收
+
+15.1　每篇文本末尾附当日已办件数与未办件数。
+
+15.2　本规范自生效之日起执行。此前依 RD-2104-0119 生成的文本不再复核。
+
+附件：
+
+一、《叙事文本评分表》RD-2107-0416-附 1，共 2 页，存第 66 层文本评估组。
+二、《贡献点折算对照表》2107 年版，共 12 页，存财务审计部第 54 层。
+三、《第 88 层停摆事故原始记录（复印）》GR-88-07，共 44 页——未见。
+
+〔页边，钢笔，字迹较正文明显偏大、笔画向右上斜，有涂改一处〕
+评估组：这条我看了一遍。第 4.1.3 写"后果落到谁头上"——写清楚是谁签的字，别写"有关部门"。上回第 29 层那份配给修订的稿子，通篇没一个人名，只有一个文号 AL-2107-07712，结果呢，报了 340 份申诉，最后按"逾期不予受理"结了 340 份。这事我记着。还有 15.1 的"已办件数与未办件数"，从我这边出，每天 05:30 前送到配给科窗口，别送终端，终端我不看。附件三那一栏，我们科没有收到过这份东西，谁写的"未见"就去问谁。签字栏空着的稿子不要往我这儿送。
+　　　　　　　　　　　　　　　　　　　　　　　　行政后勤部第 43 层配给科　骆有田
 `,
   },
   characters: [
