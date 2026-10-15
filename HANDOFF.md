@@ -1320,7 +1320,7 @@ legs / hat / beard / cape / eye …
 | 项 | 结果 |
 |---|---|
 | `tsc --noEmit` | **0 错误** |
-| `vitest run` | **615/615**（24 文件，本轮 +44） |
+| `vitest run` | **621/621**（24 文件，本轮 +50） |
 | `check:worlds` | **exit 0，9/9 世界达标** |
 | `check:look` | **exit 0，110/110 张角色卡写了 `look`** |
 | `check:encoding` / `check:keywords` | 全 0 |
@@ -1329,7 +1329,7 @@ legs / hat / beard / cape / eye …
 
 ---
 
-## 5. 测试体系（**10 套走查** + **615** 单元测试 + 5 个独立工具）
+## 5. 测试体系（**10 套走查** + **621** 单元测试 + 5 个独立工具）
 
 ```
 scripts/
