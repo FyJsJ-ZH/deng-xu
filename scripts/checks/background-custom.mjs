@@ -74,6 +74,26 @@ await ev(`(()=>{const u=__uiStore.getState();u.setApiKeyModalOpen(false);
 
 await waitFor(`/开始新游戏/.test(document.body.innerText)`, 15000)
 
+/*
+  ⚠️ **必须等卡片库真的载入，不能等主菜单出现就去读 store。**
+
+  九张内置卡是 `loadBuiltinWorlds()` **按需异步加载**的，在 CI 那种全新环境
+  （IndexedDB 空、磁盘冷、第一次跑）里会明显慢于主菜单渲染。
+  而本地因为已经有缓存，主菜单一出来 `worlds` 就是满的 ——
+  于是这个 bug **在本地完全看不见**。
+
+  这不是假设：CI #68 的步骤 15（full walkthroughs）就是挂在下面那条断言上，
+  而同一份代码在本地是 13/13。
+
+  这条与 `heroes.mjs` 注释里那句是同一个教训：
+  **一律等条件，不要等时间；而且要等"你要读的那个东西"就绪，不是等页面看起来好了。**
+*/
+const libReady = await waitFor(
+  `(()=>{try{return (__libraryStore.getState().worlds||[]).length>0}catch(e){return false}})()`,
+  30000,
+)
+check('卡片库已载入（内置世界是异步加载的，不能只看主菜单）', libReady)
+
 console.log('\n=== 1) 世界卡数据：每个槽位都有一道自填的门 ===')
 const data = JSON.parse(await ev(`(()=>{
   const ws=__libraryStore.getState().worlds||[];
@@ -95,16 +115,17 @@ check('★ 每个背景槽都有且仅有一个「我自己写」、且在末尾
 
 console.log('\n=== 2) 进入选角页 ===')
 await clickText('/开始新游戏/')
-await waitFor(`/用这个世界开始|^开始$/.test(document.body.innerText)`, 12000)
+// 卡片列表要把九张卡从 IndexedDB 里读出来再渲染，CI 上给足时间
+await waitFor(`/用这个世界开始|^开始$/.test(document.body.innerText)`, 30000)
 await ev(`(()=>{const b=[...document.querySelectorAll('button')]
   .find(x=>/^用这个世界开始$|^开始$/.test((x.textContent||'').trim()));if(b)b.click();return 1})()`)
-await waitFor(`/扮演角色/.test(document.body.innerText) && /下一步/.test(document.body.innerText)`, 15000)
+await waitFor(`/扮演角色/.test(document.body.innerText) && /下一步/.test(document.body.innerText)`, 30000)
 
 console.log('\n=== 3) 走到「背景」这一步 ===')
 // 步骤条可以直接点，不必一页页翻
 await ev(`(()=>{const b=[...document.querySelectorAll('button')]
   .find(x=>(x.textContent||'').trim().endsWith('背景'));if(b)b.click();return 1})()`)
-const gotBg = await waitFor(`/你的来处/.test(document.body.innerText)`, 12000)
+const gotBg = await waitFor(`/你的来处/.test(document.body.innerText)`, 20000)
 check('切到背景步骤', gotBg)
 await shot('bgc-01-slots')
 

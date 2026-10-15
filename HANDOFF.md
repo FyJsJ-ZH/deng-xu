@@ -1436,6 +1436,31 @@ typecheck → test
    复杂替换用 Node 脚本。
 6. **本地无全局 git**：用 `D:\工作区\.tools\git\cmd\git.exe` + 显式 HOME。
 7. **git push 偶发 `Connection was reset`** —— 重试 3 次即可。
+8. **`github.com` 的 DNS 可能被解析到一个不通的 IP**（2026-10 第九轮实测，
+   这是上面第 7 条之外的一种、且**重试无效**的失败）。
+
+   症状：`git push` 报
+   `Failed to connect to github.com:443 after 21058 ms: Could not connect to server`，
+   连试四次全一样。但**同一个网络里 `api.github.com` 是通的**（这个反差是关键线索）。
+
+   两步诊断：
+
+   ```powershell
+   Resolve-DnsName github.com -Type A                       # 看它解析到哪个 IP
+   Test-NetConnection -ComputerName <上一步的 IP> -Port 443  # 通常 False
+   Test-NetConnection -ComputerName 140.82.113.4 -Port 443   # GitHub 另一段，通常 True
+   ```
+
+   实测解析结果是 `20.205.243.166`（不通），而
+   `140.82.112.4 / 140.82.113.4 / 140.82.114.3` 三个都通。
+
+   **绕过**：临时往 hosts 追加一行 `140.82.113.4 github.com`，
+   `ipconfig /flushdns`，推送，**然后立刻用备份复原 hosts**。
+   改之前先备份原文件 —— 这是系统级修改，办完就还原，不要留给用户，
+   也不要在报告里推荐他把这行长期留着。
+
+   ⚠️ 这**不是仓库的问题**，是本地 DNS 的问题：
+   不要因此去改 remote URL、CI 配置，或打开 `http.sslVerify=false`。
 
 ### 6.2 验证类（**最重要的一类**）
 

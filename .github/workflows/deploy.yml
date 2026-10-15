@@ -125,7 +125,16 @@ jobs:
         run: |
           Start-Process -FilePath "node" -ArgumentList "node_modules/vite/bin/vite.js","--port","5199","--strictPort" -NoNewWindow
           Start-Sleep -Seconds 12
-          node scripts/checks/all.mjs
+          # 把完整输出落到文件里再原样打印：
+          # 走查在 CI 上失败时，**日志要在 artifact 里看得到**才算数 ——
+          # 本地能过、CI 挂掉的那类问题（冷启动、慢机器、空 IndexedDB）
+          # 只靠"某某套未通过"这一行是查不出来的。
+          $out = node scripts/checks/all.mjs 2>&1
+          $code = $LASTEXITCODE
+          $out | Out-File -FilePath walkthrough-full.log -Encoding utf8
+          $out | Select-Object -Last 60
+          Write-Host "all.mjs exit=$code"
+          exit $code
         env:
           SITE: http://localhost:5199/
         shell: pwsh
@@ -136,7 +145,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: walkthrough-screenshots
-          path: playtest-shots/
+          path: |
+            playtest-shots/
+            walkthrough-full.log
           if-no-files-found: ignore
           retention-days: 7
 
