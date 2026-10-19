@@ -1717,6 +1717,28 @@ typecheck → test
     去 `job_output` 看 dev server 日志里的 `page reload` 频率。
 
     **正确顺序**：等所有并行改造都停下来 → 重启 dev server → 再跑 `check:all`。
+15. **`node scripts/gen-worldbook.mjs public .check/worlds.mjs` 会静默用上过期的世界卡**
+    （2026-10 第十轮实测，我自己踩的）。
+
+    第二个参数是**已经打包好的**世界卡模块 —— 这条命令**不会**自己重新打包。
+    所以改完 `src/data/worlds/*.ts` 直接跑它，生成的 `official-worldbook.json`
+    是**上一次打包时的样子**，而且不报错、不警告。
+
+    第十轮我把九张卡的 `replyLength` 从 800 改成 1800，`check:worlds` 全绿，
+    直接跑这条命令生成世界集，出来的 json 里仍然是 `"replyLength": 800` ——
+    差点就带着旧数据提交了。（是 grep 生成物时看到的，不是命令报的错。）
+
+    正确做法是 `pnpm gen:worldbook`（它先 esbuild 再生成）。手工分两步就是：
+
+    ```powershell
+    node node_modules/esbuild/bin/esbuild src/data/builtinWorlds.ts --bundle `
+      --platform=node --format=esm --outfile=.check/worlds.mjs --alias:@=./src
+    node scripts/gen-worldbook.mjs public .check/worlds.mjs
+    ```
+
+    **自检**：生成后 grep 一眼 `official-worldbook.json` 里你刚改的那个字段，
+    确认产物反映的是新值 —— 这个项目的"静默失效"出过太多次，
+    凡是有中间产物的链路，都要在末端验一遍。
 
 ---
 
