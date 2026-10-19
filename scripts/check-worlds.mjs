@@ -234,6 +234,19 @@ const GATE = {
   lifeCjk: 3000,
   charDescCjk: 80,
   /*
+    **单次回复的目标字数下限**（2026-10，玩家第五次打回）。
+
+    玩家原话：「文字输出长度实在是过短，通常需要三四个对话才能真正的推进事态发展，
+    线索出现的频率太高，知识却太低」。查下来根因是 `replyLength` 九张卡全是 800——
+    八百字装不下「在场 + 交涉 + 一处变化」，模型只能把篇幅花在最省字的东西上，
+    也就是**抛线索**，于是节奏飞快而内容单薄。
+
+    1500 是下限而不是推荐值（现在九张都是 1800）：它只负责挡住"被人改回八百"。
+    真正的篇幅要求由 `constants/prompts.ts` 的「篇幅与信息投放」一节下发，
+    并有一组单测盯着（`prompts.length.test.ts`）。
+  */
+  minReplyLength: 1500,
+  /*
     角色数门槛从 6 提到 8。
     实测三个世界各有 9 / 10 / 13 张，6 这个门槛等于没约束；
     而"关系面板一开局就有内容"是这个字段存在的理由，
@@ -404,6 +417,12 @@ for (const exp of EXPECTED) {
   if (loreCjk < GATE.worldLoreCjk) fail(exp.label, 'worldLore 不足', `${loreCjk} < ${GATE.worldLoreCjk}`)
   if (rulesCjk < GATE.rulesCjk) fail(exp.label, 'rules 不足', `${rulesCjk} < ${GATE.rulesCjk}`)
   if (styleCjk < GATE.customStyleCjk) fail(exp.label, 'customStyle 不足', `${styleCjk} < ${GATE.customStyleCjk}`)
+
+  // 单次回复的目标字数：太短装不下一个场景，玩家演起来就像在挤牙膏
+  const replyLen = Number(w.narrative?.replyLength)
+  if (!Number.isFinite(replyLen) || replyLen < GATE.minReplyLength) {
+    fail(exp.label, '回复篇幅太短', `replyLength ${w.narrative?.replyLength} < ${GATE.minReplyLength}（一次回复要装得下一个完整场景）`)
+  }
 
   /*
     ⚠️ `story.opening` 的长度门槛**必须分情况**。

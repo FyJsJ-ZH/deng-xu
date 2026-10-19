@@ -296,7 +296,33 @@ export interface AppearanceProfile {
   五花八门的 type_name 归一化过（见 .lpc/merge-runtime.mjs 的 KIND_MAP）——
   不归一化就会出现"抓到了却永远选不中"。
 */
-const HAIRS = PARTS.filter(p => p.kind === 'hair').map(p => p.id)
+/**
+ * **可染色**的发型池 —— 全部发型件里，剔掉贴图把颜色画死了的那几件。
+ *
+ * ── 为什么必须分开（2026-10，与缺省配色同一轮）──
+ *
+ * `hair_long_tied` 与 `hair_pigtails` 两个件的 `recolors` 是 `null`，
+ * 意思是颜色**画在贴图里**（固定橙色），`hairColor` 对它们完全无效。
+ * 它们混在池子里时会发生这样的事：
+ *
+ *   描述没写发色 ⇒ 兜底抽到 `black` ⇒ 部件抽到 `hair_long_tied`
+ *   ⇒ 画出来是一头**橙色**头发，而配色表上写的是黑。
+ *
+ * `npc-fidelity.mjs` 里「上议院勋爵之女」和「现代学生」这两格就是这个：
+ * 左边（旧路径）明明是金色/黑色，落笔画出来却是橙色。
+ * 这正是玩家反复说的「立绘与描述对不上」里最刺眼的一类 ——
+ * 因为它不是"猜错了"，是**猜对了也画不出来**。
+ *
+ * `lookSpec.ts` 早就把这条写成硬规则（只用 `recolors !== null` 的部件），
+ * 但那只管到"AI 登记外观"那条路；没有 `look` 的角色仍然走这个池子。
+ * 现在两条路用同一条规则。
+ *
+ * ⚠️ `look.hair` 显式指定时**不受影响** —— 作者明确要哪一件就是哪一件，
+ * 这一层不替作者改主意。
+ */
+const HAIRS_TINTABLE = PARTS
+  .filter(p => p.kind === 'hair' && p.recolors)
+  .map(p => p.id)
 /**
  * 上衣池（含盔甲与围裙）。
  *
@@ -637,6 +663,91 @@ export function playerSpriteSeed(name?: string, gender?: string): string {
   return `player:${name || 'hero'}:${gender || 'x'}`
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   缺省配色：**没有线索的时候画什么**
+
+   ── 为什么要有这一节（2026-10，玩家第四次打回）──
+
+   玩家原话：
+   > 「人物立绘出现不相符的**黑人**（1905 年伦敦贵族勋爵生出一个黑人女儿？）
+   >   也很影响代入感」
+
+   查下来是一条兜底语句的直接后果：
+
+       pick(rng, bodyNames)      // 人类 7 个肤色里**等概率**抽一个
+       pick(rng, hairNames)      // 26 个发色里**等概率**抽一个
+
+   那张卡的描述是「浅金色长发，灰蓝色眼睛」—— 写了发色，没写肤色。
+   于是发色走推断拿到金色（对），肤色落到兜底，在
+   light / amber / olive / taupe / bronze / brown / **black** 里摸，「黑人」就是这么来的。
+   同一场景里的邮差描述没写发色，于是 26 色里抽到了 blue ——「蓝头发的邮差」。
+
+   ── 判断 ──
+
+   **描述没写，不等于这个世界没有默认值。**
+   一个一九〇五年的伦敦、一个大晟朝的汴梁、一个地渊的第 29 层，街上多数人是浅肤深发。
+   没线索的时候应当画"多数人"，而不是在调色板上闭着眼睛摸一个 ——
+   随机出来的不是"多样性"，是**错误**，而且是我这边失误的概率分布。
+
+   所以兜底从「全池等概率」换成「**有权的默认分布**」：
+
+     · 重复出现的名字 = 权重（`light` 出现 6 次 ≈ 六成）；
+     · 只收人类常见色 —— 蓝绿粉紫、兽人皮、亡灵灰仍然画得出来，
+       但**必须由描述或 `look` 明确要求**，不再靠随机撞；
+     · 深肤色（bronze / brown）留在池里，只是不做默认 ——
+       写「深肤色」「黝黑」的角色照样是深肤，这条路径没被动过。
+
+   ⚠️ 这一层是**最后一道兜底**，排序在 `look` 与 `inferTraits` 之后。
+      描述里写了什么，仍然一律照办。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * 没有肤色线索时的人类默认分布（重复 = 权重）。
+ *
+ * ⚠️ **bronze / brown 不在这里**，这是第一次落地后实测改掉的：
+ * 最初把它们按小权重放进来，结果那一位一九〇五年伦敦的贵族女儿
+ * 抽到了 `bronze`（古铜色）—— 技术上"不算黑人"，但一个足不出户的
+ * 上议院小姐是晒成古铜的，同样出戏。**小概率不等于合理。**
+ *
+ * 所以默认池只收"室内人群"的四种：light 为主，amber / olive 少量，
+ * taupe 一点。深肤当然还画得出来 —— 走 `inferTraits`（写「深肤色」
+ * 「黝黑」）或 `look.skin`，两条路都没动。
+ */
+const DEFAULT_SKIN = [
+  'light', 'light', 'light', 'light', 'light', 'light', 'light',
+  'amber', 'amber', 'olive', 'olive', 'taupe',
+]
+
+/** 没有发色线索时的人类默认分布（重复 = 权重；不含蓝绿粉紫橙） */
+const DEFAULT_HAIR = [
+  'black', 'black', 'black', 'black', 'dark_brown', 'dark_brown', 'dark_brown',
+  'brown', 'brown', 'chestnut', 'light_brown', 'blonde', 'sandy',
+  'gray', 'ash', 'silver', 'white',
+]
+
+/** 老年角色的默认发色：越老越白，但仍不碰异色 */
+const DEFAULT_HAIR_ELDER = [
+  'gray', 'gray', 'gray', 'silver', 'silver', 'white', 'white', 'dark_gray', 'ash',
+]
+
+function defaultHairPool(age?: string): string[] {
+  return age === 'elder' ? DEFAULT_HAIR_ELDER : DEFAULT_HAIR
+}
+
+/**
+ * 从默认池里按权重挑一个。
+ *
+ * 与 `pick()` 的区别：`pick()` 等概率，这里**重复项即权重**。
+ * 池里不存在于调色板的项自动跳过（调色板改名/裁剪时不至于失效）。
+ */
+function pickDefaults(rng: () => number, wanted: string[], available: string[]): string {
+  if (!available.length) return ''
+  const lower = available.map(a => a.toLowerCase())
+  const pool = wanted.filter(n => lower.includes(n))
+  if (!pool.length) return pick(rng, available)
+  return pool[Math.floor(rng() * pool.length) % pool.length]
+}
+
 export function recipeFor(key: string, opts?: RecipeOptions): SpriteRecipe {
   const rng = makeRng(hashSeed(key))
 
@@ -694,7 +805,7 @@ export function recipeFor(key: string, opts?: RecipeOptions): SpriteRecipe {
 
   /*
     发型：优先按推断出的关键词选。
-    以前这里是 `pick(rng, HAIRS)` 纯随机，所以"黑发束成马尾"的管家可能抽到爆炸头。
+    以前这里是纯随机挑发型，所以"黑发束成马尾"的管家可能抽到爆炸头。
 
     **光头/秃顶是特例**：描述里明说光头时不能再给头发 ——
     给一个光头角色配 `hair_balding`（后脑一圈头发）再叠个发色，
@@ -704,7 +815,8 @@ export function recipeFor(key: string, opts?: RecipeOptions): SpriteRecipe {
   const lookHair = part(look?.hair)
   const hair = lookHair !== undefined
     ? lookHair                       // 显式指定（含"明确光头"的空串）
-    : (bald ? '' : pickRequired(rng, HAIRS, traits.hairStyle, 'hair_bob'))
+    // 走可染色池：固定橙的那两件染不上颜色，见池子的注释
+    : (bald ? '' : pickRequired(rng, HAIRS_TINTABLE, traits.hairStyle, 'hair_bob'))
 
   /*
     衣着：先用身份选类型（守卫→盔甲、法师→长袍），选不出再随机。
@@ -898,11 +1010,13 @@ export function recipeFor(key: string, opts?: RecipeOptions): SpriteRecipe {
   */
   const skinName = (look?.skin && PALETTES.body?.[look.skin] ? look.skin : undefined)
     || resolvePaletteName(traits.skin, bodyNames.length ? bodyNames : paletteNames('body'))
-    || pick(rng, bodyNames.length ? bodyNames : paletteNames('body'))
+    // 兜底不再是等概率乱抽 —— 见本节开头的「缺省配色」
+    || pickDefaults(rng, DEFAULT_SKIN, bodyNames.length ? bodyNames : paletteNames('body'))
 
   const colors: RecolorSpec = opts?.colors || {
     hair: (look?.hairColor && PALETTES.hair?.[look.hairColor] ? look.hairColor : undefined)
-      || resolvePaletteName(traits.hairColor, hairNames) || pick(rng, hairNames),
+      || resolvePaletteName(traits.hairColor, hairNames)
+      || pickDefaults(rng, defaultHairPool(traits.age), hairNames),
     body: skinName,
     /*
       描述里明确写了衣色就照办（玩家说了算）；

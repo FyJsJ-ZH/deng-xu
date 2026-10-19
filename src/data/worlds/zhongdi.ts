@@ -655,7 +655,7 @@ export const zhongdi: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'present',
-    replyLength: 800,
+    replyLength: 1800,
     customStyle: `中华帝国文书处　《叙事文稿处理规程》
 油印本　第○一七号　共四页　经办：文书处第二科　校：田庆余
 密级：内部·普通　　发放范围：各司处记录员、抄录员、派驻记者

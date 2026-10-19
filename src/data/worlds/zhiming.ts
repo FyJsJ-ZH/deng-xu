@@ -885,7 +885,7 @@ export const zhiming: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'present',
-    replyLength: 800,
+    replyLength: 1800,
     customStyle: `战车监造局 · 技术文件编写规范
 监制字〔第七年度〕第 041 号　　密级：内部　　页数：共七页
 拟稿：第三工段文书组　　会签：第二工段、第七工段、机械处　　抄送：各战车工段、各车组文书

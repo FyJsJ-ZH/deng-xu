@@ -2323,7 +2323,7 @@ export const greatchen: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'present',
-    replyLength: 800,
+    replyLength: 1800,
     customStyle: `
 永熙二十七年十月，国史馆开文苑志局，先定凡例一十三条，以授执笔。
 

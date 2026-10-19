@@ -1043,7 +1043,7 @@ export const elysion: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'present',
-    replyLength: 800,
+    replyLength: 1800,
     customStyle: `最终都市公证处 · 见闻录代书规约
 
 （阿斯特拉历七〇三年订，贴在中城公证处西门内墙，黄得看不出原色了。此份是照抄的，抄在醉猫结账用的硬纸背面——正面还留着上一桌的账：烤鸡一只、蜜汁根茎两碟、黑面包三片、麦酒四扎，共银七枚，酒钱另计。抄的人说，抄错的不算他的。）

@@ -1359,7 +1359,7 @@ export const westfantasy: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'present',
-    replyLength: 800,
+    replyLength: 1800,
     customStyle: `《代笔须知》
 
 ——三姓城西街，替人写书信、写契书、写口供、记流水账的那个人留给他接手的人

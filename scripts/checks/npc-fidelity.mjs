@@ -99,6 +99,33 @@ const CASES = [
     { sex: 'female', age: 'adult', hair: 'bun', hairColor: 'blonde', cloth: 'dress', clothColor: 'white', hat: 'crown' }],
   ['现代学生', '穿深蓝色制服短裙的女学生，黑发扎双马尾', '女',
     { sex: 'female', age: 'youth', hair: 'idol', hairColor: 'black', cloth: 'formal', clothColor: 'navy', legs: 'skirt' }],
+
+  /*
+    ★ 最后这两个是**玩家截图里出现的那两个人**（2026-10 第四次打回）。
+
+    原话：「人物立绘出现不相符的**黑人**（1905 年伦敦贵族勋爵生出一个黑人女儿？）
+    也很影响代入感」。查下来这不是 AI 登记错了，是**兜底语句**的锅：
+
+      · 勋爵之女 —— 描述写了发色（浅金色）与瞳色，**没写肤色**
+        ⇒ 肤色落到 `pick(rng, 7 个肤色)`，摸到 black 就是 1/7。
+      · 邮差   —— 描述只写了衣着，**没写发色**
+        ⇒ 发色落到 `pick(rng, 26 个发色)`，「蓝头发的邮差」就是这么来的。
+
+    两人的 `appearance` 也刻意**不登记兜底项**（模拟 AI 照清单"只填写到的项"），
+    所以右边的新路径同样要走兜底 —— 两条路都得对。
+
+    ⚠️ 放在**末尾**是有意的：上面每个案例的种子是 `'npc' + i`，
+    插在中间会让所有人的 i 平移、把"和服少女拿到和服类部件"这类
+    依赖种子的断言改成另一个结果，看着像回归、其实是位移。
+  */
+  ['上议院勋爵之女',
+    '阿什沃斯勋爵的女儿，二十二岁，浅金色长发，灰蓝色眼睛，贵族式的冷淡，穿一件深色旅行外套，戴一顶窄檐帽',
+    '女',
+    { sex: 'female', age: 'youth', hair: 'long', hairColor: 'blonde', eye: 'gray', cloth: 'formal', clothColor: 'charcoal', hat: 'cap' }],
+  ['送信的邮差',
+    '瘦高的年轻人，制服外套领子磨白了，帽檐压得很低。他手递过一封没有邮票的信，等着把回信带回去',
+    '男',
+    { sex: 'male', age: 'youth', build: 'slim', cloth: 'formal', clothColor: 'navy', hat: 'cap' }],
 ]
 
 const built = await ev(`(async () => {
@@ -189,6 +216,29 @@ for (const c of arr) {
   check(`${c.tag} 外层件(${hit})配了打底`, base, c.parts)
 }
 
+/* ── 本轮新增：兜底配色不许乱画（玩家截图里的那两个人） ── */
+console.log('\n=== 兜底配色：描述没写的时候画什么（本轮修复） ===')
+{
+  const dark = ['black', 'brown', 'bronze']
+  const light = ['light', 'amber', 'olive', 'taupe']
+  const c = arr.find(x => x.tag === '上议院勋爵之女')
+  const old = JSON.parse(c.colorsOld)
+  check('勋爵之女没写肤色 ⇒ 不画深肤（"黑人贵族女儿"）', !dark.includes(old.body), old.body)
+  check('勋爵之女没写肤色 ⇒ 落在浅色系', light.includes(old.body), old.body)
+  check('勋爵之女的金发仍然被推断出来（那一半本来是对的）',
+    ['blonde', 'sandy', 'gold', 'light_brown'].includes(old.hair), old.hair)
+}
+{
+  const odd = ['blue', 'navy', 'sky', 'teal', 'green', 'bright_green', 'dark_green',
+    'purple', 'violet', 'pink', 'rose', 'orange', 'carrot']
+  const human = ['black', 'dark_brown', 'brown', 'chestnut', 'light_brown', 'blonde',
+    'sandy', 'gray', 'ash', 'silver', 'white', 'dark_gray']
+  const c = arr.find(x => x.tag === '送信的邮差')
+  const old = JSON.parse(c.colorsOld)
+  check('邮差没写发色 ⇒ 不画蓝绿粉紫（"蓝头发的邮差"）', !odd.includes(old.hair), old.hair)
+  check('邮差没写发色 ⇒ 落在人类常见色', human.includes(old.hair), old.hair)
+}
+
 /* ── 新增：AI 登记的项必须真的生效（这一组才是本轮改造的验收） ── */
 console.log('\n=== AI 登记外观 → 实际落件（本轮新增） ===')
 const wantColor = (tag, mat, key) => {
@@ -237,10 +287,14 @@ wantColor('白裙贵妇', 'hair', 'blonde')
   }
 }
 {
-  // 发色不该落到固定橙的那两个部件上（hair_long_tied / hair_pigtails）
+  // 发色不该落到固定橙的那两个部件上（hair_long_tied / hair_pigtails）——
+  // **两条路都要查**：上一版只查了新路径，于是旧路径里那两格一直是橙发，
+  // 而配色表上写着金/黑，看图的人只会觉得"又对不上了"。
   for (const c of arr) {
-    const bad = c.partsNew.split(' ').filter(p => p === 'hair_long_tied' || p === 'hair_pigtails')
-    check(`${c.tag} 没有用到固定橙的发型件`, bad.length === 0, bad.join(','))
+    const badNew = c.partsNew.split(' ').filter(p => p === 'hair_long_tied' || p === 'hair_pigtails')
+    check(`${c.tag} 没有用到固定橙的发型件（AI 登记路径）`, badNew.length === 0, badNew.join(','))
+    const badOld = c.parts.split(' ').filter(p => p === 'hair_long_tied' || p === 'hair_pigtails')
+    check(`${c.tag} 没有用到固定橙的发型件（只给描述路径）`, badOld.length === 0, badOld.join(','))
   }
 }
 
