@@ -5,8 +5,8 @@
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && npm run gen:credits && npm run gen:worldbook && vite build && node scripts/make-404.mjs",
+    "dev": "node scripts/stamp-builtins.mjs && vite",
+    "build": "node scripts/stamp-builtins.mjs && tsc && npm run gen:credits && npm run gen:worldbook && vite build && node scripts/make-404.mjs",
     "serve": "npm run build && node scripts/serve.mjs --open",
     "preview": "vite preview",
     "deploy:surge": "npm run build && npx --yes surge dist",
@@ -18,6 +18,7 @@
     "playtest": "node scripts/checks/playtest.mjs",
     "check:errors-ui": "node scripts/checks/error-paths.mjs",
     "gen:worldbook": "esbuild src/data/builtinWorlds.ts --bundle --platform=node --format=esm --outfile=.check/worlds.mjs --alias:@=./src --log-level=error && node scripts/gen-worldbook.mjs public .check/worlds.mjs",
+    "stamp:builtins": "node scripts/stamp-builtins.mjs",
     "gen:credits": "node scripts/gen-credits.mjs",
     "check:errors": "esbuild scripts/checks/errors.ts --bundle --platform=node --format=esm --outfile=.check/errors.mjs --alias:@=./src && node .check/errors.mjs",
     "check:retry": "esbuild scripts/checks/retry.ts --bundle --platform=node --format=esm --outfile=.check/retry.mjs --alias:@=./src && node .check/retry.mjs",

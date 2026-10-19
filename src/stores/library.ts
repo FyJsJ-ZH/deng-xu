@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { WorldCard, HeroPreset, PlayerCard } from '@/types/cards';
 import { makeId } from '@/utils/files';
 import { createKVStore, isIdbAvailable } from '@/utils/idb';
-import { loadBuiltinWorlds, missingBuiltinIds } from '@/data/builtinWorldIds';
+import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds } from '@/data/builtinWorldIds';
+import { BUILTIN_STAMP } from '@/data/builtinStamp';
 import { normalizeWorldCard } from '@/utils/worldCard';
 
 /**
@@ -37,6 +38,27 @@ const PRESETS_KEY = 'heroPresets';
  * 玩家看到的是"删除无效"。所以删内置卡时在这里记一笔。
  */
 const REMOVED_BUILTIN_KEY = 'removedBuiltinWorlds';
+
+/**
+ * 上次播种内置卡时用的**内容指纹**（见 `data/builtinStamp.ts`）。
+ *
+ * ## 为什么还缺第四个键（2026-10 第十一轮，玩家第三次说「改了没生效」）
+ *
+ * 玩家的原话：
+ * > 「我打开网页用起来输出的字数没变化……依然是 800 字」
+ *
+ * 不是构建的问题，也不是缓存的问题：源码改了、线上 bundle 里确实是新值，
+ * 可 `REMOVED_BUILTIN_KEY` 那套逻辑只补「**缺 id**」的卡 ——
+ * 老玩家库里 `builtin_london1905` 这个 id 一直都在，于是这张卡
+ * **永远停在第一次播种时的样子**。
+ *
+ * 所以再加一个键记「我上次是按哪个版本播的」。指纹一变，已存在的内置卡
+ * 也整批换成新的。它只碰**内置卡**：玩家自建的卡不动，
+ * 玩家主动删过的内置卡也不会因为换戳而复活。
+ *
+ * 写失败不影响使用，只是下次启动会再刷一遍。
+ */
+const BUILTIN_STAMP_KEY = 'builtinStamp';
 
 /**
  * `REMOVED_BUILTIN_KEY` 的内存副本。
@@ -282,19 +304,66 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
         // 注意：读到空数组不算「首次运行」（`worlds === null` 才算）。
         // 用户自己删光了卡，再把内置卡塞回去会显得删除操作没生效。
         const firstRun = worlds === null;
-        const missing = missingBuiltinIds((worlds ?? []).map(w => w.id), removedBuiltinCache);
+        const haveIds = (worlds ?? []).map(w => w.id);
+        const missing = missingBuiltinIds(haveIds, removedBuiltinCache);
+
+        /*
+          ── 读「上次播种用的指纹」，决定要不要把**已有的**内置卡也换新 ──
+          读不到（老库第一次升到这一版）就当作"不知道"，于是走一次全量刷新 ——
+          这一次刷新正是把 800 字那张卡换成 1800 的那一刻。
+        */
+        let storedStamp: string | null = null;
+        try {
+          const rawS = await kv.get<unknown>(BUILTIN_STAMP_KEY);
+          storedStamp = typeof rawS === 'string' && rawS.trim() ? rawS : null;
+        } catch {
+          storedStamp = null;
+        }
+
+        /*
+          已经存在、但内容已过期的内置卡。
+          排除玩家**删过**的（尊重删除），也排除 `builtin !== true` 的
+          （那是 duplicate 出来的副本，属于他自己的东西，不许覆盖）。
+        */
+        const stale = firstRun || storedStamp === BUILTIN_STAMP
+          ? []
+          : BUILTIN_WORLD_IDS.filter(id => haveIds.includes(id) && !removedBuiltinCache.includes(id));
+
+        const refresh = [...new Set([...missing, ...stale])];
 
         let needSeed = false;
-        if (firstRun || missing.length) {
+        if (firstRun || refresh.length) {
           /*
             ⚠️ 走 `loadBuiltinWorlds`（按 id **动态**加载，每个世界各成一个 chunk），
-            **不要** import `@/data/builtinWorlds` —— 那个模块静态拉入全部八张卡
+            **不要** import `@/data/builtinWorlds` —— 那个模块静态拉入全部九张卡
             （约 2.5 MB 源码 / gzip 640 KB），等于把它们整块塞进首屏包。
-            这里只取缺的那几张：老玩家升级时通常只需下四个 chunk。
+            平时只下缺的那几个 chunk；只有指纹变了才一次性全下。
           */
-          const add = await loadBuiltinWorlds(missing);
-          if (add.length || firstRun) {
-            worlds = [...(worlds ?? []), ...deepClone(add)];
+          const fresh = await loadBuiltinWorlds(refresh);
+          if (fresh.length || firstRun) {
+            if (firstRun || !worlds) {
+              worlds = deepClone(fresh);
+            } else {
+              /*
+                **就地替换**，其余保持原顺序与原位置。
+                直接 `concat` 会让刷新过的卡全跑到列表末尾 ——
+                玩家眼里就是"我的卡片顺序怎么全乱了"，而这件事没人会报成 bug。
+              */
+              const byId = new Map(fresh.map(w => [w.id, w]));
+              const next: WorldCard[] = [];
+              for (const w of worlds) {
+                const replacement = w.builtin === true ? byId.get(w.id) : undefined;
+                if (replacement) {
+                  next.push(deepClone(replacement));
+                  byId.delete(w.id);
+                } else {
+                  next.push(w);
+                }
+              }
+              // 剩下的都是"真正新加的内置卡"，追加到末尾（与播种时一致）
+              for (const w of byId.values()) next.push(deepClone(w));
+              worlds = next;
+            }
             needSeed = true;
           }
         }
@@ -304,10 +373,23 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           但走到这里它一定是个数组：上面那条分支保证了"缺卡就补"。
           这里**显式归一化**而不是依赖类型收窄 —— 它同时挡掉一个边角情况：
           首次运行、但每一张内置卡都在"删过的"名单里（换过设备又清过库），
-          那时 `add` 是空的，`worlds` 会一直是 null，直接塞进 store 会让下游 `w.id` 崩。
+          那时 `fresh` 是空的，`worlds` 会一直是 null，直接塞进 store 会让下游 `w.id` 崩。
         */
         set({ worlds: worlds ?? [], heroPresets: presets, loaded: true, loadError: error });
         if (needSeed) await queuePersist();
+        if (storedStamp !== BUILTIN_STAMP) {
+          /*
+            写戳放在**写卡之后**。
+            顺序反过来（先写戳再写卡）有个很难查的坏结局：卡没落盘、戳却落盘了，
+            下次启动会以为"已经是最新"，于是旧卡永远留着 —— 正是这一轮要修的那个病。
+            现在这个顺序最坏也只是多刷一次。
+          */
+          try {
+            await kv.set(BUILTIN_STAMP_KEY, BUILTIN_STAMP);
+          } catch {
+            // 写不进去就下次启动再刷一次，不影响这次使用
+          }
+        }
       })();
 
       try {

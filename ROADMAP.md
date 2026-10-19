@@ -252,13 +252,13 @@
 
 | 类型 | 数量 | 跑法 |
 |---|---|---|
-| 单元测试（vitest） | **655 条 / 26 个文件** | `npm run test`（CI 已接入） |
+| 单元测试（vitest） | **666 条 / 27 个文件** | `npm run test`（CI 已接入） |
 | ├ 其中：整张词表片段校验 | **114 条** | 逐条逐片段核对"不得指向空气" |
 | ├ 其中：AI 结构化外观（`lookSpec`） | **26 条** | 垃圾输入 / 颜色白名单 / 不许越权补默认值 |
 | ├ 其中：「我自己写」背景项 | **18 条** | 自填文本必须取代预设标题、每轮都进提示词 |
 | ├ 其中：立绘**兜底配色** | **15 条** | 描述没写肤色/发色时不许乱画；固定橙发件不许进池（2026-10 第十轮） |
 | └ 其中：篇幅与信息投放 | **19 条** | 目标字数进提示词、三块结构、一轮一件新事、九张卡 ≥1500（同上） |
-| **浏览器走查（10 套）** | **220+ 项检查** | `npm run check:all`（CI 已接入） |
+| **浏览器走查（11 套）** | **230+ 项检查** | `npm run check:all`（CI 已接入） |
 | ├ 主菜单 | 29 项 | `npm run check:menu` |
 | ├ 玩家体验 | 34 项 | `npm run playtest` |
 | ├ 出错路径 | 21 项 | `npm run check:errors-ui`（自带假服务商） |
@@ -269,6 +269,7 @@
 | ├ NPC 词表覆盖 | 13 项 | `npm run check:npc-cov` |
 | ├ 我的主角 | 21 项 | `node scripts/checks/heroes.mjs` |
 | └ 自填背景 | **9 项**（走查新增，2026-10 第九轮） | `node scripts/checks/background-custom.mjs` |
+| └ 内置卡刷新 | **9 项**（走查新增，2026-10 第十一轮） | `node scripts/checks/builtin-refresh.mjs` |
 | 立绘画廊 | 12 个角色对照图 | `npm run check:sprites` |
 | 线上审计 | 25 项 | `npm run audit:live` |
 | **工具自检（污染测试）** | 12 项 | `npm run check:tools` |

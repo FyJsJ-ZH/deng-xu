@@ -6,6 +6,7 @@ import {
   missingBuiltinIds,
 } from '@/data/builtinWorldIds'
 import { BUILTIN_WORLDS } from '@/data/builtinWorlds'
+import { BUILTIN_STAMP } from '@/data/builtinStamp'
 
 /**
  * 内置世界清单的一致性，以及"缺卡补齐"的判据。
@@ -85,5 +86,33 @@ describe('missingBuiltinIds · 决定启动时要不要动态加载世界书', (
   it('库里有用户自己的卡也不影响判断', () => {
     expect(missingBuiltinIds(['world_abc', 'world_def', ...BUILTIN_WORLD_IDS])).toEqual([])
     expect(missingBuiltinIds(['world_abc'])).toEqual([...BUILTIN_WORLD_IDS])
+  })
+})
+
+describe('BUILTIN_STAMP 必须跟着内置卡内容走', () => {
+  /*
+    为什么这条测试值得存在（2026-10 第十一轮）：
+
+    `stores/library.ts` 靠 `BUILTIN_STAMP` 判断"内置卡在源码里改过了吗"，
+    改了就把老玩家库里那张旧卡换新。它比的是**内容指纹**，不是人手填的版本号 ——
+    因为手动的版本号迟早会忘，而忘了的表现正是"改了没生效"。
+
+    代价是：**改了 `src/data/worlds/*` 却没重新生成指纹** 时，
+    老玩家那边会继续用旧卡。这种漂移不会有任何运行时症状，
+    只会在某个玩家抱怨"你这改了没用"的时候才被发现。
+
+    所以这里把它钉死：算一遍九张卡的真实指纹，跟文件里那个常量比。
+    红了就跑 `node scripts/stamp-builtins.mjs`（`pnpm dev` / `pnpm build` 也会自动跑）。
+  */
+  it('★ BUILTIN_STAMP 等于九张卡的 sha256 指纹（改过卡就要重算）', async () => {
+    const crypto = await import('node:crypto')
+    const h = crypto.createHash('sha256')
+    h.update(JSON.stringify(BUILTIN_WORLDS))
+    const fp = h.digest('hex').slice(0, 12)
+
+    expect(
+      BUILTIN_STAMP,
+      '内置卡内容变了但指纹没更新 —— 跑 `node scripts/stamp-builtins.mjs`',
+    ).toBe(fp)
   })
 })

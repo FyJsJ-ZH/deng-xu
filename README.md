@@ -239,10 +239,10 @@ src/
 - **`node scripts/resume.mjs`** —— 一键恢复环境（类型检查 + 单元测试 + 启动 dev server）
 - **[ROADMAP.md](./ROADMAP.md)** —— 已完成 82 项与待办清单
 
-**测试现状**：`655` 条单元测试（26 个文件）+ `10` 套浏览器走查（220+ 项检查），
+**测试现状**：`666` 条单元测试（27 个文件）+ `11` 套浏览器走查（230+ 项检查），
 两者都已接进 CI。想验证改动，至少跑这两条：
 
 ```bash
 pnpm test          # 单元测试
-pnpm check:all     # 十套浏览器走查（需要先起 dev server）
+pnpm check:all     # 十一套浏览器走查（需要先起 dev server）
 ```
