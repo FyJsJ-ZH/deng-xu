@@ -79,7 +79,7 @@ const book = {
     '',
     '每个世界的世界观正文都在三万字以上（全卡五万字以上）。',
     '想自己写世界？把这份 JSON 下载下来改，或者直接在卡片编辑器里新建。',
-    '字段含义见 README 的「核心概念」。',
+    '字段定义见项目源码 src/types/cards.ts 的 WorldCard。',
   ].join('\n'),
   author: '灯叙项目',
   revision: '6.0',
