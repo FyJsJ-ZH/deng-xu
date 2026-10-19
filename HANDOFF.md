@@ -1621,6 +1621,34 @@ typecheck → test
    ⚠️ 这**不是仓库的问题**，是本地 DNS 的问题：
    不要因此去改 remote URL、CI 配置，或打开 `http.sslVerify=false`。
 
+   **2026-10 第十轮的复发 —— 同一个域名，但这次 hosts 那招无效。**
+
+   症状类似，区别在于：`curl --resolve github.com:443:140.82.113.4 https://github.com/`
+   也超时（`status=000`），而 `Test-NetConnection 140.82.113.4 -Port 443` 是 **True**。
+
+   这个组合说明阻断发生在 **TLS 层而不是 IP 层**：TCP 三次握手放行，
+   ClientHello 一发就被 RST。**改 hosts 这时候一点用都没有** ——
+   实测连探 20 次（间隔 0.7s）零成功窗口。
+
+   所以诊断要分两步，顺序不能反：
+
+   ```powershell
+   Test-NetConnection <IP> -Port 443
+   curl.exe -s -o NUL -w "%{http_code}" --resolve github.com:443:<IP> https://github.com/
+   ```
+
+   | 结果 | 结论 | 能不能救 |
+   |---|---|---|
+   | TCP 不通 | 路由 / DNS 问题 | **能** —— 改 hosts 指向 140.82.112.4 / 113.4 / 116.3 |
+   | TCP 通但 `status=000` | **TLS / SNI 层被拦** | **不能** —— 换网络或走代理，别在这上面耗时间 |
+
+   已经确认**不能**当兜底的东西：`api.github.com` 同样 `status=000`
+   （所以 Contents API 那条路也走不通）；本机常见代理端口
+   （7890 / 7891 / 1080 / 10808 / 10809 / 8080 / 2080）一个都没开。
+
+   遇到第二种情况，正确做法是**把改动留在本地、告诉用户**，
+   而不是反复重试或去动仓库配置。
+
 ### 6.2 验证类（**最重要的一类**）
 
 > **断言失败时，先怀疑断言；探测不到现象时，先验证探测手段。**
