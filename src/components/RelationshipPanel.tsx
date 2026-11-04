@@ -66,16 +66,25 @@ function dossierOf(
   memory: ReturnType<typeof useGameStore.getState>['memory'],
   facts: ReturnType<typeof useGameStore.getState>['facts'],
   knownFacts: string[],
+  aka: string[] = [],
 ): DossierEntry[] {
   const entries: DossierEntry[] = []
   const seen = new Set<string>()
+  /*
+    匹配用的名字集合 = 现在的名字 + 旧名字（`aka`）。
+
+    改名之后，旧名下的线索（「小满的住处」）不会自己改名 ——
+    它们还挂在旧名字下面。少了这一条，玩家改个名字就会看见
+    抽屉里的线索凭空少了一半，而它们明明还躺在线索页里。
+  */
+  const names = [charName, ...aka].filter(Boolean)
 
   // ── ① 线索来的（带正文）──
   for (const id of knownFacts) {
     const f = facts.find(x => x.id === id)
     if (!f) continue
-    // 归属判断按**单个角色**问：只问"这条是不是他的"，不问"是谁的"
-    if (factOwner(f.name, [charName]) !== charName) continue
+    // 归属判断：只要命中**任一**别名，就是他的（不问"是谁的"）
+    if (!factOwner(f.name, names)) continue
     const text = String(f.description || '').trim()
     const seenKey = `${f.name}::${text}`
     if (seen.has(seenKey)) continue
@@ -141,7 +150,7 @@ export function RelationshipPanel({ className = '' }: RelationshipPanelProps) {
               const isExpanded = expandedCharId === char.id;
               const hasTags = Boolean(char.relationship) || Boolean(char.status) || Boolean(char.location);
               // 只在展开时算：卷宗要遍历 facts，收起状态下没必要做这件事
-              const dossier = isExpanded ? dossierOf(char.name, memory, facts, knownFacts) : [];
+              const dossier = isExpanded ? dossierOf(char.name, memory, facts, knownFacts, char.aka) : [];
               return (
                 <div 
                   key={char.id} 
@@ -211,6 +220,14 @@ export function RelationshipPanel({ className = '' }: RelationshipPanelProps) {
                     <div className="flex-1">
                       <div className="flex justify-between items-start">
                           <h4 className="text-sm font-medium text-text-primary">{char.name}</h4>
+                          {char.aka && char.aka.length > 0 && (
+                            <span
+                              className="text-[9px] text-text-muted/70 ml-1.5"
+                              title={`以前被叫过：${char.aka.join('、')}`}
+                            >
+                              原名 {char.aka[0]}
+                            </span>
+                          )}
                           <div className="flex items-center gap-2">
                             {char.relationship && (
                               <span className="text-[10px] px-1.5 py-0.5 bg-surface rounded text-accent-grail border border-accent-grail/20">

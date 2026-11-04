@@ -47,6 +47,13 @@ function resourceLine(r: ResourceDef): string {
 export function formatCharacter(card: CharacterCard): string {
   const blocks: string[] = [];
   const head = [`### ${card.name}`];
+  /*
+    旧名（`aka`）写在这里，用途很具体：模型下一轮如果又把这个孩子写成
+    「小满」，它能看到"小石头以前被叫过小满"——于是知道那是同一个人，
+    而不是又冒出一个新角色。这是「问名字」这条链路上最便宜的一道保险。
+  */
+  const aka = (card as { aka?: string[] }).aka;
+  if (Array.isArray(aka) && aka.length) head.push(`以前被叫过：${aka.join('、')}`);
   if (card.relationship) head.push(`关系：${card.relationship}`);
   if (card.location) head.push(`所在地点：${card.location}`);
   if (card.status) head.push(`当前状态：${card.status}`);
@@ -338,6 +345,13 @@ ${formatPlayer(player)}
 
 以下是本场游戏中在场的角色。**必须**保持其性格、说话方式与设定一致，不要凭空改变他们的核心特质。
 
+⚠️ **这份名单里的人都已经存在了。** 他们在你的故事里出场过、有过经历、和主角有过关系。
+- 这一轮**不许**再对他们发 \`ADD_CHARACTER\` —— 哪怕主角刚刚才问出他们的名字，
+  哪怕你这一轮想换个叫法（「那个孩子」「当表的孩子」）。
+- 名字变了 = \`UPDATE_CHARACTER { id: 原来那个 id, name: "新名字" }\`。
+  **不是**新角色登场。
+- 判断"是不是同一个人"：对照下面的**设定**。同一件衣服、同一个地方、同一段身世 —— 就是同一个人。
+
 ${activeCharacters.map(formatCharacter).join('\n\n')}`);
   }
 
@@ -569,7 +583,22 @@ ${resources.length ? resources.map(resourceLine).join('\n') : '（本世界未�
 6. **人物**
    - 新角色登场 → \`ADD_CHARACTER\`（必须带完整 payload，包含 id/name/description/relationship/status/location/avatarId/appearance）
    - 已有角色的关系、状态、位置、描述变化 → \`UPDATE_CHARACTER\`（**务必沿用已有的 id**）
-   - 注意：已在「出场角色档案」中的角色**不需要**重复 ADD_CHARACTER，只在状态变化时 UPDATE_CHARACTER。
+
+   ⚠️ **名字是身份，不是描述。** 这一条比上面两条都重要，反复出错的就是它：
+
+   - **档案里的人，永远不许再 ADD 一次。** 哪怕这一轮你换了种叫法
+     （「那个孩子」「当表的孩子」「炉边的女人」「他」），
+     只要他还是同一个人，就只能是 \`UPDATE_CHARACTER\`。
+   - **他刚刚说出自己的名字** → \`UPDATE_CHARACTER { id: 原来那个 id, name: "新名字" }\`。
+     这**不是**新角色登场。问名字、自报家门、被人叫出真名、别人提起他的本名 ——
+     全属于这一类。\`ADD_CHARACTER\` 会多造一个"新人"，而玩家会在人物栏里
+     看到同一个孩子戴着两个名字、各记一半经历。
+   - **不许拿称呼当名字。** \`name\` 只放人名、姓氏、稳定的外号
+     （「小满」「阿什沃斯勋爵」「独眼杰克」）。
+     「当表的孩子」「那个穿旧罩衫的男孩」是**描述** —— 写进 \`description\`，别写进 \`name\`。
+   - **拿不准是不是同一个人** → 对照 \`currentState.characters\` 里的 \`description\`：
+     同一件衣服、同一个地方、同一段身世，就是同一个人，**只能 UPDATE**。
+   - 判据一句话：**这个人已经在档案里了吗？** 在 → 只能 UPDATE；不在 → 才 ADD。
 
 ## 长期记忆维护（memory）
 
@@ -1298,6 +1327,10 @@ ${previousSummary ? `已有的旧摘要（请在其基础上累加，不要丢�
 1. \`bonds\`（人物关系**现状**）：主角与关键角色**此刻**的关系 —— 谁欠他、他得罪过谁、谁在帮他、谁在防着他。
    - 写"现在的状态"，不要写事件经过（「欠他一枚铜钱未还」优于「他曾经借过钱」）。
    - 关系变了就给出**新的那一条**，不要把新旧两条都留着。
+   - ⚠️ \`who\` 必须用**之前用过的那个名字**（见下面「当前记忆」里的写法）。
+     这个人这一轮可能被叫成「那个孩子」「当表的孩子」，但写进这里要用他的**名字** ——
+     换了写法，引擎会把它当成另一个人，于是同一个人挂着两条关系，
+     而玩家看到的是"凭空多了一条人际关系"。
 2. \`threads\`（未结线索）：还没了结的谜题、承诺、债务、威胁。已经了结的**不要**再列。
 3. \`timeline\`（事件时间线）：每一轮一句话。**必须**带上轮次 \`turn\`，
    用输入里 \`[第N轮]\` 标出的那个 N；同一轮已有旧记录时**覆盖**它，不要重复两条。

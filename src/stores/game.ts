@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { StoryState } from '@/types/story'
 import type { AttributeDef, ResourceDef, SpriteLook, WorldCard } from '@/types/cards'
-import { appendTimelineBeat, emptyMemory, ensurePlace, mergeMemory, normalizeMemory, type MemoryPatch, type StoryMemory } from '@/utils/memory'
+import { appendTimelineBeat, emptyMemory, ensurePlace, mergeMemory, normalizeMemory, renameInMemory, type MemoryPatch, type StoryMemory } from '@/utils/memory'
 
 /**
  * 运行时存档
@@ -72,6 +72,26 @@ export interface Character {
    * 不影响任何既有逻辑。改这个字段名之前请先搜一遍 components/**。
    */
   look?: SpriteLook
+  /**
+   * 这个人**以前被叫过的名字**（旧名）。
+   *
+   * ## 为什么需要记旧名（2026-11 第二十四轮）
+   *
+   * 玩家问了一句"你叫什么"，模型让这个孩子说"我叫小石头" ——
+   * 于是卡片上的名字从「小满」变成「小石头」。
+   *
+   * 但线索是**按名字归属**的（`factOwner`）：「小满的住处」「小满没有别的家人」
+   * 全部挂在旧名字下面。名字一改，那些线索就在抽屉里消失了 ——
+   * 而它们明明还在线索页躺着。
+   *
+   * 同样地，模型下一轮如果把这个人写成「小满」，那又是另一个人了。
+   * 记下旧名，等于给"同一个人"留一份别名表：
+   *  - 面板用它把旧名字下的线索也收进来；
+   *  - 提示词里可以说"他以前被叫过 X"，模型就不会把他当陌生人。
+   *
+   * 只增不减，按合并顺序去重。
+   */
+  aka?: string[]
 }
 
 export interface ChatMessage {
@@ -584,39 +604,174 @@ export function sameCharacterName(a: string, b: string): boolean {
 }
 
 /**
+ * 最长公共**连续**片段的长度（只数汉字/字母/数字，忽略标点空白）。
+ *
+ * 为什么不用"字符集合重合率"：中文里"的、了、在、他"每个字都在重合，
+ * 任何两段中文的集合重合率都不低，阈值根本拉不开。
+ * 而**连续**片段是特征：「穿一件大了两号的旧罩衫」这种句子不会碰巧重复。
+ */
+export function longestCommonRun(a: string, b: string): number {
+  const norm = (s: string) => String(s || '').replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '')
+  const x = norm(a)
+  const y = norm(b)
+  if (!x || !y) return 0
+  let prev = new Array<number>(y.length + 1).fill(0)
+  let best = 0
+  for (let i = 1; i <= x.length; i++) {
+    const cur = new Array<number>(y.length + 1).fill(0)
+    for (let j = 1; j <= y.length; j++) {
+      if (x[i - 1] === y[j - 1]) {
+        cur[j] = prev[j - 1] + 1
+        if (cur[j] > best) best = cur[j]
+      }
+    }
+    prev = cur
+  }
+  return best
+}
+
+/** 两段描述出现这么长的相同片段，就基本是同一段话 */
+const SAME_PERSON_LCS = 10
+/** 关系文本互相包含、且双方都够长时，也算同一人 */
+const SAME_PERSON_NOTE = 8
+
+/**
+ * 判两个角色卡是不是**同一个人**（名字不同也能认出来）。
+ *
+ * ## 为什么需要它（2026-11 第二十四轮）
+ *
+ * 玩家原话：「一问起名字就容易发生原本的人名无变化，且诞生一个新人物关系」。
+ *
+ * 上一轮只按**名字**去重。但模型在"问名字"这种节点上，
+ * 会把同一个孩子写成「小满」→「诺姆」→「当表的孩子」→「小石头」——
+ * 名字每次都不同，按名字永远抓不住。
+ *
+ * 而它会**留下指纹**：同一张卡重写一遍，描述与关系文案几乎逐字相同。
+ * 实测那两张卡：
+ *
+ * | | 当表的孩子 | 小石头 |
+ * |---|---|---|
+ * | 关系 | 被伦纳德请了一顿肉，开始信任他，**愿意讲自己的事** | 被伦纳德请了一顿肉，开始信任他 |
+ * | 描述 | 七八岁的孩子，**穿一件大了两号的旧罩衫**，湿头发… | 七八岁的男孩，瘦，**穿一件大了两号的旧罩衫**，头发… |
+ *
+ * 名字完全不像，指纹却一模一样。所以判据看**指纹**，不看名字。
+ *
+ * ## 阈值为什么是 10 与 8
+ *
+ * 中文里两个**不同**的人，描述几乎不可能共享 10 个连续的汉字
+ * （「穿一件大了两号的旧罩衫」正好是 12）。而 8 个字以上的关系文案
+ * 互相包含，也只可能是模型把同一句重写了一遍 ——
+ * 泛泛的「对他有戒心」只有 6 个字，够不到。
+ *
+ * ⚠️ 这是**合并**判据，判错会把两个人并成一个。
+ * 所以两条都要求"**成段**的相同"，而不是"意思相近"。
+ * 宁可漏合（玩家看到两张卡），也不并错（模型把甲的来历安到乙头上）。
+ */
+export function looksLikeSamePerson(a: Character, b: Character): boolean {
+  if (sameCharacterName(a.name, b.name)) return true
+
+  const ra = String(a.relationship || '').trim()
+  const rb = String(b.relationship || '').trim()
+  if (
+    ra.length >= SAME_PERSON_NOTE && rb.length >= SAME_PERSON_NOTE
+    && (ra.includes(rb) || rb.includes(ra))
+  ) return true
+
+  if (longestCommonRun(a.description, b.description) >= SAME_PERSON_LCS) return true
+
+  return false
+}
+
+/**
+ * 这个名字像不像一句**称呼**，而不是名字。
+ *
+ * 「当表的孩子」—— 5 个字、带「的」，这是描述不是名字。
+ * 「小石头」「炉边女人」—— 短、不带「的」，看着像称呼，但它们是**稳定的**，
+ * 一直这么叫，也就等于名字了。
+ *
+ * 判据用在合并时：**用一个称呼去覆盖已有名字没有意义**，
+ * 玩家卡片上写着「当表的孩子」，比写着「小满」更糟。
+ * 所以这种不覆盖 —— 只合并，名字留原来那个。
+ */
+export function looksLikeEpithet(name: string): boolean {
+  const n = String(name || '').trim()
+  return n.length >= 4 && n.includes('的')
+}
+
+/**
+ * 合并两张卡时，名字保留哪一个。
+ *
+ * 三条，按顺序：
+ *  1. **本质同名**（只差括号注解 / 空白）→ 保留先出现的写法。
+ *     「小满」与「小满（师父）」是同一个人同一个名字，后者只是带了注解，
+ *     换过去没有意义，还会让玩家以为改了名。
+ *  2. 新名字是一句**称呼**（「当表的孩子」）→ 保留旧的。
+ *     用称呼覆盖名字只会让卡片更难看，而它并不携带新信息。
+ *  3. 其余 → 采用新名字。那多半是他这一轮才说出口的真名，
+ *     「问名字」这个动作的全部意义就在这里。
+ */
+export function pickSurvivingName(prevName: string, nextName: string): string {
+  const prev = String(prevName || '').trim()
+  const next = String(nextName || '').trim()
+  if (!next) return prev
+  if (!prev) return next
+  if (sameCharacterName(prev, next)) return prev
+  if (looksLikeEpithet(next)) return prev
+  return next
+}
+
+/**
  * 把角色列表里**同一个人**的重复条目合成一条（存档迁移用）。
  *
  * ## 为什么需要它
  *
  * 修好 `addCharacter` 只挡得住**以后**；已经跑了几十轮的存档里，
- * 那两张「小满」还在。玩家点开人物栏看到两张卡，会以为修了也没用。
+ * 那几张重复的卡还在。玩家点开人物栏看到三张，会以为修了也没用。
  *
  * ## 合并规则
  *
  * - 后出现的那条覆盖先出现的字段（它通常更新）；
  * - **id 保留先出现的那条** —— 旧 id 已经被 `knownBy` / `dossiers` /
  *   历史里的称呼引用着，换 id 会让那些记忆全部对不上人；
- * - `look` 只在后来那条**给了值**时才覆盖（同 `addCharacter` 里的那道保护）。
+ * - `name`：后出现的是**称呼**（「当表的孩子」）就保留原来的，
+ *   否则采用新的（那多半是他刚说出口的真名）；
+ * - `look` 只在后来那条**给了值**时才覆盖；
+ * - 改了名就回调 `onRename`，由调用方把记忆里的键迁过去。
+ *
+ * 判"是不是同一个人"用 `looksLikeSamePerson`（名字 + 指纹），
+ * 不用单纯的同名 —— 模型在"问名字"时会给出完全不同的名字。
  *
  * 幂等：同一份数据跑两次，结果一样。
  */
-export function dedupeCharacters(list: Character[]): Character[] {
+export function dedupeCharacters(
+  list: Character[],
+  onRename?: (oldName: string, newName: string) => void,
+): Character[] {
   const out: Character[] = []
   for (const c of list) {
     if (!c || typeof c !== 'object') continue
-    const hit = out.findIndex(x => x.id === c.id || sameCharacterName(x.name, c.name))
+    const hit = out.findIndex(x => x.id === c.id || looksLikeSamePerson(x, c))
     if (hit < 0) {
       out.push(c)
       continue
     }
     const prev = out[hit]
+    const nextName = pickSurvivingName(prev.name, c.name)
+    if (nextName && !sameCharacterName(prev.name, nextName)) onRename?.(prev.name, nextName)
     out[hit] = {
       ...prev,
       ...c,
       id: prev.id,
       look: c.look ?? prev.look,
-      // 名字也用先出现的那条：它是模型更早、通常更完整的写法
-      name: prev.name,
+      name: nextName || prev.name,
+      // 旧名字进别名表（同 addCharacter）
+      aka: [
+        ...new Set([
+          ...(prev.aka || []),
+          ...(nextName && nextName !== prev.name ? [prev.name] : []),
+          ...(c.aka || []),
+        ]),
+      ].filter(n => n && n !== (nextName || prev.name)),
     }
   }
   return out
@@ -745,18 +900,29 @@ export const useGameStore = create<GameState>()(
           或者干脆用名字当中文 id。于是同一个角色被判成两个，
           人物栏里出现两张卡、各记一半经历 —— 而玩家看到的是"同一个人出现了两次"。
 
-          所以补一道按**名字**的兜底：id 没命中时，再比一次归一化后的名字。
-          命中就并进已有那条（**保留旧 id**）——
+          ⚠️ **只按名字去重也不够**（2026-11 第二十四轮）。
+          模型在"问名字"这种节点上会把同一个人写成「小满」→「诺姆」→
+          「当表的孩子」→「小石头」，名字每次都不同。
+          所以第三道看**指纹**（`looksLikeSamePerson`：关系文案互相包含 / 描述有长段重复）。
+
+          命中就并进已有那条，**保留旧 id** ——
           因为旧 id 已经被 `knownBy` / `dossiers` / 历史里的称呼引用着了，
           换 id 会让那些记忆全部对不上人。
         */
         const byId = state.characters.findIndex(c => c.id === char.id);
         const idx = byId >= 0
           ? byId
-          : state.characters.findIndex(c => sameCharacterName(c.name, char.name));
+          : state.characters.findIndex(c => looksLikeSamePerson(c, char));
         if (idx >= 0) {
           const prev = state.characters[idx];
-          const merged = { ...prev, ...char, id: prev.id };
+          /*
+            **改名**要不要落地？见 `pickSurvivingName` 的三条判据。
+            要点是：称呼不覆盖名字，只差注解的同名不算改名，
+            真名才落地 —— 而真名一落地，记忆里的键就必须跟着迁。
+          */
+          const nextName = pickSurvivingName(prev.name, char.name);
+          const renamed = !sameCharacterName(prev.name, nextName);
+          const merged = { ...prev, ...char, id: prev.id, name: nextName };
           /*
             ⚠️ `look` 是**浅合并里唯一的例外**（2026-10 第九轮）。
 
@@ -773,9 +939,42 @@ export const useGameStore = create<GameState>()(
             `''` 是有意义的（"明确不要这件部件"），因此判据是 `undefined` 而非假值。
           */
           if (char.look === undefined) merged.look = prev.look;
+          /*
+            **头像同理，而且更要紧。**
+
+            合并意味着"这是同一个人又登记了一次"，而模型在重新登记时
+            会随手挑一个新头像 / 新外观 —— 因为那一轮它以为他是新角色。
+            头像一换，玩家立刻觉得"换了个人"：立绘变了、颜色变了，
+            而故事其实只是问到了一句名字。
+
+            所以已有的头像与外观**优先保留**，只有旧的根本没设时才接受新的。
+          */
+          if (prev.avatar) merged.avatar = prev.avatar;
+          else if (prev.avatarId) merged.avatarId = prev.avatarId;
+          /*
+            旧名字进别名表：改名之后，「小满的住处」这类按旧名归属的线索
+            才不会从抽屉里消失；提示词里也能告诉模型"他以前被叫过什么"。
+          */
+          merged.aka = [
+            ...new Set([
+              ...(prev.aka || []),
+              ...(prev.name !== nextName ? [prev.name] : []),
+              ...(char.aka || []),
+            ]),
+          ].filter(n => n && n !== nextName);
           const next = [...state.characters];
           next[idx] = merged;
-          return { characters: next };
+          return {
+            characters: next,
+            /*
+              改名 = **身份迁移**，不只是改一个字符串。
+              卷宗 / knownBy / bonds / affinity 全按名字做键，
+              键不迁就等于把这个人从记忆里删掉：
+              下一轮模型查「小石头」，查到一片空白，于是又把他当成第一次见面的人 ——
+              而玩家看到的是"不但换了名字，还多了一条新人设"。
+            */
+            ...(renamed ? { memory: renameInMemory(state.memory, prev.name, nextName) } : {}),
+          };
         }
         return { characters: [...state.characters, char] };
       }),
@@ -786,6 +985,7 @@ export const useGameStore = create<GameState>()(
         于是这次更新会**打空**（id 找不到），人物的关系/状态永远停在第一次登场。
 
         判据按优先级：id 精确 → id 当成名字 → 更新内容里的 name。
+        改名时同样要做记忆键迁移。
       */
       updateCharacter: (id, updates) => set((state) => {
         let target = id;
@@ -795,8 +995,17 @@ export const useGameStore = create<GameState>()(
             ?? (updates.name ? state.characters.find(c => sameCharacterName(c.name, String(updates.name))) : undefined);
           if (hit) target = hit.id;
         }
+        const prev = state.characters.find(c => c.id === target);
+        const nextName = updates.name != null ? String(updates.name).trim() : '';
+        const survivor = prev && nextName ? pickSurvivingName(prev.name, nextName) : '';
+        const renamed = Boolean(prev && survivor && !sameCharacterName(prev.name, survivor));
+        // 名字若是称呼，就不要写进卡片（否则人物栏里会出现「当表的孩子」这种标题）
+        const namePatch = updates.name != null && survivor && survivor !== nextName
+          ? { ...updates, name: survivor }
+          : updates;
         return {
-          characters: state.characters.map(c => c.id === target ? { ...c, ...updates } : c)
+          characters: state.characters.map(c => c.id === target ? { ...c, ...namePatch } : c),
+          ...(renamed && prev ? { memory: renameInMemory(state.memory, prev.name, survivor) } : {}),
         };
       }),
       addLocationInfo: (loc) => set((state) => {
@@ -1107,19 +1316,32 @@ export const useGameStore = create<GameState>()(
       /*
         存档结构版本。
         v2（2026-11 第十一轮）：角色按**名字**去重。
+        v3（2026-11 第二十四轮）：角色按**指纹**去重（名字 + 关系文案 + 描述长段）。
+            并把被合并掉的名字在 `dossiers` / `knownBy` / `bonds` / `affinity`
+            里的键一起迁过去。
 
-        ⚠️ 加 version 之前的旧存档 version 是 0，所以这里写 `version: 2`
+        ⚠️ 加 version 之前的旧存档 version 是 0，所以这里写 `version: 3`
         会让它们**全部**走一次 migrate —— 这正是我们要的：
-        已经玩到一半的存档里，那两张「小满」不会因为修了代码就自己合起来，
-        得在这里合一次。迁移必须是**幂等**的（重复跑结果一样），
-        否则刷新两次就把人并乱了。
+        「问名字」那个 bug 已经在玩家存档里造出好几张卡了（「小满」「诺姆」
+        「当表的孩子」「小石头」全是同一个孩子），不重跑一次迁移，它们不会自己合起来。
+
+        迁移必须是**幂等**的（重复跑结果一样），否则刷新两次就把人并乱了。
       */
-      version: 2,
+      version: 3,
       migrate: (persisted) => {
-        const state = persisted as { characters?: Character[] } | undefined
+        const state = persisted as { characters?: Character[]; memory?: StoryMemory } | undefined
         if (!state || typeof state !== 'object') return state as never
         if (Array.isArray(state.characters)) {
-          state.characters = dedupeCharacters(state.characters)
+          /*
+            合并时顺手**迁移记忆键**：被合并掉的那个名字，在
+            `dossiers` / `knownBy` / `bonds` 里还挂着一份东西。
+            只改 characters 不改记忆，等于把那个人的经历留在一个
+            已经不存在的名字下面 —— 下一轮模型查新名字，查到空白，
+            又把他当陌生人。那正是这一轮要修的病。
+          */
+          state.characters = dedupeCharacters(state.characters, (oldName, newName) => {
+            state.memory = renameInMemory(state.memory, oldName, newName)
+          })
         }
         return state as never
       },

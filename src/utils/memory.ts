@@ -935,6 +935,86 @@ export function matchKnownKey(known: Record<string, string[]>, name: string): st
 }
 
 /**
+ * 某个人**改了名字**之后，把记忆里所有按旧名字索引的东西迁过去。
+ *
+ * ## 为什么必须迁（2026-11 第二十四轮）
+ *
+ * 玩家的原话是「一问起名字就容易发生原本的人名无变化，且诞生一个新人物关系」。
+ *
+ * 「问名字」是这一整局里最容易出事的一句台词：模型会让这个孩子说
+ * 「我叫小石头」，然后**把这句话当成了一次新的登场**。
+ *
+ * 而记忆的四层全部按**名字**做键（`knownBy` / `dossiers` / `bonds.who` /
+ * `affinity.who`）。名字一变而键不迁，等于：
+ *
+ * - 他的卷宗还挂在「小满」名下 —— 模型查「小石头」，查到的是一片空白，
+ *   于是又把他当成第一次见面的人；
+ * - `knownBy` 同理，他知道你的事全部失效，NPC 又变回全知；
+ * - `bonds` 里那条「被请了一顿肉」还写着旧名字，模型看到两个名字，
+ *   会以为这是两个人 —— 于是"诞生一个新人物关系"。
+ *
+ * 所以改名**不是**改一个字符串，是一次**身份迁移**。
+ *
+ * ## 合并而不是覆盖
+ *
+ * 如果新名字在记忆里已经有记录（模型之前就用它写过东西），两边的条目要**并起来**，
+ * 而不是让后来的覆盖先来的 —— 覆盖会丢掉一半的经历，而那正是要防的事。
+ */
+export function renameInMemory(
+  memory: StoryMemory | undefined,
+  oldName: string,
+  newName: string,
+): StoryMemory {
+  const m = normalizeMemory(memory)
+  const from = str(oldName)
+  const to = str(newName)
+  if (!from || !to || from === to) return m
+
+  const mergeIndex = (src: Record<string, string[]>): Record<string, string[]> => {
+    const hit = Object.keys(src).find(k => key(k) === key(from))
+    if (!hit) return src
+    const moving = src[hit] || []
+    const out: Record<string, string[]> = {}
+    for (const [k, v] of Object.entries(src)) {
+      if (k === hit) continue
+      out[k] = v
+    }
+    // 目标名下已有的条目要并进来（去重、按上限留最近的）
+    const existKey = Object.keys(out).find(k => key(k) === key(to))
+    const target = existKey ?? to
+    out[target] = [...new Set([...(out[target] || []), ...moving])].slice(-DOSSIER_PER_CHARACTER)
+    return out
+  }
+
+  // bonds / affinity 是「现状」型：同名只留最新一条。改名时把旧的那条换成新名字，
+  // 目标已存在就保留目标那条（它更新），丢掉旧的 —— 与 `mergeMemory` 同一套语义。
+  //
+  // ⚠️ 必须**两段式**：先把非旧名的都收好，再决定旧名那条往哪去。
+  // 一遍扫过去的写法会在「旧名在前、新名在后」时留下两条 —— 那正是要防的重复。
+  const renameWho = <T extends { who: string }>(list: T[]): T[] => {
+    const kept: T[] = []
+    const moving: T[] = []
+    for (const item of list) {
+      if (key(item.who) === key(from)) moving.push(item)
+      else kept.push(item)
+    }
+    if (!moving.length) return list
+    // 目标名下已经有一条 → 保留它（它比旧的更新），旧记录直接丢掉
+    if (kept.some(x => key(x.who) === key(to))) return kept
+    // 否则把最后一条（最新的一次）改成新名字，其余同名的丢掉
+    return [...kept, { ...moving[moving.length - 1], who: to }]
+  }
+
+  return {
+    ...m,
+    dossiers: mergeIndex(m.dossiers),
+    knownBy: mergeIndex(m.knownBy),
+    bonds: renameWho(m.bonds),
+    affinity: renameWho(m.affinity),
+  }
+}
+
+/**
  * 把**当前所在地**机械地补进地点树。
  *
  * ## 为什么这条不交给模型
