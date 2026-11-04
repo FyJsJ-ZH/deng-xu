@@ -68,7 +68,17 @@ vi.mock('react', () => {
 
 vi.mock('@/api/llm', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@/api/llm')>()
-  const NARRATIVE = '秋雨落在檐角，院里的水缸满了。你在廊下站了一会儿。'.repeat(8)
+  /*
+    ⚠️ 这段假叙事的**长度是要紧的**（2026-11 踩过）。
+
+    `detectTruncation` 在字数不足目标的 70% 时会判截断，并**追加一次续写调用** ——
+    于是"发了几次调用"的断言全部错位，而且第二次的 prompt 是续写指令，
+    不再含原文里的「柳明远」。
+
+    这里 25 字 × 10 = 250 字，测试世界配的是 `replyLength: 300`，安全过线。
+    调这个数字之前先看那个阈值。
+  */
+  const NARRATIVE = '秋雨落在檐角，院里的水缸满了。你在廊下站了一会儿。'.repeat(10)
   const DATA_JSON = JSON.stringify({ stateChanges: [], options: [{ id: 'o1', text: '推门', style: 'neutral' }] })
   const sse = (text: string): Response => new Response(new ReadableStream<Uint8Array>({
     start(c) {

@@ -1067,8 +1067,18 @@ export function useGameEngine(): GameEngineReturn {
             }]
           : []),
         ...(knownBlock ? [{ role: 'system' as const, content: knownBlock }] : []),
+        /*
+          ── 历史只带最近 6 条（2026-11 从 12 降下来）──
+
+          实测一轮输入能到 **3 万 token**：世界书 + 12 条完整历史（每条 1000~1800 字）
+          + 七层记忆 + 系统提示。而目标输出只有 1800 字 ≈ 2700 token。
+
+          上下文塞得越满，模型越倾向于**快点收尾** —— 玩家报的「字数不够」有一半在这。
+          12 条其实是 6 轮对话的量，对"刚才发生了什么"早就过剩了：
+          更早的事由 `summary` 与记忆里的 `timeline` 兜着，那才是不丢信息的正道。
+        */
         ...updatedStore.history
-          .slice(-12)
+          .slice(-6)
           .filter(h => h.role !== 'system')
           .map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
         { role: 'user', content: context }

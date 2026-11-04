@@ -205,8 +205,14 @@ export interface LoreDigestOptions {
   /** 世界里真实存在的专名（`collectWorldProperNouns` 的产物） */
   nouns: readonly string[]
   /**
-   * 展开章节的**汉字预算**。默认 12000 —— 约为大晟 worldLore 的五分之一，
-   * 实测能省掉七成以上的 prompt 体积，同时把真正相关的那几节留在眼前。
+   * 展开章节的**汉字预算**。
+   *
+   * 默认 **9000**（2026-11 从 12000 降下来）。
+   *
+   * 降的理由不是省钱，是**输出被挤压**：实测一轮的输入能到 3 万 token
+   * （世界书 + 12 条历史 + 记忆 + 系统提示），而目标输出只有 1800 字 ≈ 2700 token。
+   * 上下文里塞的东西越多，模型越倾向于"快点收尾"—— 字数不达标有一半是这个原因。
+   * 9000 汉字仍然能把"这一轮用得上的那几节"给全，只是不再顺带塞进整章。
    */
   budget?: number
   /** 无条件保留靠前几节（不含总纲）。默认 2。 */
@@ -295,7 +301,7 @@ export function splitParagraphs(body: string): string[] {
  * 而中文段落之间常常靠「所以」「至于」这类词衔接，砍掉邻段就读不通了。
  */
 export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
-  const budget = Math.max(1000, opts.budget ?? 12000)
+  const budget = Math.max(1000, opts.budget ?? 9000)
   const always = Math.max(0, opts.alwaysInclude ?? 2)
   const sections = splitLore(lore)
 
