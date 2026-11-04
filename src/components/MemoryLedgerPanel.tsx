@@ -3,7 +3,7 @@ import { Trash2, Plus, Check, X } from 'lucide-react'
 import { useGameStore } from '@/stores/game'
 import type { StoryMemory } from '@/utils/memory'
 
-type AddKind = 'affinity' | 'place' | 'item' | null
+type AddKind = 'affinity' | 'place' | 'item' | 'dossier' | null
 
 /** 每种台账的「补记」需要几个输入框、各叫什么 */
 const ADD_FIELDS: Record<Exclude<AddKind, null>, { label: string; hint: string }[]> = {
@@ -19,6 +19,10 @@ const ADD_FIELDS: Record<Exclude<AddKind, null>, { label: string; hint: string }
   item: [
     { label: '东西', hint: '名字' },
     { label: '在哪', hint: '随身 / 寄存在某处（可留空 = 随身）' },
+  ],
+  dossier: [
+    { label: '谁', hint: '角色名（要和人物栏里的一致）' },
+    { label: '经历过什么', hint: '他做过的、身上发生过的事，一句话' },
   ],
 }
 
@@ -72,6 +76,10 @@ export function MemoryLedgerPanel() {
         m.affinity.push({ who: v[0], inner: v[1] || '未知', outer: v[2] || '未知' })
       } else if (adding === 'place') {
         m.places.push(v[1] ? { name: v[0], parent: v[1] } : { name: v[0] })
+      } else if (adding === 'dossier') {
+        // 只填了名字没填事实 = 什么也没记，直接当没补
+        if (!v[1]) { setAdding(null); return }
+        m.dossiers[v[0]] = [...(m.dossiers[v[0]] || []), v[1]]
       } else {
         m.inventory.push({ name: v[0], where: v[1] || '随身' })
       }
@@ -81,11 +89,17 @@ export function MemoryLedgerPanel() {
 
   /** 空台账时也要能补记 —— 所以那一支不能提前 return */
   const empty = !memory.affinity.length && !memory.places.length && !memory.inventory.length
+    && !Object.keys(memory.dossiers || {}).length
 
   const addBar = adding && (
     <div className="rounded border border-accent-edge/30 bg-accent-edge/5 p-2 space-y-1">
       <div className="flex items-center justify-between text-[10px] text-accent-edge">
-        <span>{adding === 'affinity' ? '补一条好感' : adding === 'place' ? '补一个地点' : '补一样东西'}</span>
+        <span>
+          {adding === 'affinity' ? '补一条好感'
+            : adding === 'place' ? '补一个地点'
+            : adding === 'dossier' ? '补一个人的经历'
+            : '补一样东西'}
+        </span>
         <button onClick={() => setAdding(null)} className="hover:text-text-primary"><X size={11} /></button>
       </div>
       {ADD_FIELDS[adding].map((f, i) => (
@@ -123,6 +137,7 @@ export function MemoryLedgerPanel() {
           <button onClick={() => startAdd('affinity')} className="flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-[11px] hover:border-accent-edge/40 hover:text-accent-edge"><Plus size={10} /> 好感</button>
           <button onClick={() => startAdd('place')} className="flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-[11px] hover:border-accent-edge/40 hover:text-accent-edge"><Plus size={10} /> 地点</button>
           <button onClick={() => startAdd('item')} className="flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-[11px] hover:border-accent-edge/40 hover:text-accent-edge"><Plus size={10} /> 东西</button>
+          <button onClick={() => startAdd('dossier')} className="flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-[11px] hover:border-accent-edge/40 hover:text-accent-edge"><Plus size={10} /> 人物经历</button>
         </div>
       </div>
     )
@@ -210,12 +225,57 @@ export function MemoryLedgerPanel() {
         </section>
       )}
 
+      {/* ── 人物卷宗 ── */}
+      {Object.keys(memory.dossiers || {}).length > 0 && (
+        <section>
+          <SectionHead title="人物卷宗（他经历过什么）" onAdd={() => startAdd('dossier')} />
+          <div className="space-y-2">
+            {Object.entries(memory.dossiers).map(([who, facts]) => (
+              <div key={who}>
+                <div className="group flex items-center gap-1">
+                  <span className="flex-1 min-w-0 text-text-primary text-[11px]">{who}</span>
+                  <button
+                    onClick={() => edit(m => { delete m.dossiers[who] })}
+                    className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-accent-grail shrink-0"
+                    title="删掉这个人的整份卷宗（他这一局的经历会被忘掉）"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+                <ul className="space-y-0.5">
+                  {facts.map((f, i) => (
+                    <li key={`${who}-${i}`} className="group flex items-start gap-1 leading-snug pl-1">
+                      <span className="flex-1 min-w-0 text-text-secondary">
+                        <span className="text-text-muted/50">· </span>{f}
+                      </span>
+                      <button
+                        onClick={() => edit(m => {
+                          const arr = [...(m.dossiers[who] || [])]
+                          arr.splice(i, 1)
+                          if (arr.length) m.dossiers[who] = arr
+                          else delete m.dossiers[who]
+                        })}
+                        className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-accent-grail shrink-0 mt-0.5"
+                        title="删掉这一条"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* 补记的输入区（点任一区块标题旁的 ＋ 才出现） */}
       {addBar}
 
       <p className="text-[10px] text-text-muted/60 pt-1 leading-relaxed">
-        这三本由摘要 AI 记账，每轮可能只更新其中一两样。
+        这几本由摘要 AI 记账，每轮可能只更新其中一两样。
         记错了删掉即可；模型漏记的可以自己补 —— 补进去的它下一轮就会当依据用。
+        人物卷宗最要紧：它决定下一轮那个人**还认不认得你**。
       </p>
     </div>
   )

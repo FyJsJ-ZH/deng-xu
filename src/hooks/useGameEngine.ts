@@ -15,7 +15,8 @@ import { storySystem } from '@/systems/StorySystem'
 import { pickAvatarId } from '@/utils/avatarArt'
 import { resolveAiLook } from '@/utils/lookSpec'
 import { isKnownSceneId } from '@/utils/sceneArt'
-import { renderMemoryForPrompt, renderKnownByForPrompt } from '@/utils/memory'
+import { renderMemoryForPrompt, renderKnownByForPrompt, renderDossiersForPrompt } from '@/utils/memory'
+import { factOwner } from '@/utils/facts'
 import { LlmError, classifyLlmError } from '@/api/llmErrors'
 import type { LLMConfig, WorldCard } from '@/types/cards'
 import { detectTruncation } from '@/utils/truncation'
@@ -528,10 +529,44 @@ export function useGameEngine(): GameEngineReturn {
         bonds: memory?.bonds ?? [],
         threads: memory?.threads ?? [],
         timeline: memory?.timeline ?? [],
+        // 已登记的卷宗也要给：不然数据 AI 会把"小满的住处"当新线索一发再发。
+        // 只给名字不给了内容，省 token —— 它要判断的是"这条发过了没有"。
+        dossiers: Object.keys(memory?.dossiers ?? {}),
       },
       /** 数据 AI 写时间线时要用它当 turn（"这一轮是第几轮"） */
       turn: countTurns(currentState.history),
     })
+  }
+
+  /**
+   * 一条线索如果明显是**某个角色的事**，顺手抄进他的卷宗。
+   *
+   * ## 为什么这一步交给程序，不交给模型
+   *
+   * 提示词里已经写了「人物自己的事不是线索」，但它靠的是模型自觉。
+   * 实测里模型会照发 —— 因为「小满的住处」对数据 AI 来说确实"像一条线索"
+   * （它是一句新信息，有名字、有描述）。
+   *
+   * 而漏掉它的代价是**那个人的底细从此无人保存**：
+   * 线索页里迟早会被新的线索挤到看不见，而卷宗是空的，
+   * 于是下一轮模型又把小满当陌生人。
+   *
+   * 所以这里补一道底 —— 与 `ensurePlace` 同一个思路：
+   * **模型漏报，程序兜住**。抄进去的只是名字（或截短的描述），
+   * 不会把整段描述塞进提示词。
+   *
+   * ## 判错的代价
+   *
+   * 判错的唯一后果是：卷宗里多一条不太贴切的"事实"。
+   * 它不影响线索页（`facts` 原样保留），也不删任何东西。
+   */
+  const recordFactIntoDossier = (factName: string, description: string, fallback: string) => {
+    const chars = useGameStore.getState().characters
+    const owner = factOwner(factName, chars.map(c => c.name))
+    if (!owner) return
+    const text = String(description || '').trim() || String(fallback || '').trim()
+    if (!text) return
+    useGameStore.getState().patchMemory({ dossiers: { [owner]: [text] } })
   }
 
   /**
@@ -610,8 +645,10 @@ export function useGameEngine(): GameEngineReturn {
               description: payload.description || ''
             })
             summaryLines.push(`获得线索：${payload.name}`)
+            recordFactIntoDossier(payload.name, payload.description, payload.name)
           } else if (typeof change.target === 'string') {
             addFact(change.target)
+            recordFactIntoDossier(change.target, '', change.target)
           }
           break
         }
@@ -856,19 +893,23 @@ export function useGameEngine(): GameEngineReturn {
         const patch = parsed.memory
         if (patch && typeof patch === 'object') {
           /*
-            ⚠️ 这里必须把**七层全部透传**。
+            ⚠️ 这里必须把**每一层全部透传**。
 
             曾经只传了 bonds / threads / timeline —— 那是三层时代的写法。
             后来加了 knownBy / affinity / places / inventory，`buildSummaryPrompt`
             和 `MemoryPatch` 都改了，**唯独这两个调用点没改**：
             模型老老实实报了，程序一句话没接，四层数据一直是空的。
             这种漏很难从测试里看出来（每一层单独都是对的），只能靠对着调用点数一遍。
+
+            第十一轮又加了 `dossiers` —— 同样是这条路，同样容易漏。
+            加层的时候请把下面这段与 `MemoryPatch`、`buildSummaryPrompt` 三处对齐。
           */
           patchMemory({
             bonds: patch.bonds,
             threads: patch.threads,
             timeline: patch.timeline,
             knownBy: patch.knownBy,
+            dossiers: patch.dossiers,
             affinity: patch.affinity,
             places: patch.places,
             inventory: patch.inventory,
@@ -1022,6 +1063,27 @@ export function useGameEngine(): GameEngineReturn {
         updatedStore.memory,
         activeCharacters.map(c => c.name),
       )
+      /*
+        ── 这几个人「在这一局里已经是什么人」（2026-11 第十一轮）──
+
+        这一块防的是**NPC 失忆**，方向和上面那块正好相反：
+        knownBlock 拦的是"他说出了他不该知道的事"，
+        这一块拦的是"他把认识的人当陌生人"。
+
+        玩家报的症状是「推进剧情后人物重复出现」—— 根子不只是 UI 里多了一张卡，
+        而是模型手里**没有"这个人经历过什么"**，于是每轮都照角色卡重新认识他一遍。
+
+        它同样按**在场角色**过滤：把全世界的卷宗一起塞进去，
+        既浪费 token，又会让模型把甲的来历安到乙头上。
+
+        ⚠️ 顺序不能反：先「他知道你什么」，再「他是什么人」。
+        反过来的话，模型读到卷宗里的"认你作师父"，会顺带认为他也知道你的底细，
+        NPC 就又变回全知了。
+      */
+      const dossierBlock = renderDossiersForPrompt(
+        updatedStore.memory,
+        activeCharacters.map(c => c.name),
+      )
 
       const narrativeMessages: ChatMessage[] = [
         {
@@ -1067,6 +1129,7 @@ export function useGameEngine(): GameEngineReturn {
             }]
           : []),
         ...(knownBlock ? [{ role: 'system' as const, content: knownBlock }] : []),
+        ...(dossierBlock ? [{ role: 'system' as const, content: dossierBlock }] : []),
         /*
           ── 历史只带最近 6 条（2026-11 从 12 降下来）──
 

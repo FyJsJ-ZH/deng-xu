@@ -1,7 +1,8 @@
 import { useGameStore } from '@/stores/game';
 import type { Fact, Lore } from '@/stores/game';
-import { Package, Search, BookOpen } from 'lucide-react';
+import { Package, Search, BookOpen, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { factOwner } from '@/utils/facts';
 
 const ALL_CATEGORY = { id: 'all', label: '全部' };
 const MAX_CATEGORIES = 8;
@@ -13,11 +14,22 @@ interface InventoryPanelProps {
 }
 
 export function InventoryPanel({ className = '' }: InventoryPanelProps) {
-  const { inventory, knownFacts, masteredLores, facts, lores } = useGameStore();
+  const { inventory, knownFacts, masteredLores, facts, lores, characters } = useGameStore();
   const [activeTab, setActiveTab] = useState<TabType>('items');
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  /**
+   * 归属某个角色的线索默认**收起来**（2026-11 第十一轮）。
+   *
+   * 玩家报的是「线索出现频繁」。截图里那一页确实挤满了
+   * 「小满的住处」「小满没有别的家人」「小满拜师」—— 它们不是悬案，
+   * 是那个人的底细，而底细该在他的人物卡里（见 RelationshipPanel 的"卷宗"）。
+   *
+   * 但**不删**：判错的时候（「小满的爷爷留下的怀表」其实是一条真线索）
+   * 玩家得能找回来。所以收起来，并明确写出收了几条、点一下就能看。
+   */
+  const [showOwnedClues, setShowOwnedClues] = useState(false);
 
   // 物品分类不再写死，直接从现有物品的 tags 推导
   const categories = useMemo(() => {
@@ -44,12 +56,25 @@ export function InventoryPanel({ className = '' }: InventoryPanelProps) {
     return matchesCategory && matchesSearch;
   });
 
-  const filteredClues: Fact[] = knownFacts
+  /*
+    线索按**归属**分两拨：不带人名的（悬案本身）直接列，
+    带人名的（「小满的住处」）收进折叠区。
+
+    分类用 `factOwner` 现算，不写进存档 ——
+    存量线索早已躺在旧存档里，改数据要迁移，而迁移写错就回不来。
+    现算的代价只是每次渲染遍历一遍角色名，几十条的量级可以忽略。
+  */
+  const clueBuckets = knownFacts
     .map(factId => facts.find(f => f.id === factId) ?? { id: factId, name: '未知线索', description: '（暂无描述）' })
     .filter(clue =>
       clue.name.toLowerCase().includes(query) ||
       clue.description.toLowerCase().includes(query)
-    );
+    )
+    .map(clue => ({ clue, owner: factOwner(clue.name, characters.map(c => c.name)) }))
+
+  const freeClues: Fact[] = clueBuckets.filter(b => !b.owner).map(b => b.clue)
+  const ownedClues = clueBuckets.filter(b => b.owner)
+  const visibleClues: Fact[] = showOwnedClues ? [...freeClues, ...ownedClues.map(b => b.clue)] : freeClues;
 
   const filteredLores: Lore[] = masteredLores
     .map(loreId => lores.find(l => l.id === loreId) ?? { id: loreId, name: '未知知识', description: '（暂无描述）', principle: '', level: 0 })
@@ -147,26 +172,61 @@ export function InventoryPanel({ className = '' }: InventoryPanelProps) {
             <Search size={12} className="absolute right-2 top-1.5 text-text-muted" />
       </div>
 
-      {filteredClues.length === 0 ? (
+      {visibleClues.length === 0 && !ownedClues.length ? (
         <div className="text-xs text-text-muted italic text-center py-8 border border-dashed border-text-muted/10 rounded-sm bg-black/10">
           {searchQuery ? '没有找到匹配的线索。' : '你还没有发现任何线索。'}
         </div>
       ) : (
-        filteredClues.map((clue) => {
-          return (
-            <div key={clue.id} className="p-3 bg-black/20 rounded-sm border border-text-muted/10 hover:border-accent-moth/30 transition-all duration-300 group hover:bg-black/30">
-              <div className="flex items-start gap-3">
-                <div className="p-2 bg-black/20 rounded-sm text-text-muted group-hover:text-accent-moth transition-colors border border-white/5">
-                  <Search size={16} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-serif text-text-primary group-hover:text-accent-moth transition-colors">{clue.name}</h4>
-                  <p className="text-xs text-text-secondary mt-1 font-serif opacity-80">{clue.description}</p>
+        <>
+          {visibleClues.length === 0 ? (
+            <div className="text-xs text-text-muted italic text-center py-6 border border-dashed border-text-muted/10 rounded-sm bg-black/10">
+              {searchQuery ? '没有找到匹配的线索。' : '还没有不属于某个人的线索。'}
+            </div>
+          ) : visibleClues.map((clue) => {
+            /*
+              一条线索如果记在某人名下（`showOwnedClues` 打开时才会走到这里），
+              标一行"记在谁名下" —— 让玩家知道自己看的是底细，不是悬案。
+            */
+            const owner = factOwner(clue.name, characters.map(c => c.name))
+            return (
+              <div key={clue.id} className="p-3 bg-black/20 rounded-sm border border-text-muted/10 hover:border-accent-moth/30 transition-all duration-300 group hover:bg-black/30">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-black/20 rounded-sm text-text-muted group-hover:text-accent-moth transition-colors border border-white/5">
+                    <Search size={16} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h4 className="text-sm font-serif text-text-primary group-hover:text-accent-moth transition-colors">{clue.name}</h4>
+                      {owner && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-black/30 rounded-sm text-text-muted border border-text-muted/15 shrink-0">
+                          {owner} 的事
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-text-secondary mt-1 font-serif opacity-80">{clue.description}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })
+            )
+          })}
+
+          {/*
+            折叠区：这些线索记在某个人的名下，属于"底细"不属于"悬案"。
+            不删，只收 —— 判错的时候玩家得能找回来。
+          */}
+          {ownedClues.length > 0 && !searchQuery && (
+            <button
+              onClick={() => setShowOwnedClues(v => !v)}
+              className="w-full flex items-center justify-center gap-1.5 py-2 text-[10px] text-text-muted hover:text-text-secondary border border-dashed border-text-muted/15 rounded-sm transition-colors"
+              title="这些是某个人的底细，已收进他的人物卷宗"
+            >
+              <Users size={10} />
+              {showOwnedClues
+                ? `收起 ${ownedClues.length} 条记在某人名下的`
+                : `${ownedClues.length} 条记在某人名下（已收进人物卷宗）`}
+            </button>
+          )}
+        </>
       )}
     </div>
   );

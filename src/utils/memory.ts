@@ -161,6 +161,33 @@ export interface StoryMemory {
    */
   knownBy: Record<string, string[]>
 
+  /**
+   * **角色卷宗**：这个人身上已经发生过、且确定的事（角色名 → 事实条目）。
+   *
+   * ## 这一层解决的是「人物失忆」（2026-11 第十一轮）
+   *
+   * 玩家报的原话是「推进剧情后人物重复出现」+「线索里全是人物的事」。
+   * 两个症状，同一个根：**这个人的经历没有一个属于他的位置**。
+   *
+   * 于是它被迫去了两个都不该去的地方：
+   *   ① 变成 `ADD_FACT` 的线索（「小满的住处」「小满拜师」），
+   *      和真正的悬案（「怀表盖内侧的刻字」）混在一张表里；
+   *   ② 变成 `bonds` 的一条状态（「认伦纳德作师父」），
+   *      而 bonds 是**关系现值**，会被下一轮覆盖 —— 覆盖完，他的来历就没了。
+   *
+   * 结果就是：模型手里没有"这个人经历过什么"，只能照角色卡重写一遍，
+   * 写出来的人自然是**第一次见面**的样子。
+   *
+   * ## 两条与 knownBy 不同的规则
+   *
+   * - **方向相反**：knownBy 是「他→你」，这里是「你与他之间」的既成事实。
+   * - **有人名归属**：它按角色名分组，渲染时**只给在场的那几个人**，
+   *   所以不会变成一份"全世界人物小传"。
+   *
+   * 与 knownBy 相同的两条：**只增不减**（并集），**不进主记忆预算**。
+   */
+  dossiers: Record<string, string[]>
+
   /** 好感双轨（内心 / 外在），见 `Affinity` */
   affinity: Affinity[]
   /** 去过的与正在的地方（由大到小的树），见 `PlaceNode` */
@@ -177,6 +204,11 @@ export interface MemoryPatch {
   earlierSummary?: string
   /** 角色名 → 他这一轮新知道的事（只增不减，见 `StoryMemory.knownBy`） */
   knownBy?: Record<string, string[]>
+  /**
+   * 角色名 → 这个人这一轮新暴露出来的既成事实（只增不减，见 `StoryMemory.dossiers`）。
+   * 与 `knownBy` 方向相反：那是"他知道主角什么"，这是"这个人身上发生过什么"。
+   */
+  dossiers?: Record<string, string[]>
   /** 好感双轨的增量（同一个人只留最新一条） */
   affinity?: Affinity[]
   /** 新去到的地点（并集，按名字去重） */
@@ -218,6 +250,29 @@ export const KNOWN_PER_CHARACTER = 6
 export const KNOWN_FACT_CHARS = 30
 
 /**
+ * 「这个人身上发生过什么」的上限。
+ *
+ * ## 为什么这是**第八层**，而不是并进 knownBy
+ *
+ * `knownBy` 记的是「**他**知道**你**的什么」——方向是他→你，用来拦 NPC 全知。
+ * 而这一层记的是「**你**和他之间已经发生过什么」——方向是局内事实本身，
+ * 用来拦另一类错：**把他当成第一次见面的人**。
+ *
+ * 这两类错在正文里长得完全不一样：
+ *  - 全知：他说出了他从没可能知道的事；
+ *  - 失忆：他问了一句「你是谁」，而他上一轮刚认你作师父。
+ *
+ * 后者更常见，也更伤 —— 玩家会觉得"这几轮白玩了"。
+ * 而它恰好是**摘要与 bonds 都盖不住**的：bonds 记的是关系状态（"认他作师父"），
+ * 不是**这个人本身**的经历（"爷爷上月死了、临终把表给他、他住在秤钩巷后头"）。
+ *
+ * 一个人 8 条、单条 40 字，是在场 3 人时约 240 字的代价 ——
+ * 和 `knownBy` 同量级，同样**不进主记忆预算**。
+ */
+export const DOSSIER_PER_CHARACTER = 8
+export const DOSSIER_FACT_CHARS = 40
+
+/**
  * 新增三层的**存储上限**（不是渲染上限 —— 渲染时另有更严的截断）。
  *
  * 存储留得宽一点：一个世界跑上几十轮，地点和物件会越攒越多，
@@ -244,7 +299,8 @@ const MAX_THREAD_CHARS = 30
 export function emptyMemory(): StoryMemory {
   return {
     bonds: [], threads: [], timeline: [], earlierSummary: '', updatedAtTurn: 0,
-    knownBy: {}, affinity: [], places: [], inventory: [],
+    knownBy: {}, dossiers: {},
+    affinity: [], places: [], inventory: [],
   }
 }
 
@@ -311,19 +367,21 @@ export function normalizeMemory(raw: unknown): StoryMemory {
     **很正常**，只有玩家自己知道"我从来没告诉过他"）。
     所以：名字必须非空、每条必须非空、去重、按上限截断。
   */
-  const knownBy: Record<string, string[]> = {}
-  const rawKnown = (m as { knownBy?: unknown }).knownBy
-  if (rawKnown && typeof rawKnown === 'object' && !Array.isArray(rawKnown)) {
-    for (const [who, facts] of Object.entries(rawKnown as Record<string, unknown>)) {
-      const name = str(who).trim()
-      if (!name) continue
-      const list = Array.isArray(facts)
-        ? facts.map(f => clip(str(f).trim(), KNOWN_FACT_CHARS)).filter(Boolean)
-        : []
-      if (!list.length) continue
-      knownBy[name] = [...new Set(list)].slice(-KNOWN_PER_CHARACTER)
-    }
-  }
+  const knownBy: Record<string, string[]> = normalizeNameIndex(
+    (m as { knownBy?: unknown }).knownBy,
+    KNOWN_PER_CHARACTER,
+    KNOWN_FACT_CHARS,
+  )
+  /*
+    dossiers 与 knownBy 共用同一套收敛规则（名字非空、条目非空、去重、按上限截断），
+    但**上限不同**：卷宗里的一句话可以更长（"爷爷上个月去世，临终把怀表给了他"
+    压到 30 字会丢掉"临终"这个关键因果），而且它按角色分组，总量本就可控。
+  */
+  const dossiers: Record<string, string[]> = normalizeNameIndex(
+    (m as { dossiers?: unknown }).dossiers,
+    DOSSIER_PER_CHARACTER,
+    DOSSIER_FACT_CHARS,
+  )
 
   // ── 好感双轨：只收敛形状，不替模型判断档位 ──
   const affinity: Affinity[] = []
@@ -389,6 +447,7 @@ export function normalizeMemory(raw: unknown): StoryMemory {
       ? Math.max(0, Math.floor(Number(m.updatedAtTurn)))
       : 0,
     knownBy,
+    dossiers,
     affinity: affinity.slice(-AFFINITY_LIMIT),
     places: places.slice(-PLACE_LIMIT),
     inventory: inventory.slice(-INVENTORY_LIMIT),
@@ -397,6 +456,35 @@ export function normalizeMemory(raw: unknown): StoryMemory {
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
+}
+
+/**
+ * 收敛「角色名 → 一串事实」这种形状（`knownBy` 与 `dossiers` 共用）。
+ *
+ * 两条规则的差别只在参数里：上限与单条长度。规则本身一模一样 ——
+ * 名字必须非空、条目必须非空、去重、只留最近 N 条。
+ *
+ * ⚠️ **不合并**同名不同写法（「小满」/「小满 」）：这一步只做形状收敛，
+ * 名字之间的归一化在 `mergeMemory` 里用 `key()` 做。放这里会让"哪个算同一个名字"
+ * 这个判断散到两处，而它一旦不自洽，同一个人的事实就会被劈成两半。
+ */
+function normalizeNameIndex(
+  raw: unknown,
+  perName: number,
+  factChars: number,
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
+  for (const [who, facts] of Object.entries(raw as Record<string, unknown>)) {
+    const name = str(who).trim()
+    if (!name) continue
+    const list = Array.isArray(facts)
+      ? facts.map(f => clip(str(f).trim(), factChars)).filter(Boolean)
+      : []
+    if (!list.length) continue
+    out[name] = [...new Set(list)].slice(-perName)
+  }
+  return out
 }
 
 /** 按显示宽度裁剪（中文按 1 计；ASCII 也不特殊处理 —— 这条路径只用于中文剧情） */
@@ -500,6 +588,26 @@ export function mergeMemory(old: StoryMemory | undefined, patch: MemoryPatch | u
   }
 
   /*
+    卷宗：与 knownBy 一样是**并集**，但多一道**名字归一化**。
+
+    实测里模型会把同一个人写成「小满」和「小满 」，甚至当轮叫「小满」、
+    下一轮叫「那个孩子」。knownBy 用精确名字当键，出现这种写法就会
+    长出两个"小满"，而他做过的事被劈成两半 —— 两半都不足以让模型
+    认出"眼前这个就是那个人"。那正是这一层要治的病，不能由它自己复发。
+
+    归一化做的是**保守匹配**（忽略空白与大小写），不做模糊猜测：
+    把两个人的事实合成一份，比分成两份更坏 —— 那会让模型把甲的来历安到乙头上。
+  */
+  const dossiers: Record<string, string[]> = { ...base.dossiers }
+  const incomingDossiers = normalizeMemory({ dossiers: patch?.dossiers }).dossiers
+  for (const [who, facts] of Object.entries(incomingDossiers)) {
+    const existKey = Object.keys(dossiers).find(k => key(k) === key(who))
+    const target = existKey ?? who
+    const prev = dossiers[target] || []
+    dossiers[target] = [...new Set([...prev, ...facts])].slice(-DOSSIER_PER_CHARACTER)
+  }
+
+  /*
     好感双轨：**同一个人只留最新一条**（和 bonds 一样是"现状"）。
     内外不一致本身是有信息的，所以不拆成两条 —— 拆开之后模型会当成两个人。
   */
@@ -537,6 +645,7 @@ export function mergeMemory(old: StoryMemory | undefined, patch: MemoryPatch | u
     earlierSummary,
     updatedAtTurn: Math.max(base.updatedAtTurn, lastTurn),
     knownBy,
+    dossiers,
     affinity: affinity.slice(-AFFINITY_LIMIT),
     places: places.slice(-PLACE_LIMIT),
     inventory: inventory.slice(-INVENTORY_LIMIT),
@@ -735,8 +844,72 @@ ${lines.join('\n')}
 **不要把角色卡上的设定当成他知道的事。**`
 }
 
-/** 在 knownBy 里找这个角色名对应的键（精确优先，其次双向包含） */
-function matchKnownKey(known: Record<string, string[]>, name: string): string | null {
+/**
+ * 渲染「**这几个角色**在这一局里已经是什么人」。
+ *
+ * ## 它和上面那段 knownBy 是**镜像**，不是同一件事
+ *
+ * | | 方向 | 记什么 | 治什么病 |
+ * |---|---|---|---|
+ * | `knownBy` | 他 → 知道**你**什么 | 主角的事 | NPC **全知** |
+ * | `dossiers` | **你与他之间** | 这个人自己的经历 | NPC **失忆** |
+ *
+ * 两段必须一起给，而且**必须明确说出它们不是一回事**：
+ * 卷宗里写着他认你作师父，但他**仍然**可能不知道你姓什么 ——
+ * 模型很容易把"他知道我的事"和"我们之间发生过事"混成一团，
+ * 混完之后 NPC 又变回全知。
+ *
+ * ## 为什么最后一段要写「不要重演一遍」
+ *
+ * 这一层的失败长得不像错误：模型会把卷宗里的事实**重写一遍**
+ * ——"他告诉你爷爷上月去世了"、"你们第一次见面，他认你作师父"。
+ * 单看每一句都没错，读起来却像故事在倒带。
+ * 所以判据要给死：**表里的事已经过去了，不要重新演一次。**
+ */
+export function renderDossiersForPrompt(
+  memory: StoryMemory | undefined,
+  characterNames: readonly string[],
+): string {
+  const names = characterNames.map(n => String(n || '').trim()).filter(Boolean)
+  if (!names.length) return ''
+
+  const dossiers = normalizeMemory(memory).dossiers
+  const blocks: string[] = []
+  const seen = new Set<string>()
+
+  for (const name of names) {
+    if (seen.has(name)) continue
+    seen.add(name)
+    const k = matchKnownKey(dossiers, name)
+    const facts = k ? dossiers[k] : []
+    // 一无所知的人**不写进来**：这段是"他已经是什么人"，
+    // 没有经历的人写一行"暂无"只会占地方、并暗示模型"这个人很重要但没东西写"。
+    if (!facts.length) continue
+    blocks.push(`- **${name}**：\n${facts.map(f => `  - ${f}`).join('\n')}`)
+  }
+
+  if (!blocks.length) return ''
+
+  return `## 这几个人**在这一局里**已经是什么人（这些事**已经发生过**）
+
+${blocks.join('\n')}
+
+⚠️ 他们**不是第一次见你**。动笔之前先读完上面这几条，然后：
+- **不要重演**：表里的事是过去时。不要再让他们把这些话讲一遍、
+  不要再写"第一次见面"、也不要让已经住进柴房的人重新无家可归。
+- **不要写反**：表里写他信你，就不要写成他防着你；表里写他刚死了亲人，
+  他这一场说话的底子就得是那个。
+- **但他们仍然不知道你的事** —— 那只看上面「知道」那一段。
+  他的卷宗里有他的来历，不代表他知道你的来历。`
+}
+
+/**
+ * 在「角色名 → 一串东西」的表里找这个人对应的键（精确优先，其次双向包含）。
+ *
+ * `knownBy` / `dossiers` 共用；面板也要用它把 UI 上的角色卡和记忆里的键对上 ——
+ * 模型写的名字常常是「阿什沃斯勋爵」，而卡片上写「勋爵」。
+ */
+export function matchKnownKey(known: Record<string, string[]>, name: string): string | null {
   if (known[name]) return name
   const keys = Object.keys(known)
   const loose = keys.find(k => k.length >= 2 && (name.includes(k) || k.includes(name)))

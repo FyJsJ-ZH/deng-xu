@@ -557,6 +557,71 @@ function resourceMap(defs: ResourceDef[]): ResourceMap {
   }, {})
 }
 
+/**
+ * 判两个角色名是不是同一个人。
+ *
+ * ## 为什么不用 id
+ *
+ * `Character.id` 是**模型自己编的**（见 `addCharacter` 里那段注释）：
+ * 同一轮叫 `xiao_man`、下一轮叫 `xiaoman_pcj`，都是它的自由发挥。
+ * 而名字是它在正文里**必须**写对的东西 —— 玩家看到的也是名字。
+ * 所以"是不是同一个人"这件事，名字比 id 可靠。
+ *
+ * ## 归一化的尺度：保守
+ *
+ * 只抹掉三样东西：括号里的注解（「小满（男孩）」）、空白、大小写。
+ * **不做**包含判断（"小满" ⊂ "小满的爷爷"）—— 那会把两个不同的人并成一个，
+ * 而并错比分开更坏：模型会把甲的来历安到乙头上，玩家一眼就能看出不对。
+ */
+export function sameCharacterName(a: string, b: string): boolean {
+  const norm = (s: string) => String(s || '')
+    .replace(/[（(][^)）]*[)）]/g, '')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+  const x = norm(a)
+  const y = norm(b)
+  return x.length > 0 && x === y
+}
+
+/**
+ * 把角色列表里**同一个人**的重复条目合成一条（存档迁移用）。
+ *
+ * ## 为什么需要它
+ *
+ * 修好 `addCharacter` 只挡得住**以后**；已经跑了几十轮的存档里，
+ * 那两张「小满」还在。玩家点开人物栏看到两张卡，会以为修了也没用。
+ *
+ * ## 合并规则
+ *
+ * - 后出现的那条覆盖先出现的字段（它通常更新）；
+ * - **id 保留先出现的那条** —— 旧 id 已经被 `knownBy` / `dossiers` /
+ *   历史里的称呼引用着，换 id 会让那些记忆全部对不上人；
+ * - `look` 只在后来那条**给了值**时才覆盖（同 `addCharacter` 里的那道保护）。
+ *
+ * 幂等：同一份数据跑两次，结果一样。
+ */
+export function dedupeCharacters(list: Character[]): Character[] {
+  const out: Character[] = []
+  for (const c of list) {
+    if (!c || typeof c !== 'object') continue
+    const hit = out.findIndex(x => x.id === c.id || sameCharacterName(x.name, c.name))
+    if (hit < 0) {
+      out.push(c)
+      continue
+    }
+    const prev = out[hit]
+    out[hit] = {
+      ...prev,
+      ...c,
+      id: prev.id,
+      look: c.look ?? prev.look,
+      // 名字也用先出现的那条：它是模型更早、通常更完整的写法
+      name: prev.name,
+    }
+  }
+  return out
+}
+
 const INITIAL_STATE = {
   attributeDefs: FALLBACK_ATTRIBUTES,
   resourceDefs: FALLBACK_RESOURCES,
@@ -671,11 +736,27 @@ export const useGameStore = create<GameState>()(
       }),
       removeItem: (itemId) => set((state) => ({ inventory: state.inventory.filter(i => i.id !== itemId) })),
       addCharacter: (char) => set((state) => {
-        // 同一个角色可能被 AI 反复 ADD_CHARACTER，按 id 合并而不是堆重复条目
-        const idx = state.characters.findIndex(c => c.id === char.id);
+        /*
+          同一个角色可能被 AI 反复 ADD_CHARACTER，按 id 合并而不是堆重复条目。
+
+          ⚠️ **只按 id 去重是不够的**（2026-11 第十一轮，玩家截图里两个「小满」）。
+
+          id 是**模型自己编的**：它这一轮写 `xiao_man`、下一轮写 `xiaoman_pcj`，
+          或者干脆用名字当中文 id。于是同一个角色被判成两个，
+          人物栏里出现两张卡、各记一半经历 —— 而玩家看到的是"同一个人出现了两次"。
+
+          所以补一道按**名字**的兜底：id 没命中时，再比一次归一化后的名字。
+          命中就并进已有那条（**保留旧 id**）——
+          因为旧 id 已经被 `knownBy` / `dossiers` / 历史里的称呼引用着了，
+          换 id 会让那些记忆全部对不上人。
+        */
+        const byId = state.characters.findIndex(c => c.id === char.id);
+        const idx = byId >= 0
+          ? byId
+          : state.characters.findIndex(c => sameCharacterName(c.name, char.name));
         if (idx >= 0) {
           const prev = state.characters[idx];
-          const merged = { ...prev, ...char };
+          const merged = { ...prev, ...char, id: prev.id };
           /*
             ⚠️ `look` 是**浅合并里唯一的例外**（2026-10 第九轮）。
 
@@ -698,9 +779,26 @@ export const useGameStore = create<GameState>()(
         }
         return { characters: [...state.characters, char] };
       }),
-      updateCharacter: (id, updates) => set((state) => ({
-        characters: state.characters.map(c => c.id === id ? { ...c, ...updates } : c)
-      })),
+      /*
+        `updateCharacter` 也要兜一道名字：
+        `addCharacter` 已经在合并时保留了旧 id，但模型下一轮发
+        `UPDATE_CHARACTER { id: "xiaoman_pcj" }` 时用的还是它自己编的那个 id ——
+        于是这次更新会**打空**（id 找不到），人物的关系/状态永远停在第一次登场。
+
+        判据按优先级：id 精确 → id 当成名字 → 更新内容里的 name。
+      */
+      updateCharacter: (id, updates) => set((state) => {
+        let target = id;
+        if (!state.characters.some(c => c.id === id)) {
+          const hit =
+            state.characters.find(c => sameCharacterName(c.name, id))
+            ?? (updates.name ? state.characters.find(c => sameCharacterName(c.name, String(updates.name))) : undefined);
+          if (hit) target = hit.id;
+        }
+        return {
+          characters: state.characters.map(c => c.id === target ? { ...c, ...updates } : c)
+        };
+      }),
       addLocationInfo: (loc) => set((state) => {
         const existingIndex = state.locations.findIndex(l => l.id === loc.id);
         if (existingIndex >= 0) {
@@ -1006,6 +1104,25 @@ export const useGameStore = create<GameState>()(
     {
       name: 'pale-notes-storage',
       storage: createJSONStorage(() => localStorage),
+      /*
+        存档结构版本。
+        v2（2026-11 第十一轮）：角色按**名字**去重。
+
+        ⚠️ 加 version 之前的旧存档 version 是 0，所以这里写 `version: 2`
+        会让它们**全部**走一次 migrate —— 这正是我们要的：
+        已经玩到一半的存档里，那两张「小满」不会因为修了代码就自己合起来，
+        得在这里合一次。迁移必须是**幂等**的（重复跑结果一样），
+        否则刷新两次就把人并乱了。
+      */
+      version: 2,
+      migrate: (persisted) => {
+        const state = persisted as { characters?: Character[] } | undefined
+        if (!state || typeof state !== 'object') return state as never
+        if (Array.isArray(state.characters)) {
+          state.characters = dedupeCharacters(state.characters)
+        }
+        return state as never
+      },
       partialize: (state) => {
         // 不持久化 isGameStarted，保证刷新后总是回到标题页；世界卡配置由 session store 从 IndexedDB 恢复
         // lastUsage 只是"上一轮"的瞬时数字（刷新后没有"上一轮"了），
