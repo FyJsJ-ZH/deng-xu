@@ -308,6 +308,14 @@ function backoff(attempt: number, signal?: AbortSignal): Promise<void> {
 export interface ParsedChunk {
   content?: string;
   reasoning?: string;
+  /**
+   * 这一段的 `finish_reason`。
+   *
+   * 通常只有最后一个 chunk 才有；`'length'` 表示**输出撞到 token 上限**。
+   * 这是"这段是不是被截断"的唯一确定证据 —— 比"结尾有没有句号"这种启发式可靠得多，
+   * 因为模型撞上限时常常刚好把话说圆。
+   */
+  finishReason?: string;
 }
 
 /** 解析一行 SSE data，返回其中的增量文本 */
@@ -322,7 +330,11 @@ export function parseSseLine(line: string): ParsedChunk | null {
     if (typeof delta.content === 'string' && delta.content) chunk.content = delta.content;
     const reasoning = delta.reasoning_content ?? delta.reasoning;
     if (typeof reasoning === 'string' && reasoning) chunk.reasoning = reasoning;
-    return chunk.content || chunk.reasoning ? chunk : null;
+    const finish = json.choices?.[0]?.finish_reason;
+    if (typeof finish === 'string' && finish) chunk.finishReason = finish;
+    // ⚠️ finishReason 也要算"有效的 chunk"：只有它在、内容为空的那一段
+    // （每个流最后几乎都有一帧这样的）如果被丢掉，截断就永远判不出来。
+    return chunk.content || chunk.reasoning || chunk.finishReason ? chunk : null;
   } catch {
     return null;
   }

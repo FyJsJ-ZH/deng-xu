@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { llmChat, DEFAULT_LLM_CONFIG } from '@/api/llm'
+import { llmChat, parseSseLine, DEFAULT_LLM_CONFIG } from '@/api/llm'
 import type { LLMConfig } from '@/types/cards'
 
 /**
@@ -92,6 +92,33 @@ describe('思维链 · 开关默认开', () => {
       把它写成断言，是为了让下一个人（包括我）不在这件事上再绕一圈。
     */
     expect(/reasoner|(^|[-_/])r1($|[-_/])|o1|o3|thinking/i.test(DEFAULT_LLM_CONFIG.narrativeModel)).toBe(false)
+  })
+})
+
+describe('SSE 解析 · finish_reason 不许被丢掉', () => {
+  it('★ 只有 finish_reason、没有内容的那一帧也要返回', () => {
+    /*
+      流式响应的最后一帧通常长这样：`{"choices":[{"delta":{},"finish_reason":"length"}]}` ——
+      没有 content、没有 reasoning，只有 finish_reason。
+
+      以前的解析器最后一行是 `return chunk.content || chunk.reasoning ? chunk : null`，
+      **这一帧会被当成空帧丢掉**，于是"撞到 token 上限"这个唯一的确定证据从来没被读到过。
+    */
+    const c = parseSseLine('data: {"choices":[{"delta":{},"finish_reason":"length"}]}')
+    expect(c).not.toBeNull()
+    expect(c?.finishReason).toBe('length')
+  })
+
+  it('内容和 finish_reason 同时出现时都保住', () => {
+    const c = parseSseLine('data: {"choices":[{"delta":{"content":"尾声"},"finish_reason":"stop"}]}')
+    expect(c?.content).toBe('尾声')
+    expect(c?.finishReason).toBe('stop')
+  })
+
+  it('普通增量帧不受影响', () => {
+    const c = parseSseLine('data: {"choices":[{"delta":{"content":"他"}}]}')
+    expect(c?.content).toBe('他')
+    expect(c?.finishReason).toBeUndefined()
   })
 })
 

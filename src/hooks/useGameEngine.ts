@@ -1099,6 +1099,8 @@ export function useGameEngine(): GameEngineReturn {
       let buffer = ''
       /** 服务商在流里回的 usage（通常只在最后一个 chunk 带一次） */
       let streamUsage: TokenUsage | null = null
+      /** 流最后一个 chunk 的 finish_reason —— `length` 表示撞到 token 上限 */
+      let streamFinishReason = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -1114,6 +1116,7 @@ export function useGameEngine(): GameEngineReturn {
           if (usage) streamUsage = usage
           const chunk = parseSseLine(line.trim())
           if (!chunk) continue
+          if (chunk.finishReason) streamFinishReason = chunk.finishReason
           if (chunk.reasoning) {
             fullReasoning += chunk.reasoning
             reasoningStats.chunks++
@@ -1170,7 +1173,8 @@ export function useGameEngine(): GameEngineReturn {
         否则会陷入"无限续写"，既费 token 又永远停不下来。
       */
       let finalNarrative = fullNarrative
-      let trunc = detectTruncation(finalNarrative, activeWorld?.narrative?.replyLength)
+      // `finishReason` 是最硬的证据：接口说撞上限了，就一定是撞了
+      let trunc = detectTruncation(finalNarrative, activeWorld?.narrative?.replyLength, streamFinishReason)
       if (trunc.truncated) {
         const continued = await tryContinueNarrative(finalNarrative, config, activeWorld)
         if (continued) {

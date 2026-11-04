@@ -48,10 +48,32 @@ const MID_PUNCT = /[，、：；,;:]\s*$/
  *
  * @param text          模型返回的叙事正文
  * @param expectedChars 该世界配置的期望字数（用于判断"明显偏短"）
+ * @param finishReason  流式最后一个 chunk 的 `finish_reason`；`length` 表示撞到 token 上限
  */
-export function detectTruncation(text: string, expectedChars?: number): TruncationCheck {
+export function detectTruncation(
+  text: string,
+  expectedChars?: number,
+  finishReason?: string,
+): TruncationCheck {
   const t = (text || '').trim()
   if (!t) return { truncated: false }   // 空串由另一条路径处理
+
+  /*
+    ── 0. 服务商自己说了 `length`（2026-11 加）──
+
+    这是**唯一确定**的证据，比任何文本启发式都硬：接口明确告诉你"输出撞到上限了"。
+    在这之前代码完全没看这个字段，只能靠"结尾有没有句号"去猜 ——
+    而模型很会**把话说圆**：撞到上限时它常常刚好收在一个句号上，
+    于是文本看着完整、字数又不够，两个弱判据都不成立 —— 判定为"没截断"，
+    续写逻辑也就不触发。玩家看到的就是「明明要 1800 字，它给我 900」。
+  */
+  if (String(finishReason || '').toLowerCase() === 'length') {
+    return {
+      truncated: true,
+      confidence: 'high',
+      reason: '模型输出撞到 token 上限被切断（接口返回 finish_reason=length）',
+    }
+  }
 
   // —— 强证据 ——
 
@@ -83,9 +105,16 @@ export function detectTruncation(text: string, expectedChars?: number): Truncati
   const noClosing = !CLOSING.test(t)
   // 4. 结尾是句中标点
   const midPunct = MID_PUNCT.test(t)
-  // 5. 明显短于配置的期望长度（八成以上差距才算，避免误报）
+  /*
+    5. 明显短于配置的期望长度。
+
+    **阈值从 0.35 提到 0.55**（2026-11）。原值 1800×0.35 = 630 字，
+    也就是说 900 字被判"够长" —— 而玩家要的是 1800。
+    往上提的代价是偶尔会多续写一次（多花一次调用），
+    但另一头是"永远只拿到一半"，那个代价更贵。
+  */
   const tooShort = typeof expectedChars === 'number' && expectedChars > 0
-    && t.length < expectedChars * 0.35
+    && t.length < expectedChars * 0.55
 
   if (noClosing && (midPunct || tooShort)) {
     return {
@@ -93,7 +122,26 @@ export function detectTruncation(text: string, expectedChars?: number): Truncati
       confidence: 'low',
       reason: midPunct
         ? '结尾停在逗号或冒号上，这段叙事可能没有写完'
-        : `这段只有约 ${t.length} 字，明显短于设定的篇幅，可能被截断了`,
+        : `这段只有约 ${t.length} 字，明显短于设定的 ${expectedChars} 字`,
+    }
+  }
+
+  /*
+    6. 结尾完整、但字数差得远 —— 单独成立，不再要求"结尾没标点"。
+
+    模型撞上限时经常刚好收在句号上（见上面那条注释），于是 `noClosing` 为假。
+    这条兜住的就是那种情况：**话说圆了，事没办完**。
+
+    ⚠️ 这一条要设 200 字的下限，而上面第 5 条**不能设**：
+    第 5 条有「结尾没标点」当必要条件，短场景（一句回应）本来就会以标点收尾，
+    不会被它误伤；而这一条只看长度，短场景很容易被它当成截断。
+    两处共用一个 `tooShort` 会让"22 字被切断"这种明显情况判不出来。
+  */
+  if (tooShort && t.length >= 200) {
+    return {
+      truncated: true,
+      confidence: 'low',
+      reason: `这段只有约 ${t.length} 字，明显短于设定的 ${expectedChars} 字`,
     }
   }
 

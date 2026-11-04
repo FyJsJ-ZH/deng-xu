@@ -106,3 +106,52 @@ describe('叙事截断检测', () => {
     })
   })
 })
+
+/**
+ * `finish_reason` 与新的字数阈值（2026-11）。
+ *
+ * ## 玩家原话
+ * > 「现在的每次对话字数依旧连 1000 字都没有」
+ *
+ * 根因有两个，都在这组测试里：
+ *  1. **代码从来没看 `finish_reason`** —— 只能靠"结尾有没有句号"猜。
+ *     可模型撞上限时很会**把话说圆**（刚好收在句号上），两个弱判据都不成立，
+ *     于是"被切断"被判成"写完了"，续写逻辑不触发。
+ *  2. **"明显偏短"的阈值是 0.35**：1800×0.35 = 630 字。也就是说 900 字算"够长"。
+ */
+describe('finish_reason=length · 唯一确定的证据', () => {
+  it('★ 接口说撞上限了，就一定是撞了（哪怕文本看着完整）', () => {
+    const r = detectTruncation('他说完这句话就走了。', 1800, 'length')
+    expect(r.truncated).toBe(true)
+    expect(r.confidence).toBe('high')
+    expect(r.reason).toMatch(/token 上限/)
+  })
+
+  it('finish_reason=stop 时照常走启发式（不给它乱扣截断的帽子）', () => {
+    expect(detectTruncation('他说完这句话就走啊。', 100, 'stop').truncated).toBe(false)
+  })
+
+  it('大小写都认；别的值不算强证据', () => {
+    expect(detectTruncation('很短。', 1800, 'STOP').truncated).toBe(false)
+    expect(detectTruncation('很短。', 1800, 'LENGTH').truncated).toBe(true)
+  })
+})
+
+describe('字数明显偏短 · 阈值提到 0.55', () => {
+  it('★ 960 字的完整收尾也要判（期望 1800，只写了一半）', () => {
+    const text = '他走进当铺，柜台后的人抬起头。'.repeat(60)   // 15 字 × 60 = 900
+    const r = detectTruncation(text, 1800)
+    expect(text.length).toBeGreaterThanOrEqual(900)
+    expect(r.truncated).toBe(true)
+    expect(r.confidence).toBe('low')
+  })
+
+  it('★ 短场景不误报（200 字以下，哪怕离期望很远）', () => {
+    expect(detectTruncation('他摇了摇头，没说话。', 1800).truncated).toBe(false)
+  })
+
+  it('够长的正常收尾不报（提阈值不能变成"什么都报"）', () => {
+    const text = '他走进当铺，柜台后的人抬起头。'.repeat(120)   // 1920 字
+    expect(detectTruncation(text, 1800).truncated).toBe(false)
+  })
+})

@@ -357,6 +357,20 @@ function App() {
         <div className="flex items-center gap-2 px-3 py-1 text-[10px] font-mono text-text-muted border-b border-text-muted/20 flex-wrap">
           <span title={tokenTooltip(lastUsage, '上一轮（叙事 + 数据结算两次调用）')}>
             本轮 <span className="text-text-secondary">{formatUsage(lastUsage)}</span>
+            {/*
+              **单独把"输出"拎出来显示**（2026-11）。
+
+              玩家报「字数还是不到 1000」时，唯一能自己判断的是这件事：
+              1800 汉字大约 2700 token。如果这里显示 `出 1.2k`，
+              那就是被 token 上限切断了；显示 `出 2.7k` 才说明模型自己写短。
+              只看总数（输入+输出）判断不出来 —— 输入那边本来就有七八千。
+            */}
+            {lastUsage && lastUsage.completionTokens > 0 && (
+              <span className={`ml-1 ${lastUsage.completionTokens < 2000 ? 'text-amber-400' : 'text-text-muted'}`}
+                title="这一轮模型实际输出的 token。1800 汉字约 2700 —— 明显少于这个数就是被上限切断了">
+                （出 {(lastUsage.completionTokens / 1000).toFixed(1)}k）
+              </span>
+            )}
           </span>
           <span className="opacity-40">|</span>
           <span
