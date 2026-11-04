@@ -27,6 +27,7 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary'
 import { SceneBackdrop } from '@/components/SceneBackdrop'
 import { SideOracle } from '@/components/SideOracle'
 import { MemoryLedgerPanel } from '@/components/MemoryLedgerPanel'
+import { RewindConfirm } from '@/components/RewindConfirm'
 
 /**
  * 叙事区懒加载。
@@ -165,6 +166,15 @@ function App() {
    * 所以手机返回键不会关它 —— 组件自己给了遮罩点击与 ✕ 两个出口。
    */
   const [isOracleOpen, setIsOracleOpen] = useState(false)
+  /**
+   * 待确认的回溯（null = 没有）。
+   *
+   * 原来是一句 `window.confirm`，没有中间状态可存。换成自绘弹窗之后
+   * 必须把"待确认的那一轮"落成 state —— 顺带解决了另一件事：
+   * 弹窗开着的时候下拉框已经被选走了，state 里留着原文，
+   * 玩家点「复制」之后还能再点一次「确定」。
+   */
+  const [pendingRewind, setPendingRewind] = useState<{ turn: number; action: string } | null>(null)
   /**
    * 错误横幅是否展开。
    * 默认收起（显示两行），因为服务商原始报错很长，全量铺开在手机上要吃掉 5 行。
@@ -330,6 +340,25 @@ function App() {
       {/* 全身立绘面板（点角色头像打开） */}
       <PortraitPanel />
 
+      {/*
+        回溯确认。z-[80]：要压住立绘面板（z-50）与手机抽屉，
+        但没有必要压住 GlobalToast（z-[95]）——「已复制」那个提示得看得见。
+      */}
+      {pendingRewind && (
+        <RewindConfirm
+          turn={pendingRewind.turn}
+          action={pendingRewind.action}
+          onCancel={() => setPendingRewind(null)}
+          onConfirm={() => {
+            const t = pendingRewind.turn
+            setPendingRewind(null)
+            const done = rewindToTurn(t)
+            // 失败要说出来：快照可能已经超出上限，静默什么都不发生会让人以为按钮坏了
+            if (!done) useUIStore.getState().setStatusMessage(`第 ${t} 轮的快照已经不在了，回不去`)
+          }}
+        />
+      )}
+
       {/* 编年史浮层：桌面从左侧面板进，手机从「更多」菜单进 */}
       <ChroniclePanel open={isChronicleOpen} onClose={() => setIsChronicleOpen(false)} />
 
@@ -441,17 +470,14 @@ function App() {
                     回溯是**破坏性**的（之后所有轮次作废），所以先把这一轮的
                     玩家行动原文摆出来让他确认 —— 这既是"查看上一轮输入"，
                     也是防止点错一行就毁掉几十轮。
+
+                    2026-11 第二十二轮：这里从 `window.confirm` 换成了自绘弹窗
+                    （`RewindConfirm`）。原生对话框在手机上选不中、也复制不了文字，
+                    而回溯最真实的用法就是"把那一轮的行动抄出来，改两个字再走一遍"。
+                    原生框逼着玩家关掉弹窗、翻回去、用眼睛重敲一遍 ——
+                    而那段文字早被后几轮顶出屏幕了。
                   */
-                  if (opt?.full) {
-                    const ok = window.confirm(
-                      `回到第 ${t} 轮结束时？\n\n` +
-                      `你在那一轮输入的行动：\n${opt.full}\n\n` +
-                      `⚠️ 这一轮之后发生的事会全部作废（叙事、数值、关系、记忆一起回滚）。`,
-                    )
-                    if (!ok) return
-                  }
-                  const done = rewindToTurn(t)
-                  if (!done) window.alert(`第 ${t} 轮的快照已经不在了，无法回到那一轮。`)
+                  setPendingRewind({ turn: t, action: opt?.full || '' })
                 }}
               >
                 <option value="">回到第…轮</option>
