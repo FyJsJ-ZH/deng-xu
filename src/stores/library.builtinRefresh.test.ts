@@ -210,3 +210,55 @@ describe('内置卡内容更新 · 首次运行与新增卡', () => {
     expect(loaded().at(-1)?.id).toBe('builtin_ximeng')
   })
 })
+
+/**
+ * **玩家改过内置卡之后，刷新不许把改动盖掉**（2026-11）。
+ *
+ * ## 这一组防的是哪一种"改动消失"
+ *
+ * 内容指纹那套（§4.6j）默认「内置卡 = 作者的东西，玩家不该改」，于是整批刷新
+ * 会无条件覆盖 `builtin === true` 的卡。但玩家确实会在编辑器里调措辞 ——
+ * 而下次指纹一变（比如我改了九张卡的篇幅），他的改动就没了。
+ *
+ * **他不会知道是自己的改动没了，只会觉得"我明明改过"。**
+ *
+ * 修法是写入时打标记：`updateWorld` 动到内置卡就置 `editedByUser`，
+ * 刷新时跳过它们。代价是那张卡以后不再跟官方更新（想跟就 duplicate 一份去改）。
+ */
+describe('玩家改过的内置卡 · 刷新不许盖掉', () => {
+  it('★ 改过一张卡之后，指纹再变也不动它', async () => {
+    const worlds = allBuiltins(800)
+    // 模拟他之前改过第一张（updateWorld 会打这个标记）
+    worlds[0] = { ...worlds[0], editedByUser: true }
+    seedStorage({ worlds, stamp: 'old-stamp-0000' })
+
+    await useLibraryStore.getState().loadWorlds()
+
+    // 改过的那张：保持原样（还是旧的 800），标记还在
+    expect(findWorld(worlds[0].id)?.narrative.replyLength).toBe(800)
+    expect(findWorld(worlds[0].id)?.editedByUser).toBe(true)
+    // 没改过的照常换新
+    expect(findWorld('builtin_london1905')?.narrative.replyLength).toBe(1800)
+  })
+
+  it('★ updateWorld 动到内置卡时会自动打标记（不需要编辑器配合）', async () => {
+    seedStorage({ worlds: allBuiltins(1800), stamp: BUILTIN_STAMP })
+    await useLibraryStore.getState().loadWorlds()
+
+    expect(findWorld('builtin_london1905')?.editedByUser).toBeUndefined()
+
+    await useLibraryStore.getState().updateWorld('builtin_london1905', { title: '我改过的雾都' })
+
+    expect(findWorld('builtin_london1905')?.editedByUser).toBe(true)
+  })
+
+  it('★ 改自己的卡不会被误打标记（那本来就不受刷新影响）', async () => {
+    const mine = fakeWorld('my_custom_world', 500, false)
+    seedStorage({ worlds: [mine], stamp: BUILTIN_STAMP })
+    await useLibraryStore.getState().loadWorlds()
+
+    await useLibraryStore.getState().updateWorld('my_custom_world', { title: '我的世界' })
+
+    expect(findWorld('my_custom_world')?.editedByUser).toBeUndefined()
+  })
+})

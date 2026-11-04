@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { StoryState } from '@/types/story'
 import type { AttributeDef, ResourceDef, SpriteLook, WorldCard } from '@/types/cards'
-import { appendTimelineBeat, emptyMemory, mergeMemory, type MemoryPatch, type StoryMemory } from '@/utils/memory'
+import { appendTimelineBeat, emptyMemory, ensurePlace, mergeMemory, normalizeMemory, type MemoryPatch, type StoryMemory } from '@/utils/memory'
 
 /**
  * 运行时存档
@@ -475,6 +475,15 @@ export interface GameState {
    * 模型漏写一层不能让那一层永久消失。
    */
   patchMemory: (patch: MemoryPatch) => void
+  /**
+   * **整体替换**记忆（不走合并）。
+   *
+   * 只有一个用途：「记忆台账」面板里的人工编辑（删掉记错的一条、改错的名字）。
+   * 那是**人**在做决定，而 `mergeMemory` 的并集/覆盖规则是为**模型漏写**设计的 ——
+   * 用合并规则去执行删除，永远删不掉。
+   * 复制一份改完塞回来，比给每种台账各写一个 remove 简单得多。
+   */
+  setMemory: (memory: StoryMemory) => void
   /** 每轮结束时机械记账：往时间线追加一条"这一轮发生了什么" */
   appendTimeline: (turn: number, text: string) => void
 
@@ -760,7 +769,18 @@ export const useGameStore = create<GameState>()(
         currentOptions: [],
       }),
       updateSummary: (summary) => set({ summary }),
-      patchMemory: (patch) => set((state) => ({ memory: mergeMemory(state.memory, patch) })),
+      /*
+        写入记忆时**顺手把当前地点补进地点树**。
+
+        放在这里而不是调用方：`patchMemory` 是全项目唯一的记忆写入入口，
+        放在这儿等于**所有路径都自动兜住**。摘要 AI 要同时交七样东西，
+        最容易漏的就是地点 —— 而这一样恰好是机械可得的（`state.location` 每轮都准）。
+      */
+      patchMemory: (patch) => set((state) => ({
+        memory: ensurePlace(mergeMemory(state.memory, patch), state.location),
+      })),
+      // 人工编辑走整体替换；normalize 一次是防止面板塞进坏数据（它是 React state，不是模型输出）
+      setMemory: (memory) => set({ memory: normalizeMemory(memory) }),
       appendTimeline: (turn, text) => set((state) => ({
         // 与 patchMemory 同一套合并规则，所以同一轮再写一次是**覆盖**而不是追加两条
         memory: appendTimelineBeat(state.memory, turn, text),

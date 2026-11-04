@@ -125,8 +125,11 @@ describe('digestLore · 按情境挑章节', () => {
 
   it('展开的章节保持**原文顺序**（读起来与世界书结构一致）', () => {
     const d = digestLore(LORE, { context: '汴梁 云中镇 雁门 汤饼 季风', nouns: [] })
-    const idx = d.picked.map(s => splitLore(LORE).indexOf(s))
-    expect([...idx].sort((a, b) => a - b)).toEqual(idx)
+    // 段级之后不能再用 `splitLore(...).indexOf(section)` 判序（对象不同），
+    // 直接用段落自带的坐标断言严格递增 —— 这样连"同章内乱序"也能抓到
+    const pos = d.picked.map(p => p.chapterIndex * 1000 + p.paraIndex)
+    expect(pos.length).toBeGreaterThan(0)
+    expect([...pos].sort((a, b) => a - b)).toEqual(pos)
   })
 
   it('空世界书不崩', () => {
@@ -159,5 +162,101 @@ describe('renderLoreDigest · 渲染成提示词', () => {
   it('落选章节的提要非空（有提要模型才知道那一节大概讲什么）', () => {
     const d = digestLore(LORE, { context: '汴梁', nouns: [] })
     for (const r of d.rest) expect(r.gist.length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 段级检索（2026-11）。
+ *
+ * ## 改动的动机
+ *
+ * 一章 1000–1500 字，原先只要命中一个专名就**整章**注入。
+ * 问题不是贵，是**稀释**：一章里通常有三五段（漕运、物价、讼案、节庆），
+ * 只有一段对眼前这轮有用，剩下八九百字在无关地占注意力。
+ *
+ * ## 这里防的是哪一类错
+ *
+ * 拆段最大的风险是**拆过头**：只给一段，上下文断了 ——
+ * 中文段落之间常常靠「所以」「至于」衔接，砍掉邻段就读不通。
+ * 所以有滑窗（同章前后各一段）。而滑窗本身又要防**递归放大**：
+ * 一旦邻段的邻段也补，补着补着又变回整章。
+ *
+ * 下面 `滑窗只补相邻、不补隔段` 那条就是盯这件事的。
+ */
+const MULTI = [
+  '总纲：十三道。',
+  '',
+  '**第一章 舆图**',
+  '天下分十三道，首都在汴梁。',
+  '',
+  '**第二章 城池：漕运与街市**',
+  '漕渠从西门进来，一年四季水声不断。漕船要过三道闸，每道闸有闸夫六人。',
+  '',
+  '州桥一带是夜市。一碗汤饼八文，一处两间门面的宅子月租一贯。',
+  '',
+  '讼案归开封府。状纸要在衙门口买，一张五文；递状要排号。',
+  '',
+  '**第三章 边军**',
+  '云中镇常年驻军，雁门是其前沿。',
+].join('\n')
+
+describe('段级检索 · 只翻开用得上的那一段', () => {
+  it('★ 命中一章里的某一段 ⇒ 整章不都进来', () => {
+    // alwaysInclude 压到 1，否则第一章和第二章都会被强制整章保留，看不到段级效果
+    const d = digestLore(MULTI, {
+      context: '我去西门看漕船过闸', nouns: [], alwaysInclude: 1,
+    })
+    const bodies = d.picked.map(p => p.body).join('|')
+    expect(bodies).toContain('漕渠')     // 命中的那一段
+    expect(bodies).toContain('州桥')     // 滑窗带进来的邻段
+    expect(bodies).not.toContain('讼案') // ← 隔段不该进，这是本组测试的核心
+  })
+
+  it('★ 滑窗：命中段落在章中间时，前后各一段都补上', () => {
+    const d = digestLore(MULTI, {
+      context: '我去州桥吃汤饼', nouns: [], alwaysInclude: 1,
+    })
+    const bodies = d.picked.map(p => p.body).join('|')
+    expect(bodies).toContain('漕渠')   // 前一段
+    expect(bodies).toContain('州桥')   // 命中段
+    expect(bodies).toContain('讼案')   // 后一段
+  })
+
+  it('★ 滑窗不递归：邻段的邻段不会被顺带补上', () => {
+    /*
+      递归的后果很具体：选中 0 → 带 1 → 带 2 → 带 3 …… 一路补回整章，
+      于是段级改造等于白做，而这件事**看起来一切正常**，没人会报成 bug。
+    */
+    const d = digestLore(MULTI, {
+      context: '我去西门看漕船过闸', nouns: [], alwaysInclude: 1,
+    })
+    const para = d.picked.filter(p => p.chapterIndex === 1).map(p => p.paraIndex)
+    expect(para).toEqual([0, 1])   // 不是 [0,1,2]
+  })
+
+  it('段落自带坐标，同章内顺序正确', () => {
+    const d = digestLore(MULTI, { context: '我去州桥吃汤饼', nouns: [], alwaysInclude: 1 })
+    const pos = d.picked.map(p => p.chapterIndex * 100 + p.paraIndex)
+    expect([...pos].sort((a, b) => a - b)).toEqual(pos)
+  })
+
+  it('★ 渲染时同一章只出现一次标题（段落合并成一块）', () => {
+    const d = digestLore(MULTI, { context: '我去州桥吃汤饼', nouns: [], alwaysInclude: 1 })
+    const text = renderLoreDigest(d, '测试世界')
+    const head = text.match(/\*\*第二章 城池：漕运与街市\*\*/g) || []
+    expect(head).toHaveLength(1)
+  })
+
+  it('渲染里要说明「挑的是段落、不是整章」（否则模型会当成残缺的世界书）', () => {
+    const d = digestLore(MULTI, { context: '我去州桥吃汤饼', nouns: [], alwaysInclude: 1 })
+    expect(renderLoreDigest(d, '测试世界')).toMatch(/挑的是\*\*段落\*\*而不是整章/)
+  })
+
+  it('没有空行分段的老世界书 ⇒ 整章算一段（向后兼容）', () => {
+    const lore = ['总纲。', '', '**第一章 甲**', '第一句。', '第二句。'].join('\n')
+    const d = digestLore(lore, { context: '随便', nouns: [] })
+    expect(d.picked).toHaveLength(1)
+    expect(d.picked[0].body).toContain('第一句。')
+    expect(d.picked[0].body).toContain('第二句。')
   })
 })

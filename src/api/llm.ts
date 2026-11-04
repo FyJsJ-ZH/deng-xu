@@ -11,6 +11,15 @@ import type { LLMConfig } from '@/types/cards';
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  /**
+   * **思维链**（推理模型的 `reasoning_content`）。
+   *
+   * ⚠️ 这个字段**永远不发给 API** —— 拼请求时只取 `role` / `content`
+   * （见 `useGameEngine` 里 `history.map(h => ({ role, content }))`）。
+   * 各家服务商对"把上一轮的思考回传"态度不一，有的直接 400。
+   * 它纯粹是本地的展示与存档用途：让玩家读完之后还能翻回去看模型当时怎么想的。
+   */
+  reasoning?: string;
 }
 
 export interface ChatOptions {
@@ -21,6 +30,13 @@ export interface ChatOptions {
   stream?: boolean;
   /** 覆盖 config.temperature */
   temperature?: number;
+  /**
+   * 覆盖 `config.maxTokens`。
+   *
+   * ⚠️ 叙事调用**必须传** —— 见 `suggestMaxTokens()` 与 `LLMConfig.maxTokens` 的说明：
+   * 不发这个参数，回复长度就由服务商默认值决定，提示词里写「约 1800 字」也没用。
+   */
+  maxTokens?: number;
   /** 要求返回 JSON 对象（部分服务商支持） */
   jsonMode?: boolean;
   signal?: AbortSignal;
@@ -103,7 +119,19 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
   narrativeModel: 'deepseek-chat',
   analysisModel: 'deepseek-chat',
   temperature: 0.8,
-  showReasoning: false,
+  /*
+    **默认开**（2026-11 改）。
+
+    ⚠️ 这个字段以前的处境很荒唐：它在类型里躺了好几轮、设置页也可以拨，
+    但**从来没有任何代码读它** —— 流式思维链是无条件显示的，
+    于是"关掉"没有任何效果，"打开"也没有任何效果。
+
+    等它真正接上逻辑时，默认值是 `false`，一下子把原本能看到的思维链藏了起来：
+    玩家报「现在看不到思维链了」，看到的其实是我把门关上了。
+
+    所以默认改 true：模型给了就显示，没给就什么都不显示（那由模型决定，不是开关）。
+  */
+  showReasoning: true,
 };
 
 export function getPreset(provider: LLMConfig['provider']): ProviderPreset | undefined {
@@ -118,17 +146,63 @@ function joinUrl(baseUrl: string, path: string): string {
   return `${base}${suffix}`;
 }
 
+/** 模型名看着像推理模型（会先吐一大段思维链） */
+export function isReasonerModel(name: string): boolean {
+  return /reasoner|(^|[-_/])r1($|[-_/])|o1|o3|thinking/.test(String(name || '').toLowerCase());
+}
+
+/**
+ * 按「目标回复字数」推算该发多大的 `max_tokens`。
+ *
+ * ## 换算依据
+ *
+ * 中文在不同 tokenizer 下差异很大：DeepSeek 约 0.6~1 token/字，
+ * GPT 系约 1.5~2 token/字。**按 1.5 这个中间值往上取整**，
+ * 宁可多发一点额度（没用完不花钱），也不要卡在临界点上把正文截断。
+ *
+ * - 普通模型：`replyLength × 2`
+ * - 推理模型：`replyLength × 3` —— 思维链会和正文抢同一份额度，
+ *   而它抢走的量不可预测，只能给宽一些
+ *
+ * 下限 1024，上限 16384（多数服务商的单次输出上限，超了会被直接拒）。
+ * 玩家在设置里填了 `maxTokens` 时以他填的为准。
+ */
+export function suggestMaxTokens(replyLength: number, model = ''): number {
+  const chars = Number.isFinite(replyLength) && replyLength > 0 ? replyLength : 1800;
+  const per = isReasonerModel(model) ? 3 : 2;
+  return Math.min(16384, Math.max(1024, Math.ceil(chars * per)));
+}
+
 function buildBody(opts: ChatOptions, stream: boolean): string {
   const { messages, config, model, temperature, jsonMode } = opts;
   const body: Record<string, unknown> = {
     model: model || config.narrativeModel,
-    messages,
+    /*
+      **只发 role 与 content。**
+
+      `ChatMessage` 上那个 `reasoning` 是本地展示/存档用的（让玩家回看模型怎么想的），
+      各家服务商对"把上一轮的思考回传"态度不一 —— 有的忽略，有的直接 400。
+      所以在这里统一剥掉，而不是指望每个调用方都记得。
+    */
+    messages: messages.map(m => ({ role: m.role, content: m.content })),
     stream,
   };
 
   // 推理模型通常拒绝 temperature / response_format，只在明确安全时附带
   const modelName = String(body.model).toLowerCase();
-  const isReasoner = /reasoner|(^|[-_/])r1($|[-_/])|o1|o3|thinking/.test(modelName);
+  const isReasoner = isReasonerModel(modelName);
+
+  /*
+    ── max_tokens：**必须显式发**（2026-11）──
+
+    这一行是本项目「字数不达标」问题的真正解。在此之前从来没发过 max_tokens，
+    于是长度由服务商默认值决定：官方 4096 够用，中转站常见 2048 ——
+    中文约 1365 字，正是玩家说的「不到 1200 字」。
+  */
+  const maxTokens = opts.maxTokens ?? config.maxTokens;
+  if (typeof maxTokens === 'number' && Number.isFinite(maxTokens) && maxTokens > 0) {
+    body.max_tokens = Math.floor(maxTokens);
+  }
 
   if (!isReasoner && typeof (temperature ?? config.temperature) === 'number') {
     body.temperature = temperature ?? config.temperature;

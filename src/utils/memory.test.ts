@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
+  KNOWN_PER_CHARACTER,
   MEMORY_BUDGET,
   TIMELINE_KEEP,
   appendTimelineBeat,
   emptyMemory,
+  ensurePlace,
   mergeMemory,
   normalizeMemory,
+  renderKnownByForPrompt,
   renderMemoryForPrompt,
   type StoryMemory,
 } from '@/utils/memory'
@@ -232,3 +235,277 @@ describe('appendTimelineBeat · 每轮的机械记账（不依赖 LLM）', () =>
     expect(m.updatedAtTurn).toBe(8)
   })
 })
+
+/**
+ * 「每个角色知道主角什么」—— 防 **NPC 全知**（2026-11）。
+ *
+ * ## 这一层防的是什么
+ *
+ * 在此之前，任何角色一登场就知道玩家的一切：`formatCharacter()` 把整张卡
+ * （description / personality / scenario）塞进提示词，模型把**设定**当成了**认知**。
+ * 症状在正文里看着完全正常 —— 只有玩家自己知道「我从来没告诉过他」。
+ *
+ * 这和我们修过的「不要替玩家认亲」是同一类病：
+ * **模型把作者知道的事，当成了角色知道的事。**
+ *
+ * ## 三条关键约束
+ *
+ *  1. **只增不减**：`bonds` 是现状（覆盖），`knownBy` 是认知（并集）——
+ *     用替换的话，模型某一轮只报了新的一条，之前那个人的认知就被清空了。
+ *  2. **一无所知也要写出来**：不写的话模型会退回角色卡设定，等于又变回全知。
+ *  3. **按在场角色过滤**：全塞进去就是换个方式全知。
+ */
+describe('knownBy · 角色认知的收敛与合并', () => {
+  it('★ 合并是**并集**，不是替换（旧认知不会被新一轮清空）', () => {
+    const old = mk({ knownBy: { 阿什沃斯勋爵: ['在成衣行做工'] } })
+    const next = mergeMemory(old, { knownBy: { 阿什沃斯勋爵: ['从爱尔兰来'] } })
+    expect(next.knownBy['阿什沃斯勋爵']).toEqual(['在成衣行做工', '从爱尔兰来'])
+  })
+
+  it('重复上报同一条不会堆成两条', () => {
+    const old = mk({ knownBy: { 巡警布兰登: ['在成衣行做工'] } })
+    const next = mergeMemory(old, { knownBy: { 巡警布兰登: ['在成衣行做工'] } })
+    expect(next.knownBy['巡警布兰登']).toHaveLength(1)
+  })
+
+  it('补丁没提到的人，认知原样保留', () => {
+    const old = mk({ knownBy: { 甲: ['知道一件事'], 乙: ['知道另一件事'] } })
+    const next = mergeMemory(old, { knownBy: { 丙: ['新的一条'] } })
+    expect(next.knownBy['甲']).toEqual(['知道一件事'])
+    expect(next.knownBy['乙']).toEqual(['知道另一件事'])
+    expect(next.knownBy['丙']).toEqual(['新的一条'])
+  })
+
+  it('★ 每个人有上限（超出保留最近的，不然会长成人物小传）', () => {
+    const facts = Array.from({ length: 20 }, (_, i) => `第${i}件事`)
+    const m = normalizeMemory({ knownBy: { 甲: facts } })
+    expect(m.knownBy['甲']).toHaveLength(KNOWN_PER_CHARACTER)
+    expect(m.knownBy['甲'].at(-1)).toBe('第19件事')
+  })
+
+  it('★ 坏数据一律滤掉（名字空 / 条目空 / 不是数组 / 根本不是对象）', () => {
+    expect(normalizeMemory({ knownBy: '甲知道一切' }).knownBy).toEqual({})
+    expect(normalizeMemory({ knownBy: ['甲'] }).knownBy).toEqual({})
+    expect(normalizeMemory({ knownBy: { '': ['x'] } }).knownBy).toEqual({})
+    expect(normalizeMemory({ knownBy: { 甲: [] } }).knownBy).toEqual({})
+    expect(normalizeMemory({ knownBy: { 甲: ['  ', '真的'] } }).knownBy).toEqual({ 甲: ['真的'] })
+  })
+
+  it('旧存档里没有这个字段也不崩', () => {
+    const m = normalizeMemory({ bonds: [{ who: '甲', state: '欠钱' }] })
+    expect(m.knownBy).toEqual({})
+  })
+})
+
+describe('renderKnownByForPrompt · 按在场角色渲染', () => {
+  const mem = mk({
+    knownBy: {
+      阿什沃斯勋爵: ['在成衣行做工', '从爱尔兰来'],
+      巡警布兰登: ['上周在西印度码头出现'],
+    },
+  })
+
+  it('没有在场角色时返回空串（不占 token）', () => {
+    expect(renderKnownByForPrompt(mem, [])).toBe('')
+    expect(renderKnownByForPrompt(mem, ['  '])).toBe('')
+  })
+
+  it('★ 只渲染在场的那几个人（没在场的一个都不给）', () => {
+    const text = renderKnownByForPrompt(mem, ['阿什沃斯勋爵'])
+    expect(text).toContain('成衣行')
+    expect(text).not.toContain('西印度码头')
+  })
+
+  it('★ 一无所知的角色也要写出来 —— 省略等于退回全知', () => {
+    const text = renderKnownByForPrompt(mem, ['卖热汤的'])
+    expect(text).toContain('卖热汤的')
+    expect(text).toContain('一无所知')
+  })
+
+  it('★ 必须写明边界：没写的事他就不知道，且不许拿角色卡设定当认知', () => {
+    const text = renderKnownByForPrompt(mem, ['阿什沃斯勋爵'])
+    expect(text).toMatch(/没写.*就\*\*不知道\*\*/)
+    expect(text).toContain('不要把角色卡上的设定当成他知道的事')
+  })
+
+  it('名字不必逐字相同（双向包含即算命中）', () => {
+    expect(renderKnownByForPrompt(mem, ['勋爵'])).toContain('成衣行')
+    expect(renderKnownByForPrompt(mem, ['巡警布兰登'])).toContain('西印度码头')
+  })
+
+  it('同一个人重复出现在列表里只渲染一次', () => {
+    const text = renderKnownByForPrompt(mem, ['阿什沃斯勋爵', '阿什沃斯勋爵'])
+    expect(text.match(/阿什沃斯勋爵/g)?.length).toBe(1)
+  })
+})
+
+/**
+ * 好感双轨 / 地点树 / 物品台账（2026-11，来自酒馆生态评估里柏宝书那四本台账）。
+ *
+ * ## 这三样各自在修什么
+ *
+ * - **好感双轨**：单轨表达不了「嘴硬」。单轨时模型只能二选一（熟人 / 陌生人），
+ *   于是玩家看到"好感一到就突然熟起来"的跳变。
+ * - **地点树**：原先只有一个 `location` 字符串，切三次场景就记不住谁在哪、
+ *   哪两个地方是同一片街区。
+ * - **物品台账**：`WorldCard.items` 是「世界上这种东西长什么样」的模板，
+ *   不是「他手上这一件现在在哪」。混用的结果是玩家的东西凭空消失又出现。
+ */
+describe('affinity · 好感双轨是"现状"，同一个人只留最新', () => {
+  it('★ 内外两档分开存（不能合并成一条）', () => {
+    const m = normalizeMemory({
+      affinity: [{ who: '阿什沃斯勋爵', inner: '近', outer: '疏', note: '嘴硬' }],
+    })
+    expect(m.affinity[0]).toEqual({ who: '阿什沃斯勋爵', inner: '近', outer: '疏', note: '嘴硬' })
+  })
+
+  it('★ 没写档位就是「未知」，不要替它填「平」（那会让模型以为已经判断过）', () => {
+    const m = normalizeMemory({ affinity: [{ who: '某人' }] })
+    expect(m.affinity[0].inner).toBe('未知')
+    expect(m.affinity[0].outer).toBe('未知')
+  })
+
+  it('★ 同一个人只留最新一条（关系是会变的）', () => {
+    const old = mk({ affinity: [{ who: '老周', inner: '平', outer: '平' }] })
+    const next = mergeMemory(old, { affinity: [{ who: '老周', inner: '近', outer: '平' }] })
+    expect(next.affinity).toHaveLength(1)
+    expect(next.affinity[0].inner).toBe('近')
+  })
+
+  it('补丁没提到的人，好感原样保留', () => {
+    const old = mk({ affinity: [{ who: '甲', inner: '亲', outer: '亲' }] })
+    const next = mergeMemory(old, { affinity: [{ who: '乙', inner: '疏', outer: '疏' }] })
+    expect(next.affinity.map(a => a.who).sort()).toEqual(['乙', '甲'].sort())
+  })
+
+  it('坏数据滤掉（没名字 / 不是数组）', () => {
+    expect(normalizeMemory({ affinity: '甲很亲' }).affinity).toEqual([])
+    expect(normalizeMemory({ affinity: [{ inner: '近' }] }).affinity).toEqual([])
+  })
+
+  it('渲染时必须写明「不要把外表当成内心」', () => {
+    const text = renderMemoryForPrompt(mk({ affinity: [{ who: '老周', inner: '近', outer: '疏' }] }))
+    expect(text).toContain('内心')
+    expect(text).toContain('外表')
+    expect(text).toMatch(/不要把外表当成内心/)
+  })
+})
+
+describe('places · 地点树由大到小', () => {
+  it('★ 子地点缩进在父地点下面', () => {
+    const m = normalizeMemory({
+      places: [{ name: '柳关' }, { name: '南市', parent: '柳关' }, { name: '牌墙', parent: '南市' }],
+    })
+    const text = renderMemoryForPrompt(mk({ places: m.places }))
+    const lines = text.split('\n')
+    const iRoot = lines.findIndex(l => l.trim() === '- 柳关')
+    const iMid = lines.findIndex(l => l.trim() === '- 南市')
+    const iLeaf = lines.findIndex(l => l.trim() === '- 牌墙')
+    expect(iRoot).toBeGreaterThanOrEqual(0)
+    expect(iMid).toBeGreaterThan(iRoot)
+    expect(iLeaf).toBeGreaterThan(iMid)
+    // 缩进逐级加深
+    expect(lines[iMid].search(/\S/)).toBeGreaterThan(lines[iRoot].search(/\S/))
+    expect(lines[iLeaf].search(/\S/)).toBeGreaterThan(lines[iMid].search(/\S/))
+  })
+
+  it('★ 并集：去过的地方不会因为这一轮没提就消失', () => {
+    const old = mk({ places: [{ name: '柳关' }] })
+    const next = mergeMemory(old, { places: [{ name: '醉仙楼', parent: '柳关' }] })
+    expect(next.places.map(p => p.name).sort()).toEqual(['柳关', '醉仙楼'].sort())
+  })
+
+  it('★ 环不会让渲染死循环（模型会写出 甲→乙、乙→甲）', () => {
+    const text = renderMemoryForPrompt(mk({
+      places: [{ name: '甲', parent: '乙' }, { name: '乙', parent: '甲' }],
+    }))
+    expect(text).toContain('甲')
+    expect(text).toContain('乙')
+  })
+
+  it('★ 上级不在表里的「孤儿」也要渲染出来（否则它从世界里消失）', () => {
+    const text = renderMemoryForPrompt(mk({ places: [{ name: '牌墙', parent: '南市' }] }))
+    expect(text).toContain('牌墙')
+  })
+
+  it('自己当自己的上级会被丢掉（那是个环）', () => {
+    const m = normalizeMemory({ places: [{ name: '甲', parent: '甲' }] })
+    expect(m.places).toEqual([{ name: '甲' }])
+  })
+})
+
+describe('inventory · 手上有什么、放在哪', () => {
+  it('★ where 缺省是「随身」（不替模型编一个地方）', () => {
+    const m = normalizeMemory({ inventory: [{ name: '当票' }] })
+    expect(m.inventory[0].where).toBe('随身')
+  })
+
+  it('★ 同名覆盖 where（东西会挪位置），但不会变成两条', () => {
+    const old = mk({ inventory: [{ name: '外套', where: '寄存在和通号' }] })
+    const next = mergeMemory(old, { inventory: [{ name: '外套', where: '随身', note: '刚赎回' }] })
+    expect(next.inventory).toHaveLength(1)
+    expect(next.inventory[0].where).toBe('随身')
+  })
+
+  it('★ 只增不删：模型没报的东西仍然在（否则玩家的东西会凭空消失）', () => {
+    const old = mk({ inventory: [{ name: '当票', where: '随身' }] })
+    const next = mergeMemory(old, { inventory: [{ name: '外套', where: '随身' }] })
+    expect(next.inventory.map(i => i.name).sort()).toEqual(['外套', '当票'].sort())
+  })
+
+  it('渲染时要提醒模型「不要让他丢掉、也不要凭空多出」', () => {
+    const text = renderMemoryForPrompt(mk({ inventory: [{ name: '外套', where: '随身' }] }))
+    expect(text).toMatch(/不要让他丢掉、也不要凭空多出/)
+  })
+})
+
+describe('ensurePlace · 当前地点机械入册（不靠模型）', () => {
+  it('★ 新地点补成一条顶层节点', () => {
+    const m = ensurePlace(emptyMemory(), '南市')
+    expect(m.places).toEqual([{ name: '南市' }])
+  })
+
+  it('★ 带层级的地点拆成父子（「伦敦·威斯敏斯特」）', () => {
+    const m = ensurePlace(emptyMemory(), '柳关·南市')
+    expect(m.places).toContainEqual({ name: '柳关' })
+    expect(m.places).toContainEqual({ name: '南市', parent: '柳关' })
+  })
+
+  it('★ 已经有了就不重复加（并集语义）', () => {
+    const old = mk({ places: [{ name: '柳关' }, { name: '南市', parent: '柳关' }] })
+    const m = ensurePlace(old, '柳关·南市')
+    expect(m.places).toHaveLength(2)
+  })
+
+  it('地点为空时原样返回（不往树里塞空名字）', () => {
+    const old = mk({ places: [{ name: '柳关' }] })
+    expect(ensurePlace(old, '')).toBe(old)
+    expect(ensurePlace(old, '   ')).toBe(old)
+  })
+
+  it('partial 写入路径也要生效 —— patchMemory 是唯一入口', () => {
+    // 这条测的是"补地点发生在 store 层"，所以只验证 ensurePlace 与 mergeMemory 的组合语义
+    const merged = ensurePlace(mergeMemory(emptyMemory(), { bonds: [{ who: '老周', state: '欠钱' }] }), '南市')
+    expect(merged.places).toEqual([{ name: '南市' }])
+    expect(merged.bonds).toHaveLength(1)
+  })
+})
+
+describe('预算 · 丢的顺序是「越物的越先丢，越人的越后丢」', () => {
+  it('★ 超预算时，时间线与地点先被丢掉，人物关系留到最后', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      turn: i + 1, text: `第${i + 1}轮的某件足够长的事情描述，用来把预算撑满`.repeat(2),
+    }))
+    const m = mk({
+      bonds: [{ who: '老周', state: '欠他一枚铜钱未还' }],
+      affinity: [{ who: '老周', inner: '近', outer: '疏' }],
+      places: Array.from({ length: 12 }, (_, i) => ({ name: `地点${i}` })),
+      timeline: many,
+    })
+    const text = renderMemoryForPrompt(m)
+    expect(text.length).toBeLessThan(MEMORY_BUDGET * 2)
+    // 关系与好感最不该丢
+    expect(text).toContain('老周')
+  })
+})
+

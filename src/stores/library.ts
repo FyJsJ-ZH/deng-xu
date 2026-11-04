@@ -323,11 +323,16 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
         /*
           已经存在、但内容已过期的内置卡。
           排除玩家**删过**的（尊重删除），也排除 `builtin !== true` 的
-          （那是 duplicate 出来的副本，属于他自己的东西，不许覆盖）。
+          （那是 duplicate 出来的副本，属于他自己的东西，不许覆盖），
+          还要排除 `editedByUser` 的（他在编辑器里亲手动过这张内置卡 —— 见 updateWorld）。
         */
         const stale = firstRun || storedStamp === BUILTIN_STAMP
           ? []
-          : BUILTIN_WORLD_IDS.filter(id => haveIds.includes(id) && !removedBuiltinCache.includes(id));
+          : BUILTIN_WORLD_IDS.filter(id =>
+              haveIds.includes(id)
+              && !removedBuiltinCache.includes(id)
+              && !worlds?.find(w => w.id === id)?.editedByUser,
+            );
 
         const refresh = [...new Set([...missing, ...stale])];
 
@@ -352,7 +357,8 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
               const byId = new Map(fresh.map(w => [w.id, w]));
               const next: WorldCard[] = [];
               for (const w of worlds) {
-                const replacement = w.builtin === true ? byId.get(w.id) : undefined;
+                // `editedByUser` 的也跳过：他改过，刷新就等于把改动抹掉
+                const replacement = w.builtin === true && !w.editedByUser ? byId.get(w.id) : undefined;
                 if (replacement) {
                   next.push(deepClone(replacement));
                   byId.delete(w.id);
@@ -410,6 +416,21 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       await commitWorld({
         ...current,
         ...safePatch,
+        /*
+          ⚠️ **玩家亲手动过的内置卡，从此不再自动更新。**
+
+          没有这一行会出什么事：他在编辑器里把某张内置卡的措辞调了，
+          下次内容指纹一变（比如我改了九张卡的篇幅），整批刷新就把它盖回去了 ——
+          而他不会知道是自己的改动没了，只会觉得"我明明改过"。
+
+          判据放在**写入时**而不是读取时：
+          - 写入时打标记，一次就够，之后每次刷新都能看见；
+          - 读取时比对差异需要保存一份"原始内置版"作参照，那是另一份数据要维护。
+
+          代价说清楚：这张卡以后就停在玩家改的那一版，不再跟官方更新。
+          想跟更新，duplicate 一份去改（副本 `builtin === false`，本来就不受影响）。
+        */
+        editedByUser: current.builtin === true ? true : current.editedByUser,
         // id / createdAt 不接受 patch 覆盖，updatedAt 一律刷新
         id: current.id,
         createdAt: current.createdAt,

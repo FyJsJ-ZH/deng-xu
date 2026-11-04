@@ -241,6 +241,30 @@ export function ApiKeyModal() {
           />
         </div>
 
+        {/* 单次回复上限 */}
+        <div>
+          <label className={labelClass} htmlFor="llm-max-tokens">单次回复上限（max_tokens）</label>
+          <input
+            id="llm-max-tokens"
+            type="number"
+            min={256}
+            max={32768}
+            step={256}
+            value={draft.maxTokens ?? ''}
+            onChange={(e) => {
+              const v = e.target.value.trim()
+              patch({ maxTokens: v === '' ? undefined : Number(v) })
+            }}
+            placeholder="留空 = 按世界的篇幅自动推算"
+            className={`${inputClass} font-mono`}
+          />
+          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+            这一项决定模型<b>一次最多能写多少字</b>。留空时按目标字数自动推算
+            （1800 字 ≈ 3600 token，推理模型 ×3）。如果你的服务商把单次输出封在 4096，
+            在这里填 4096；填了以后所有调用都不会超过它。
+          </p>
+        </div>
+
         {/* 思维链 */}
         <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
           <input

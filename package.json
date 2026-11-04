@@ -38,6 +38,7 @@
     "check:tools": "node scripts/check-tools-selftest.mjs",
     "check:sprites-audit": "node scripts/lib/audit-sprites.mjs",
     "check:worlds": "node scripts/check-worlds.mjs",
+    "check:lore": "node scripts/lore-compare.mjs",
     "check:look": "node scripts/check-sprites.mjs",
     "probe:invisible": "node scripts/probe-invisible.mjs",
     "probe:parts": "node scripts/probe-parts.mjs",

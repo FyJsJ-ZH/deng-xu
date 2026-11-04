@@ -3,7 +3,7 @@ import { useGameStore, countTurns, type GameState, type TokenUsage } from '@/sto
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useMetaStore } from '@/stores/meta'
-import { llmChat, extractContent, parseSseLine, type ChatMessage } from '@/api/llm'
+import { llmChat, extractContent, parseSseLine, suggestMaxTokens, type ChatMessage } from '@/api/llm'
 import { parseModelJson } from '@/api/jsonRepair'
 import {
   buildNarrativeSystemPrompt,
@@ -15,7 +15,7 @@ import { storySystem } from '@/systems/StorySystem'
 import { pickAvatarId } from '@/utils/avatarArt'
 import { resolveAiLook } from '@/utils/lookSpec'
 import { isKnownSceneId } from '@/utils/sceneArt'
-import { renderMemoryForPrompt } from '@/utils/memory'
+import { renderMemoryForPrompt, renderKnownByForPrompt } from '@/utils/memory'
 import { LlmError, classifyLlmError } from '@/api/llmErrors'
 import type { LLMConfig, WorldCard } from '@/types/cards'
 import { detectTruncation } from '@/utils/truncation'
@@ -339,6 +339,20 @@ interface GameEngineReturn {
    */
   rewindToTurn: (turnIndex: number) => boolean
 }
+
+/**
+ * 「开了思维链开关，但模型一个 reasoning 都没回」只提示一次。
+ *
+ * 为什么需要它：开关打开后仍然看不到思维链，只有两种可能 ——
+ *  ① 模型不是推理模型（`deepseek-chat` 这类不会返回 `reasoning_content`）；
+ *  ② 服务商把思考藏起来了。
+ * 两种都不是玩家能从界面上看出来的，所以他只会觉得"这功能坏了"。
+ * 提示一次就够，每轮都弹更烦。
+ */
+let reasoningHintShown = false
+
+/** 诊断用：这一局到底收到过多少次 reasoning（调试面板/控制台可见） */
+export const reasoningStats = { chunks: 0 }
 
 export function useGameEngine(): GameEngineReturn {
   // @ts-ignore 用于触发 UI 重渲染，实际读写都走 getState()
@@ -815,7 +829,9 @@ export function useGameEngine(): GameEngineReturn {
         config,
         model: config.analysisModel,
         stream: false,
-        temperature: 0.3
+        temperature: 0.3,
+        // 摘要返回的是三层记忆的 JSON —— 不给额度时会被服务商默认值切在半个 JSON 上
+        maxTokens: Math.min(4096, config.maxTokens ?? 4096),
       })
       const raw = extractContent(response)
       recordUsage(response, messages, raw)
@@ -839,10 +855,23 @@ export function useGameEngine(): GameEngineReturn {
         }
         const patch = parsed.memory
         if (patch && typeof patch === 'object') {
+          /*
+            ⚠️ 这里必须把**七层全部透传**。
+
+            曾经只传了 bonds / threads / timeline —— 那是三层时代的写法。
+            后来加了 knownBy / affinity / places / inventory，`buildSummaryPrompt`
+            和 `MemoryPatch` 都改了，**唯独这两个调用点没改**：
+            模型老老实实报了，程序一句话没接，四层数据一直是空的。
+            这种漏很难从测试里看出来（每一层单独都是对的），只能靠对着调用点数一遍。
+          */
           patchMemory({
             bonds: patch.bonds,
             threads: patch.threads,
             timeline: patch.timeline,
+            knownBy: patch.knownBy,
+            affinity: patch.affinity,
+            places: patch.places,
+            inventory: patch.inventory,
             earlierSummary: typeof patch.earlierSummary === 'string' ? patch.earlierSummary : undefined,
           })
         }
@@ -980,6 +1009,19 @@ export function useGameEngine(): GameEngineReturn {
         一个只有标题没有内容的空区块只会浪费 token，并让模型以为记忆丢了。
       */
       const memoryBlock = renderMemoryForPrompt(updatedStore.memory)
+      /*
+        ── 每个角色「知道」主角什么（2026-11）──
+
+        这一块防的是 **NPC 全知**：在此之前，任何角色一登场就知道玩家的一切，
+        因为 `formatCharacter()` 把整张卡塞给模型，模型把「设定」当成了「认知」。
+
+        它按**在场角色**过滤，所以只对眼前这几个人生效 ——
+        给所有角色的认知一起塞进去等于又变回全知。
+      */
+      const knownBlock = renderKnownByForPrompt(
+        updatedStore.memory,
+        activeCharacters.map(c => c.name),
+      )
 
       const narrativeMessages: ChatMessage[] = [
         {
@@ -1024,6 +1066,7 @@ export function useGameEngine(): GameEngineReturn {
               content: `[长期记忆]（前几轮留下的要点，请当作**已经发生的事实**，不要与之矛盾）\n${memoryBlock}`,
             }]
           : []),
+        ...(knownBlock ? [{ role: 'system' as const, content: knownBlock }] : []),
         ...updatedStore.history
           .slice(-12)
           .filter(h => h.role !== 'system')
@@ -1035,7 +1078,16 @@ export function useGameEngine(): GameEngineReturn {
         messages: narrativeMessages,
         config,
         model: config.narrativeModel,
-        stream: true
+        stream: true,
+        /*
+          ⚠️ 这一行是「字数不达标」的真正解（2026-11，玩家第四次报同一件事）。
+
+          在这之前从没发过 max_tokens，长度由服务商默认值决定 ——
+          中转站常见 2048，中文约 1.5 token/字，也就是 1365 字封顶，
+          恰好对上玩家说的「不到 1200 字」。提示词写着 1800 也没用，
+          模型是写到一半被 API 切断的。
+        */
+        maxTokens: config.maxTokens ?? suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel),
       }) as Response
 
       const reader = streamResponse.body?.getReader()
@@ -1064,6 +1116,7 @@ export function useGameEngine(): GameEngineReturn {
           if (!chunk) continue
           if (chunk.reasoning) {
             fullReasoning += chunk.reasoning
+            reasoningStats.chunks++
             setStreamingReasoning(fullReasoning)
           }
           if (chunk.content) {
@@ -1137,7 +1190,39 @@ export function useGameEngine(): GameEngineReturn {
         setTruncationWarning(null)
       }
 
-      useGameStore.getState().addHistory({ role: 'assistant', content: finalNarrative, timestamp: Date.now() })
+      /*
+        思维链跟着这条回复一起存档。
+
+        ## 为什么以前看不到（2026-11）
+        流式时 `streamingReasoning` 会一路更新、也确实显示出来了，
+        但回复一完成 `setStreamingReasoning(null)` —— **思考就地蒸发**。
+        玩家读完正文想回头看"它当时是怎么想的"，翻不回去；
+        而 `LLMConfig.showReasoning` 那个开关实际上**没有任何地方读它**，是个摆设。
+
+        现在：开关打开时才收集并存档（关掉的人不占 localStorage），
+        读的时候在每条回复上方折叠显示。
+      */
+      const reasoningToKeep = useUIStore.getState().llm.showReasoning ? fullReasoning.trim() : ''
+
+      /*
+        开了开关却一个 reasoning 都没收到 —— 说清是模型的问题，不是配置的问题。
+        这一条能省掉玩家在设置里反复拨开关、以为是缓存的那半小时。
+      */
+      if (useUIStore.getState().llm.showReasoning && !reasoningToKeep && !reasoningHintShown) {
+        reasoningHintShown = true
+        const hint = /reasoner|(^|[-_/])r1($|[-_/])|o1|o3|thinking/i.test(config.narrativeModel)
+          ? '服务商没有返回思维链（模型是推理模型，可能被接口省略了）'
+          : `当前模型「${config.narrativeModel}」不是推理模型，不会返回思维链 —— 换成 deepseek-reasoner 这类才有`
+        useUIStore.getState().setStatusMessage(hint)
+        setTimeout(() => useUIStore.getState().setStatusMessage(null), 7000)
+      }
+
+      useGameStore.getState().addHistory({
+        role: 'assistant',
+        content: finalNarrative,
+        ...(reasoningToKeep ? { reasoning: reasoningToKeep } : {}),
+        timestamp: Date.now(),
+      })
       setStreamingContent(null)
       setStreamingReasoning(null)
 
@@ -1212,7 +1297,9 @@ export function useGameEngine(): GameEngineReturn {
           model: config.analysisModel,
           stream: false,
           temperature: 0.2,
-          jsonMode: true
+          jsonMode: true,
+          // 结算 JSON 比摘要长（动作列表），但也不需要叙事那么多
+          maxTokens: Math.min(4096, config.maxTokens ?? 4096),
         })
 
         const dataContent = extractContent(dataResponse)
@@ -1260,10 +1347,15 @@ export function useGameEngine(): GameEngineReturn {
         */
         const memoryPatch = parsed?.memory && typeof parsed.memory === 'object' ? parsed.memory : null
         if (memoryPatch) {
+          // 七层全透传 —— 理由见 summarize 里那段注释（曾经漏了四层）
           useGameStore.getState().patchMemory({
             bonds: memoryPatch.bonds,
             threads: memoryPatch.threads,
             timeline: memoryPatch.timeline,
+            knownBy: memoryPatch.knownBy,
+            affinity: memoryPatch.affinity,
+            places: memoryPatch.places,
+            inventory: memoryPatch.inventory,
           })
         }
         if (!memoryPatch?.timeline?.length) {

@@ -118,16 +118,84 @@ function titleKeys(title: string): string[] {
  * 这同样是检索键而非出版物，多抓无害。
  * 前缀里带指示词/量词的（「这座城」「一个州」）要滤掉，否则每节都会命中一堆噪音。
  */
-const PLACE_RE = /[\u4e00-\u9fff]{1,3}(?:城|镇|州|府|县|道|关|驿|坊|桥|渡|岭|谷|原|港|村|庄|寺|塔|楼|殿|宫|苑|山|河|江|湖|海|门|台)/g
-const PLACE_STOP = /^[这那一座个的了是在有把被和与又就也还只更最]/
+/**
+ * 这些字打头的「地名候选」是噪音 —— 它们把介词/动词/量词一起吞进去了。
+ * 典型：「从西门」「往州城」「这座城」。
+ */
+const PLACE_STOP_CHARS = '这那一座个的了是在有把被和与又就也还只更最从往出进到过经沿向朝离回'
 
-/** 一节的全部检索键：标题前缀 + 正文地名候选 */
-function sectionKeys(section: LoreSection): string[] {
-  const keys = new Set<string>(titleKeys(section.title))
-  for (const m of String(section.body).matchAll(PLACE_RE)) {
-    const w = m[0]
-    if (!PLACE_STOP.test(w)) keys.add(w)
+function isStopChar(ch: string): boolean {
+  return !!ch && PLACE_STOP_CHARS.includes(ch)
+}
+
+/**
+ * 中文地名有很稳的后缀特征，所以**从后缀反推**：先找后缀字，再往前取 1–3 字。
+ *
+ * ⚠️ 这里踩过一个坑，别退回成正则前扫：
+ * 原来用 `[汉字]{1,3}(?:城|门|桥…)` 去扫，「漕渠从西门进来」会**从「渠」起头**
+ * 贪婪吃成 **「渠从西门」**（起点 1、取 3 字、下一字「门」正好是后缀），
+ * 而玩家写「我去西门」时匹配不上 —— 「从/往/在」是中文最常见的方位词，
+ * 这不是小概率事件。
+ *
+ * 现在的规则：
+ *  1. 扫到后缀字，往前取 1、2、3 字各成一个候选；
+ *  2. 候选首字是噪音字（介词/动词/量词，见 `PLACE_STOP_CHARS`）就跳过这个变体；
+ *  3. **多收无害** —— 噪音候选（「中镇」）在情境里不会出现，永远命中不了，
+ *     只白占一点计算；而**漏掉**一个真地名才是真损失（那一节永远挑不出来）。
+ */
+const PLACE_SUFFIXES = '城镇州府县道关驿坊桥渡岭谷原港村庄寺塔楼殿宫苑山河江湖海门台'
+const SUFFIX_SET = new Set(PLACE_SUFFIXES.split(''))
+
+function placeCandidates(body: string): string[] {
+  const s = String(body || '')
+  const out: string[] = []
+  for (let i = 0; i < s.length; i++) {
+    if (!SUFFIX_SET.has(s[i])) continue
+    for (let n = 1; n <= 3; n++) {
+      const start = i - n
+      if (start < 0) break
+      const w = s.slice(start, i + 1)
+      if (!/^[\u4e00-\u9fff]+$/.test(w)) break
+      // 「从西门」「这座城」这类：首字是噪音，跳过这个变体（但继续试更长的）
+      if (w.length > 1 && isStopChar(w[0])) continue
+      out.push(w)
+    }
   }
+  return out
+}
+
+/**
+ * **泛词黑名单**：这些词当下检索键只会制造误命中。
+ *
+ * ## 为什么必须挡（2026-11，跑九部真实世界时看出来的）
+ *
+ * 检索键有两条来源，都会吐泛词：
+ *  - `titleKeys` 取标题前缀 —— 「第十二章 **一件**小事」会把「一件」当键；
+ *  - `placeCandidates` 认后缀 —— 「打交**道**」会吐出「交道」「打交道」，
+ *    「码**头**门」会吐出「头门」「码头门」。
+ *
+ * 单个词看起来无害（原注释写过"多收无害"），**但它们是高频词**：
+ * 情境里出现「一件」「知道」「交道」的概率远高于任何一个专名，
+ * 一旦命中就把整章所有段落的分抬起来 —— 于是段级检索被一点点抵消。
+ *
+ * 实测：埃律西昂那一轮的命中列表里，「知道」「都知道」和「城门」并排出现，
+ * 而前者是纯噪音。这就是这份表存在的理由。
+ *
+ * 判据很简单：**这些词在任何题材里都不可能是一个地方或一个人的名字。**
+ */
+const GENERIC_KEYS = new Set([
+  '一个', '一件', '一些', '一样', '一种', '一边', '一半', '一般', '一层', '一段',
+  '这一', '那一', '这种', '那种', '这些', '那些', '这里', '那里',
+  '什么', '怎么', '为什么', '因为', '所以', '但是', '而且', '于是',
+  '知道', '不知', '觉得', '以为', '时候', '地方', '东西', '事情', '问题',
+  '交道', '味道', '样子', '意思', '办法', '东西', '多少', '几个', '所有',
+])
+
+/** 一节的全部检索键：标题前缀 + 正文地名候选（两边都过一遍泛词黑名单） */
+function sectionKeys(section: LoreSection): string[] {
+  const keys = new Set<string>()
+  for (const k of titleKeys(section.title)) if (!GENERIC_KEYS.has(k)) keys.add(k)
+  for (const w of placeCandidates(section.body)) if (!GENERIC_KEYS.has(w)) keys.add(w)
   return [...keys]
 }
 
@@ -145,22 +213,86 @@ export interface LoreDigestOptions {
   alwaysInclude?: number
 }
 
+/**
+ * 一个**段落**级的注入单位。
+ *
+ * ## 为什么要细到段（2026-11）
+ *
+ * 原先 `picked` 是整章（`LoreSection`）。一章 1000–1500 字，
+ * 只要这一章命中一个专名，**整章**就进提示词。问题不是贵，是**稀释**：
+ * 一章里通常有三五段（漕运、物价、讼案、节庆），只有一段对眼前这轮有用，
+ * 剩下八九百字在无关地占注意力。
+ *
+ * 所以拆到段：只给他真正用得上的那几段，**外加前后各一段**当上下文。
+ * 见 `digestLore` 里的滑窗部分。
+ */
+export interface LoreChunk {
+  /** 所属章的标题（渲染时同一章的段落合并成一个块，标题只出现一次） */
+  title: string
+  /** 这一段正文（已 trim） */
+  body: string
+  /** 章内序号（0 = 该章第一段） */
+  paraIndex: number
+  /** 章序号（不含总纲）；排序与滑窗都用它定位 */
+  chapterIndex: number
+}
+
 export interface LoreDigest {
   /** 常驻的总纲（可能为空串） */
   preamble: string
-  /** 本轮展开的章节 */
-  picked: LoreSection[]
-  /** 其余章节的索引 */
+  /** 本轮展开的**段落**（已按原文顺序排好） */
+  picked: LoreChunk[]
+  /** 其余章节的索引（仍是**章**级 —— 索引再细下去自己就膨胀了） */
   rest: { title: string; gist: string }[]
   /** 诊断用：本轮命中的专名 */
   hits: string[]
 }
 
 /**
- * 按本轮情境挑出该展开哪些章节。
+ * 把一章正文切成段。
  *
- * 返回的 `picked` 里**总是**含 `alwaysInclude` 那几节（只要它们存在），
- * 其余按分数从高到低填到预算用完为止。
+ * ## 两级切分（第二级是必须的，别删）
+ *
+ * 1. **按空行切**（`\n\n`）—— 正文正常的章都走这条。
+ * 2. 切出来只有一段、而且这一段够长时，**退化成按单换行切**。
+ *
+ * 第二级是给《中帝纪年》那种格式救的：它 20 章**整整 20 段**，
+ * 每章一整块 1800 字、章内一个空行都没有（只有软换行）。
+ * 不加这一级，段级检索对它就**完全无效** —— 而这件事从测试里看不出来，
+ * 只有拿九部真实世界跑一遍才会暴露（`.check/lore-compare.mjs` 就是干这个的）。
+ *
+ * 阈值 400 字是有意的：再短就别切了，否则一首三行的诗会被切成三截。
+ */
+export function splitParagraphs(body: string): string[] {
+  const s = String(body || '').trim()
+  if (!s) return []
+
+  const byBlank = s.split(/\n[ \t]*\n/).map(x => x.trim()).filter(Boolean)
+  if (byBlank.length > 1) return byBlank
+
+  // 只有一段：可能是整章一口气写下来。够长才试着按软换行再切。
+  const only = byBlank[0] || ''
+  if (cjkLen(only) < 400) return byBlank
+  const byLine = only.split(/\n+/).map(x => x.trim()).filter(Boolean)
+  return byLine.length > 1 ? byLine : byBlank
+}
+
+/**
+ * 按本轮情境挑出该展开哪些**段落**。
+ *
+ * ## 打分规则
+ *
+ * 以「段」为单位打分，两条来源相加：
+ *  1. **章标题命中** → 这一章的**每一段** +2。标题写的就是这章在讲什么，
+ *     命中说明整章偏相关（比如提到「云中镇」时，军制那一章都值得看）。
+ *  2. **段内命中** → 每命中一个键 +1。这一条才是真正分出高下的：
+ *     同一章里，写了「雁门」的那一段比只讲粮价的段落更该被翻开。
+ *
+ * ## 滑窗
+ *
+ * 命中段选中之后，**同章的前后各一段**也补进来（不计分、只补上下文）。
+ * 没有这一步就会出现「上一段的结论被截掉、下一段的转折被截掉」——
+ * 而中文段落之间常常靠「所以」「至于」这类词衔接，砍掉邻段就读不通了。
  */
 export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
   const budget = Math.max(1000, opts.budget ?? 12000)
@@ -173,6 +305,14 @@ export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
   const preambleSec = sections.find(s => !s.title)
   const chapters = sections.filter(s => s.title)
   const preamble = preambleSec?.body.trim() || ''
+
+  // ── 所有段落，带上位置 ──
+  const chunks: LoreChunk[] = []
+  chapters.forEach((ch, ci) => {
+    splitParagraphs(ch.body).forEach((body, pi) => {
+      chunks.push({ title: ch.title, body, paraIndex: pi, chapterIndex: ci })
+    })
+  })
 
   // ── 情境里出现了哪些**外部专名**（角色名 / 物品名 / lore 名 / 「」里的词）──
   const ctx = String(opts.context || '')
@@ -191,43 +331,50 @@ export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
     「按需注入」退化成了「固定注入靠前的两节」（体积是省了，但没挑对）。
 
     现在把每节**自己的**标题前缀与正文地名也当检索键，一次性算出哪些在本轮情境里出现过。
-    */
+    注意：键仍按**整章**收（`sectionKeys` 吃的是 chapter），
+    因为标题属于整章；段级只影响「哪些段被翻开」，不影响「这章跟这轮有没有关系」。
+  */
   const liveKeys = new Set<string>()
   if (ctx) {
     const all = new Set<string>()
-    for (const s of chapters) for (const k of sectionKeys(s)) all.add(k)
+    for (const ch of chapters) for (const k of sectionKeys(ch)) all.add(k)
     for (const k of all) if (ctx.includes(k)) liveKeys.add(k)
   }
 
-  // ── 打分 ──
-  const scored = chapters.map((s, i) => {
+  /** 标题命中了的章（chapterIndex），给该章每一段一个基础分 */
+  const titleHitChapters = new Set<number>()
+  // ── 打分（段级）──
+  const scored = chunks.map((c, i) => {
     let score = 0
     const hits: string[] = []
+    const chapterTitle = chapters[c.chapterIndex].title
     for (const k of liveKeys) {
-      // 标题里命中的权重更高：标题就是这一节在讲什么
-      if (s.title.includes(k)) { score += 4; hits.push(k) }
-      else if (s.body.includes(k)) { score += 1; hits.push(k) }
+      if (chapterTitle.includes(k)) { score += 2; titleHitChapters.add(c.chapterIndex); hits.push(k) }
+      else if (c.body.includes(k)) { score += 1; hits.push(k) }
     }
     for (const n of externalHits) {
-      if (s.title.includes(n)) { score += 4; hits.push(n) }
-      else if (s.body.includes(n)) { score += 1; hits.push(n) }
+      if (chapterTitle.includes(n)) { score += 2; titleHitChapters.add(c.chapterIndex); hits.push(n) }
+      else if (c.body.includes(n)) { score += 1; hits.push(n) }
     }
-    return { section: s, index: i, score, hits }
+    return { chunk: c, index: i, score, hits }
   })
 
-  /** 诊断用：这一轮到底命中了些什么（排查"为什么没挑中物价那节"全靠它） */
+  /** 诊断用：这一轮到底命中了些什么（排查"为什么没挑中物价那段"全靠它） */
   const allHits = [...new Set(scored.flatMap(x => x.hits))]
 
-  // 无条件保留的靠前几节
-  const forced = new Set(scored.slice(0, always).map(x => x.index))
+  // 无条件保留的靠前几**章**（它们通常是舆图与势力这类"不知道就没法开口"的底子）
+  const forcedChapters = new Set(
+    Array.from({ length: Math.min(always, chapters.length) }, (_, i) => i),
+  )
+  const forced = new Set(scored.filter(x => forcedChapters.has(x.chunk.chapterIndex)).map(x => x.index))
 
   // 贪心：分数高的先放，预算用完就停（被 forced 的先占额度）
   const ordered = [...scored].sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score
-    return a.index - b.index   // 同分时靠前的章节优先
+    if (a.chunk.chapterIndex !== b.chunk.chapterIndex) return a.chunk.chapterIndex - b.chunk.chapterIndex
+    return a.chunk.paraIndex - b.chunk.paraIndex
   })
 
-  const picked: LoreSection[] = []
   const pickedIdx = new Set<number>()
   let used = 0
 
@@ -235,27 +382,48 @@ export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
     const isForced = forced.has(x.index)
     // 非强制项：分数为 0 就不放了（放进来只会白占额度）
     if (!isForced && x.score === 0) continue
-    const len = cjkLen(x.section.body)
+    const len = cjkLen(x.chunk.body)
     if (!isForced && used + len > budget) continue
-    picked.push(x.section)
     pickedIdx.add(x.index)
     used += len
   }
 
-  // 保底：一节都没挑出来时（上下文里一个专名都没命中），
-  // 至少给最靠前的几节，免得模型手里完全没有世界
-  if (!picked.length) {
-    for (const x of scored.slice(0, Math.max(1, always))) {
-      picked.push(x.section)
-      pickedIdx.add(x.index)
+  // 保底：一段都没挑出来时（上下文里一个专名都没命中），
+  // 至少给最靠前那章的段落，免得模型手里完全没有世界
+  if (!pickedIdx.size) {
+    for (const x of scored.filter(x => x.chunk.chapterIndex === 0)) pickedIdx.add(x.index)
+    if (!pickedIdx.size) for (const x of scored.slice(0, 1)) pickedIdx.add(x.index)
+  }
+
+  /*
+    ── 滑窗：命中段的**同章前后各一段**补进来 ──
+
+    不计分、只补上下文，且要占预算。剩下的额度放不下就跳过（宁可少给一段，
+    也不要为了补齐邻段把别处的正主挤出去）。
+  */
+  const anchorIdx = [...pickedIdx]
+  for (const i of anchorIdx) {
+    const c = scored[i].chunk
+    for (const d of [-1, 1]) {
+      const j = i + d
+      const nb = scored[j]
+      if (!nb || nb.chunk.chapterIndex !== c.chapterIndex) continue
+      if (pickedIdx.has(j)) continue
+      const len = cjkLen(nb.chunk.body)
+      if (used + len > budget) continue
+      pickedIdx.add(j)
+      used += len
     }
   }
 
   // 保持**原文顺序**输出：模型读起来与世界书的结构一致
-  picked.sort((a, b) => chapters.indexOf(a) - chapters.indexOf(b))
+  const picked = [...pickedIdx]
+    .sort((a, b) => a - b)
+    .map(i => scored[i].chunk)
 
+  const pickedChapters = new Set(picked.map(p => p.chapterIndex))
   const rest = chapters
-    .filter((_, i) => !pickedIdx.has(i))
+    .filter((_, i) => !pickedChapters.has(i))
     .map(s => ({ title: s.title, gist: gistOf(s.body) }))
 
   return { preamble, picked, rest, hits: allHits }
@@ -280,11 +448,19 @@ export function renderLoreDigest(digest: LoreDigest, worldTitle: string): string
       它要么说"这里没有"，要么现编一个与该章节冲突的答案。
     */
     parts.push(
-      `> 以下章节是**按当前情境挑出来的**（这一轮用得上）。` +
-      `世界书还有更多侧面，见末尾索引。`,
+      `> 以下章节是**按当前情境挑出来的**（这一轮用得上），` +
+      `挑的是**段落**而不是整章 —— 同一章里没贴出来的部分，与本轮无关，` +
+      `但它是**存在**的。世界书还有更多侧面，见末尾索引。`,
     )
-    for (const s of digest.picked) {
-      parts.push(`**${s.title}**\n\n${s.body.trim()}`)
+    // 同一章的多段合并成一块，标题只出现一次（读起来与世界书结构一致）
+    const groups: { title: string; bodies: string[] }[] = []
+    for (const c of digest.picked) {
+      const last = groups[groups.length - 1]
+      if (last && last.title === c.title) last.bodies.push(c.body)
+      else groups.push({ title: c.title, bodies: [c.body] })
+    }
+    for (const g of groups) {
+      parts.push(`**${g.title}**\n\n${g.bodies.join('\n\n')}`)
     }
   }
 

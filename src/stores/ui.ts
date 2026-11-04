@@ -121,11 +121,24 @@ export const useUIStore = create<UIState>()(
       name: 'pale-notes-ui',
       // statusMessage / 编辑器开关属于瞬时状态，不落盘；fastMode 是玩家偏好，必须落盘
       partialize: (state) => ({ llm: state.llm, fastMode: state.fastMode }),
-      version: 2,
-      migrate: (persisted: any) => {
+      /*
+        v3（2026-11）：思维链开关开始真正生效。
+
+        以前 `showReasoning` **从来没被任何代码读过** —— 它在类型里躺着，设置页也能拨，
+        但流式思维链是无条件显示的。也就是说：旧存档里那个 `false`
+        **不代表任何人做过选择**，它只是当年的默认值。
+
+        所以升级时统一放开成 `true`，让老用户也能看到思维链。
+        从现在起拨它才有意义（新的默认值也是 true）。
+      */
+      version: 3,
+      migrate: (persisted: any, from: number) => {
         // 兼容旧版本存的裸 apiKey 字段
         if (persisted && typeof persisted.apiKey === 'string' && !persisted.llm) {
           return { llm: { ...DEFAULT_LLM_CONFIG, apiKey: persisted.apiKey } };
+        }
+        if (from < 3 && persisted?.llm && typeof persisted.llm === 'object') {
+          return { ...persisted, llm: { ...persisted.llm, showReasoning: true } };
         }
         return persisted;
       }

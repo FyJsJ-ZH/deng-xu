@@ -21,10 +21,12 @@ import { useGameStore, MAX_TURN_SNAPSHOTS, type TokenUsage } from '@/stores/game
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useGameEngine } from '@/hooks/useGameEngine'
-import { X, AlertTriangle, ChevronUp, ChevronDown, ScrollText } from 'lucide-react'
+import { X, AlertTriangle, ChevronUp, ChevronDown, ScrollText, Sparkles } from 'lucide-react'
 import { lazyWithRetry, appLoadedCleanly } from '@/utils/lazyWithRetry'
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary'
 import { SceneBackdrop } from '@/components/SceneBackdrop'
+import { SideOracle } from '@/components/SideOracle'
+import { MemoryLedgerPanel } from '@/components/MemoryLedgerPanel'
 
 /**
  * 叙事区懒加载。
@@ -56,6 +58,24 @@ function formatUsage(u?: TokenUsage | null): string {
     + (u.completionTokens / 1000) * PRICE_PER_1K.completion
   const money = cost > 0 ? ` ¥${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}` : ''
   return `${tokens}${money}`
+}
+
+/**
+ * 本局累计用量的**告警档位**（token）。
+ *
+ * 为什么要它：`replyLength` 1800 之后，一轮的输入（七层记忆 + 段级世界书 + 最近对话）
+ * 加输出大约是五六千 token，二十轮就是十万。玩家在意的是"这一局我花了多少"，
+ * 而工具条上只给了一个不会变色的数字 —— 涨到八十万和涨到八万，看起来一样。
+ *
+ * 阈值取的是**量级感**，不是账单：30 万（约三十多轮）开始提醒，80 万标红。
+ */
+const COST_WARN = { mid: 300_000, high: 800_000 }
+
+/** 悬浮说明里补一句"现在这一档是什么意思"，让变色有解释 */
+function costHint(tokens: number): string {
+  if (tokens >= COST_WARN.high) return `\n⚠️ 已超过 ${(COST_WARN.high / 10000)} 万 token —— 按参考单价约几块钱，够开好几局新的了`
+  if (tokens >= COST_WARN.mid) return `\n已超过 ${(COST_WARN.mid / 10000)} 万 token（约三十多轮的量）`
+  return ''
 }
 
 /** 悬浮说明：把"这个数字是怎么来的"讲清楚，而不是只给一个数 */
@@ -111,7 +131,25 @@ function App() {
   */
   const isMobileMenuOpen = useUIStore(s => s.mobileMenuOpen)
   const setIsMobileMenuOpen = useUIStore(s => s.setMobileMenuOpen)
-  const [rightPanelTab, setRightPanelTab] = useState<'inventory' | 'relationships'>('inventory')
+  /**
+   * 思维链开关。
+   *
+   * 这个字段在 `LLMConfig` 里躺了好几轮，**从来没有任何地方读它** ——
+   * 开关拨来拨去都没用，而流式思维链是无条件显示的。
+   * 现在它同时管两件事：流式时显不显示、回复完成后要不要存进 history。
+   * 关掉的人不占 localStorage（思维链一条动辄几千字）。
+   */
+  const showReasoning = useUIStore(s => s.llm.showReasoning)
+  /** 本局累计 token（告警档位用，见 COST_WARN） */
+  const sessionTokens = (sessionUsage?.promptTokens ?? 0) + (sessionUsage?.completionTokens ?? 0)
+  /**
+   * 右侧面板的页签。
+   *
+   * `ledger` 是「记忆台账」：好感双轨 / 地点树 / 物品台账。
+   * 它和「物品与线索」不是一回事 —— 那个看的是 `WorldCard.items`（世界上这种物长什么样），
+   * 这个看的是**这一局跑出来的状态**（他手上这一件现在在哪）。
+   */
+  const [rightPanelTab, setRightPanelTab] = useState<'inventory' | 'relationships' | 'ledger'>('inventory')
   /**
    * 编年史浮层是否打开。
    *
@@ -120,6 +158,13 @@ function App() {
    * 所以手机返回键不会关编年史 —— 组件自己补了 Esc 出口与显眼的关闭按钮。
    */
   const [isChronicleOpen, setIsChronicleOpen] = useState(false)
+  /**
+   * 旁路助手（只读的侧边神谕）。
+   *
+   * 和编年史一样放在 App 的 useState：`useBackNavigation` 只订阅 ui store 里的浮层，
+   * 所以手机返回键不会关它 —— 组件自己给了遮罩点击与 ✕ 两个出口。
+   */
+  const [isOracleOpen, setIsOracleOpen] = useState(false)
   /**
    * 错误横幅是否展开。
    * 默认收起（显示两行），因为服务商原始报错很长，全量铺开在手机上要吃掉 5 行。
@@ -288,6 +333,9 @@ function App() {
       {/* 编年史浮层：桌面从左侧面板进，手机从「更多」菜单进 */}
       <ChroniclePanel open={isChronicleOpen} onClose={() => setIsChronicleOpen(false)} />
 
+      {/* 旁路助手：只读的侧边窗口，不写回存档 */}
+      <SideOracle open={isOracleOpen} onClose={() => setIsOracleOpen(false)} />
+
       {/* Desktop Left Panel (Status) */}
       <aside className="hidden md:block w-64 flex-shrink-0 z-10 relative border-r border-text-muted/30">
         <StatusPanel onOpenChronicle={() => setIsChronicleOpen(true)} />
@@ -313,10 +361,11 @@ function App() {
           <span className="opacity-40">|</span>
           <span
             className="cursor-pointer hover:text-text-secondary"
-            title={`${tokenTooltip(sessionUsage, '本局累计（从开局算起，刷新后仍然保留）')}\n点击清零重新统计`}
+            title={`${tokenTooltip(sessionUsage, '本局累计（从开局算起，刷新后仍然保留）')}${costHint(sessionTokens)}\n点击清零重新统计`}
             onClick={() => useGameStore.getState().resetSessionUsage()}
           >
-            累计 <span className="text-text-secondary">{formatUsage(sessionUsage)}</span>
+            累计 <span className={sessionTokens >= COST_WARN.high ? 'text-accent-grail font-bold' : sessionTokens >= COST_WARN.mid ? 'text-amber-400' : 'text-text-secondary'}>{formatUsage(sessionUsage)}</span>
+            {sessionTokens >= COST_WARN.high && <span className="text-accent-grail ml-1">（花得有点多了）</span>}
           </span>
 
           <span className="opacity-40">|</span>
@@ -337,6 +386,21 @@ function App() {
             快速模式
             {fastMode && <span className="text-amber-400">（数值与状态不再更新）</span>}
           </label>
+
+          <span className="opacity-40">|</span>
+          {/*
+            旁路助手。放在这条工具条里而不是做成一个大按钮：
+            它是**辅助**，主要叙事区不该被它占地方。
+            title 里要说清"只读"——否则玩家会以为它会改存档。
+          */}
+          <button
+            onClick={() => setIsOracleOpen(true)}
+            className="flex items-center gap-1 hover:text-accent-lantern"
+            title={'开一个只读的旁路助手：问剧情、改文字、查设定。\n它只读你最近的对话与世界书，不会写进存档，也不会推进剧情。'}
+          >
+            <Sparkles size={10} />
+            旁路助手
+          </button>
 
           {/*
             回溯（B8）。只在**真的攒过快照**时出现：开局第一轮还没结束，
@@ -533,6 +597,7 @@ function App() {
                 isAnalyzingData={isAnalyzingData}
                 streamingContent={streamingContent}
                 streamingReasoning={streamingReasoning}
+                showReasoning={showReasoning}
               />
             </Suspense>
           </ChunkErrorBoundary>
@@ -614,9 +679,18 @@ function App() {
           >
             人物
           </button>
+          <button
+            onClick={() => setRightPanelTab('ledger')}
+            className={`flex-1 py-2 text-xs font-medium uppercase tracking-wider transition-colors ${rightPanelTab === 'ledger' ? 'bg-background text-accent-edge border-b-2 border-accent-edge' : 'text-text-muted hover:text-text-primary'}`}
+            title={'模型这一局记下来的：好感内外两档、去过的地点、东西放在哪。\n记错了可以在这里删掉。'}
+          >
+            台账
+          </button>
         </div>
         <div className="flex-1 overflow-hidden">
-          {rightPanelTab === 'inventory' ? <InventoryPanel /> : <RelationshipPanel />}
+          {rightPanelTab === 'inventory' && <InventoryPanel />}
+          {rightPanelTab === 'relationships' && <RelationshipPanel />}
+          {rightPanelTab === 'ledger' && <MemoryLedgerPanel />}
         </div>
         <DebugPanel
           dataInput={debugDataInput}

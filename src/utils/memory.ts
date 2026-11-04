@@ -54,6 +54,61 @@ export interface TimelineBeat {
 }
 
 /**
+ * 好感**双轨**：他心里怎么想，和他当面怎么表现。
+ *
+ * ## 为什么必须两档（2026-11）
+ *
+ * 单轨表达不了「嘴硬」—— 而「心里亲近、嘴上冷淡」恰恰是最好写的一种戏。
+ * 单轨的模型只能二选一：要么把人写成熟人，要么写成陌生人，
+ * 于是玩家看到的是"好感度一到就突然熟起来"的跳变。
+ *
+ * ## 五档（内外同一套，便于比较）
+ *
+ * `亲` 当你是自己人 / `近` 有好感 / `平` 无感 / `疏` 不放心 / `敌` 恨
+ *
+ * 内外**不一致**时最要紧，所以 `note` 要写清依据：
+ * 「内心近 · 外表疏：他替你挡过一次话，但当着人从不叫你名字」。
+ */
+export interface Affinity {
+  who: string
+  /** 内心：亲 / 近 / 平 / 疏 / 敌；判不出就写「未知」 */
+  inner: string
+  /** 外在：同一套五档（他表现出来的） */
+  outer: string
+  /** 一句话依据：凭什么这么判 / 内外为什么不一致 */
+  note?: string
+}
+
+/**
+ * 地点树的一个节点。
+ *
+ * 原先只有一个 `location` 字符串，切三次场景之后就记不住谁在哪、
+ * 哪两个地方是同一片街区。树结构解决的是「由大到小」这件事：
+ * 柳关 → 南市 → 牌墙。
+ *
+ * ⚠️ 用**名字**串起父子，不用 id：模型写名字比写 id 可靠得多，
+ * 而重名在同一世界里本来就少见（真撞了，后写的覆盖）。
+ */
+export interface PlaceNode {
+  name: string
+  /** 上级地点名；空 = 顶层 */
+  parent?: string
+}
+
+/**
+ * 主角手上有、或者知道放在哪的东西。
+ *
+ * ⚠️ 与 `WorldCard.items` 是**两回事**：那是「世界上这种东西长什么样」的模板，
+ * 这是「他手上这一件现在在哪」。模型混用的时候，玩家的东西会凭空消失又出现。
+ */
+export interface HeldItem {
+  name: string
+  /** 在哪：随身 / 寄存在和通号 / 落在醉仙楼二楼 */
+  where: string
+  note?: string
+}
+
+/**
  * 三层记忆的完整形态。
  *
  * `summary` 仍然保留：它承载"这一路的经过"的连贯叙述，
@@ -76,6 +131,42 @@ export interface StoryMemory {
   earlierSummary: string
   /** 最近一次更新的轮次；0 表示还没更新过 */
   updatedAtTurn: number
+
+  /**
+   * **每个角色知道主角的什么**（角色名 → 已确认的事实条目）。
+   *
+   * ## 这一层解决的是「NPC 全知」（2026-11）
+   *
+   * 在这之前，任何 NPC 一登场就知道玩家的一切 —— 因为 `formatCharacter()`
+   * 把整张角色卡（description / personality / scenario）原样塞进提示词，
+   * 模型读到的是"设定"，却把它当成了"这个人的认知"。
+   *
+   * 这和我们之前修过的「不要替玩家认亲」是同一类病：
+   * **模型把作者知道的事，当成了角色知道的事。**
+   *
+   * 判据很硬：一个人只知道
+   *   ① 你当面告诉过他的；
+   *   ② 他亲眼看见的；
+   *   ③ 他查到的、或者别人转告他的。
+   * 除此之外他一无所知 —— 他不知道你的身世、来历、秘密、真名，
+   * 也不知道你没说出口的事。想让他知道，得先有来源。
+   *
+   * ## 两条与其他层不同的规则
+   *
+   * - **只增不减**：`bonds` 是「现状」（新状态覆盖旧的），而"他知道的事"不会
+   *   因为时间流逝而忘掉。只有剧情里明确「这件事被澄清/揭穿」才该改写，
+   *   而那属于覆盖——所以合并时是**并集**，不是替换。
+   * - **不进主记忆预算**：它按在场角色分开渲染（见 `renderKnownByForPrompt`），
+   *   和 bonds/threads 抢同一个 900 字预算会把主线记忆挤掉。
+   */
+  knownBy: Record<string, string[]>
+
+  /** 好感双轨（内心 / 外在），见 `Affinity` */
+  affinity: Affinity[]
+  /** 去过的与正在的地方（由大到小的树），见 `PlaceNode` */
+  places: PlaceNode[]
+  /** 主角手上的东西与它们在哪，见 `HeldItem` */
+  inventory: HeldItem[]
 }
 
 /** 数据 AI 给出的增量补丁（prompt 里也按这个名字叫） */
@@ -84,6 +175,14 @@ export interface MemoryPatch {
   threads?: Thread[]
   timeline?: TimelineBeat[]
   earlierSummary?: string
+  /** 角色名 → 他这一轮新知道的事（只增不减，见 `StoryMemory.knownBy`） */
+  knownBy?: Record<string, string[]>
+  /** 好感双轨的增量（同一个人只留最新一条） */
+  affinity?: Affinity[]
+  /** 新去到的地点（并集，按名字去重） */
+  places?: PlaceNode[]
+  /** 手上东西的变化（同名覆盖「在哪」） */
+  inventory?: HeldItem[]
 }
 
 /**
@@ -108,6 +207,33 @@ export const TIMELINE_KEEP = 12
 /** 折叠进 earlierSummary 的累计上限（超出只保留最近的） */
 export const EARLIER_SUMMARY_LIMIT = 200
 
+/**
+ * 「他知道你什么」的上限：每个角色最多留几条、单条多少字。
+ *
+ * 这一层按在场角色分开渲染，所以在场 3 个人时整块约 300 字 ——
+ * 相对每轮几千字的正文可以接受。留太多会变成一份人物小传，
+ * 而它要表达的其实只有一句：**他知道这些，别的不可能知道**。
+ */
+export const KNOWN_PER_CHARACTER = 6
+export const KNOWN_FACT_CHARS = 30
+
+/**
+ * 新增三层的**存储上限**（不是渲染上限 —— 渲染时另有更严的截断）。
+ *
+ * 存储留得宽一点：一个世界跑上几十轮，地点和物件会越攒越多，
+ * 太早丢掉等于让模型忘记"他住哪、东西寄在哪"，而那正是玩家会问的事。
+ */
+export const AFFINITY_LIMIT = 14
+export const PLACE_LIMIT = 40
+export const INVENTORY_LIMIT = 24
+
+/** 渲染时每层最多输出几行（比存储上限严得多：它们要挤进 900 字预算） */
+const MAX_AFFINITY_LINES = 5
+const MAX_PLACE_LINES = 9
+const MAX_INVENTORY_LINES = 6
+/** 这三层的单行裁剪长度 */
+const MAX_WORD_CHARS = 22
+
 /** 渲染时每层最多输出几行 */
 const MAX_BOND_LINES = 8
 const MAX_THREAD_LINES = 8
@@ -116,7 +242,10 @@ const MAX_BOND_CHARS = 34
 const MAX_THREAD_CHARS = 30
 
 export function emptyMemory(): StoryMemory {
-  return { bonds: [], threads: [], timeline: [], earlierSummary: '', updatedAtTurn: 0 }
+  return {
+    bonds: [], threads: [], timeline: [], earlierSummary: '', updatedAtTurn: 0,
+    knownBy: {}, affinity: [], places: [], inventory: [],
+  }
 }
 
 /**
@@ -176,6 +305,81 @@ export function normalizeMemory(raw: unknown): StoryMemory {
   // 排序但不折叠：渲染与合并都按轮次读，乱序会让"最近 N 拍"取错
   timeline.sort((a, b) => a.turn - b.turn)
 
+  /*
+    knownBy 的收敛比其它三层更严格：它直接决定"这个角色能说什么"，
+    错一条就会让 NPC 说出他不该知道的事（而那种错在正文里看起来
+    **很正常**，只有玩家自己知道"我从来没告诉过他"）。
+    所以：名字必须非空、每条必须非空、去重、按上限截断。
+  */
+  const knownBy: Record<string, string[]> = {}
+  const rawKnown = (m as { knownBy?: unknown }).knownBy
+  if (rawKnown && typeof rawKnown === 'object' && !Array.isArray(rawKnown)) {
+    for (const [who, facts] of Object.entries(rawKnown as Record<string, unknown>)) {
+      const name = str(who).trim()
+      if (!name) continue
+      const list = Array.isArray(facts)
+        ? facts.map(f => clip(str(f).trim(), KNOWN_FACT_CHARS)).filter(Boolean)
+        : []
+      if (!list.length) continue
+      knownBy[name] = [...new Set(list)].slice(-KNOWN_PER_CHARACTER)
+    }
+  }
+
+  // ── 好感双轨：只收敛形状，不替模型判断档位 ──
+  const affinity: Affinity[] = []
+  if (Array.isArray(m.affinity)) {
+    for (const raw of m.affinity) {
+      if (!raw || typeof raw !== 'object') continue
+      const a = raw as Affinity
+      const who = clip(str(a.who).trim(), MAX_WORD_CHARS)
+      if (!who) continue
+      const rec: Affinity = {
+        who,
+        // 没写就当"未知"——不要替它填「平」，那会让模型以为已经判断过了
+        inner: str(a.inner).trim() || '未知',
+        outer: str(a.outer).trim() || '未知',
+      }
+      const note = clip(str(a.note).trim(), 40)
+      if (note) rec.note = note
+      affinity.push(rec)
+    }
+  }
+
+  // ── 地点树 ──
+  const places: PlaceNode[] = []
+  const seenPlace = new Set<string>()
+  if (Array.isArray(m.places)) {
+    for (const raw of m.places) {
+      if (!raw || typeof raw !== 'object') continue
+      const p = raw as PlaceNode
+      const name = clip(str(p.name).trim(), MAX_WORD_CHARS)
+      if (!name || seenPlace.has(name)) continue
+      const parent = clip(str(p.parent).trim(), MAX_WORD_CHARS)
+      seenPlace.add(name)
+      // 自己当自己的上级 = 一个环：**留下这个地点，丢掉那个父级**。
+      // 整个丢掉更省事，但那个地方就从世界里消失了 —— 宁可当顶层。
+      places.push(parent && parent !== name ? { name, parent } : { name })
+    }
+  }
+
+  // ── 物品台账 ──
+  const inventory: HeldItem[] = []
+  const seenItem = new Set<string>()
+  if (Array.isArray(m.inventory)) {
+    for (const raw of m.inventory) {
+      if (!raw || typeof raw !== 'object') continue
+      const it = raw as HeldItem
+      const name = clip(str(it.name).trim(), MAX_WORD_CHARS)
+      if (!name || seenItem.has(name)) continue
+      seenItem.add(name)
+      const where = clip(str(it.where).trim() || '随身', MAX_WORD_CHARS)
+      const rec: HeldItem = { name, where }
+      const note = clip(str(it.note).trim(), 40)
+      if (note) rec.note = note
+      inventory.push(rec)
+    }
+  }
+
   return {
     bonds,
     threads,
@@ -184,6 +388,10 @@ export function normalizeMemory(raw: unknown): StoryMemory {
     updatedAtTurn: Number.isFinite(Number(m.updatedAtTurn))
       ? Math.max(0, Math.floor(Number(m.updatedAtTurn)))
       : 0,
+    knownBy,
+    affinity: affinity.slice(-AFFINITY_LIMIT),
+    places: places.slice(-PLACE_LIMIT),
+    inventory: inventory.slice(-INVENTORY_LIMIT),
   }
 }
 
@@ -278,12 +486,60 @@ export function mergeMemory(old: StoryMemory | undefined, patch: MemoryPatch | u
 
   const lastTurn = folded.timeline.reduce((n, b) => Math.max(n, b.turn), 0)
 
+  /*
+    knownBy 用**并集**而不是替换 —— 这是它与 bonds 唯一不同的地方。
+    bonds 是"现状"，新状态盖旧的；而"他知道的事"不会随时间流逝而消失，
+    只有剧情里明确「这件事被揭穿 / 澄清」才该改，那属于另一次写入。
+    用替换的话，某一轮模型只报了新的一条，之前那个人的整份认知就会被清空。
+  */
+  const knownBy: Record<string, string[]> = { ...base.knownBy }
+  const incomingKnown = normalizeMemory({ knownBy: patch?.knownBy }).knownBy
+  for (const [who, facts] of Object.entries(incomingKnown)) {
+    const prev = knownBy[who] || []
+    knownBy[who] = [...new Set([...prev, ...facts])].slice(-KNOWN_PER_CHARACTER)
+  }
+
+  /*
+    好感双轨：**同一个人只留最新一条**（和 bonds 一样是"现状"）。
+    内外不一致本身是有信息的，所以不拆成两条 —— 拆开之后模型会当成两个人。
+  */
+  const incomingAff = normalizeMemory({ affinity: patch?.affinity }).affinity
+  const affinity = [...base.affinity]
+  for (const a of incomingAff) {
+    const idx = affinity.findIndex(x => key(x.who) === key(a.who))
+    if (idx >= 0) affinity[idx] = a
+    else affinity.push(a)
+  }
+
+  /*
+    地点树：**并集**（去过的地方不会因为这一轮没提就消失）。
+    同名节点的父级会跟着更新 —— 先以 `parent || undefined` 为准走一次。
+  */
+  const incomingPlaces = normalizeMemory({ places: patch?.places }).places
+  const placeMap = new Map<string, PlaceNode>()
+  for (const p of [...base.places, ...incomingPlaces]) placeMap.set(p.name, p)
+  const places = [...placeMap.values()]
+
+  /*
+    物品台账：**同名覆盖「在哪」** —— 东西会挪位置（外套从当铺赎回来就成了随身）。
+    但只增不删：模型没说"丢了"就当还在，不然玩家的东西会凭空消失。
+  */
+  const incomingItems = normalizeMemory({ inventory: patch?.inventory }).inventory
+  const itemMap = new Map<string, HeldItem>()
+  for (const it of base.inventory) itemMap.set(key(it.name), it)
+  for (const it of incomingItems) itemMap.set(key(it.name), it)
+  const inventory = [...itemMap.values()]
+
   return {
     bonds,
     threads,
     timeline: folded.timeline,
     earlierSummary,
     updatedAtTurn: Math.max(base.updatedAtTurn, lastTurn),
+    knownBy,
+    affinity: affinity.slice(-AFFINITY_LIMIT),
+    places: places.slice(-PLACE_LIMIT),
+    inventory: inventory.slice(-INVENTORY_LIMIT),
   }
 }
 
@@ -369,6 +625,7 @@ export function renderMemoryForPrompt(memory: StoryMemory | undefined): string {
   const m = { ...raw, timeline: folded.timeline, earlierSummary }
 
   const hasAnything = m.bonds.length || m.threads.length || m.timeline.length || m.earlierSummary
+    || m.affinity.length || m.places.length || m.inventory.length
   if (!hasAnything) return ''
 
   const lines: string[] = []
@@ -380,11 +637,36 @@ export function renderMemoryForPrompt(memory: StoryMemory | undefined): string {
     }
   }
 
+  /*
+    好感双轨紧跟在关系之后：读的人（模型）刚看完"谁欠谁"，
+    接着看到"他心里怎么想、脸上怎么表现"，这两块是同一个话题的两层。
+  */
+  if (m.affinity.length) {
+    lines.push('### 好感（**内心**与**外表**分两档，不要把外表当成内心）')
+    for (const a of m.affinity.slice(-MAX_AFFINITY_LINES)) {
+      const head = `- ${clip(a.who, MAX_WORD_CHARS)}：内心 ${a.inner} · 外表 ${a.outer}`
+      lines.push(a.note ? `${head} —— ${clip(a.note, 40)}` : head)
+    }
+  }
+
   if (m.threads.length) {
     lines.push('### 未结线索（谜题 / 承诺 / 债务 / 威胁）')
     for (const t of m.threads.slice(-MAX_THREAD_LINES)) {
       lines.push(`- ${clip(t.text, MAX_THREAD_CHARS)}`)
     }
+  }
+
+  if (m.inventory.length) {
+    lines.push('### 他手上有什么、放在哪（**不要让他丢掉、也不要凭空多出**）')
+    for (const it of m.inventory.slice(-MAX_INVENTORY_LINES)) {
+      const note = it.note ? `（${clip(it.note, 30)}）` : ''
+      lines.push(`- ${clip(it.name, MAX_WORD_CHARS)}：${clip(it.where, MAX_WORD_CHARS)}${note}`)
+    }
+  }
+
+  if (m.places.length) {
+    lines.push('### 去过的与在的地方（由大到小）')
+    lines.push(...renderPlaceTree(m.places, MAX_PLACE_LINES))
   }
 
   if (m.earlierSummary || m.timeline.length) {
@@ -399,6 +681,152 @@ export function renderMemoryForPrompt(memory: StoryMemory | undefined): string {
   }
 
   return enforceBudget(lines)
+}
+
+/**
+ * 渲染「**这几个角色**知道主角什么」。
+ *
+ * ## 为什么要单独一段，而不是塞进 `renderMemoryForPrompt`
+ *
+ * 1. 它**按在场角色过滤**：给所有角色的认知一起塞进去，等于又变回全知
+ *    （模型会顺手套到眼前这个人身上）。
+ * 2. 它**不占主记忆预算**：bonds / threads / timeline 共用 900 字，
+ *    knownBy 再挤进去会把关系与线索挤掉，而那两层丢一条就伤。
+ *
+ * ## 为什么「一无所知」也要写出来
+ *
+ * 省略比写错更坏。不写的话，模型看到的是「这段没提这个人」，
+ * 它会退回角色卡上的设定 —— 也就是又回到全知。
+ * 写一句「他一无所知」，才是把边界立在那里。
+ *
+ * 名字匹配用「精确 → 双向包含」两级：模型很少逐字重复全名，
+ * 「阿什沃斯勋爵」与「勋爵」、「巡警布兰登」与「布兰登」应当能对上。
+ */
+export function renderKnownByForPrompt(
+  memory: StoryMemory | undefined,
+  characterNames: readonly string[],
+): string {
+  const names = characterNames.map(n => String(n || '').trim()).filter(Boolean)
+  if (!names.length) return ''
+
+  const known = normalizeMemory(memory).knownBy
+  const lines: string[] = []
+  const seen = new Set<string>()
+
+  for (const name of names) {
+    if (seen.has(name)) continue
+    seen.add(name)
+    const key = matchKnownKey(known, name)
+    const facts = key ? known[key] : []
+    if (!facts.length) {
+      lines.push(`- **${name}**：一无所知（你没跟他说过，他也没看见过什么）`)
+    } else {
+      lines.push(`- **${name}** 知道：${facts.join('；')}`)
+    }
+  }
+
+  return `## 这几个人**知道**你什么
+
+${lines.join('\n')}
+
+⚠️ 上表**没写**的事，他们就**不知道** —— 尤其是你的身世、来历、真实姓名、秘密，
+以及你从没当面对他们说过的事。想让人说出这些，必须先有来源
+（你告诉过他 / 他亲眼看见 / 他查过 / 别人转告），否则他会问、会猜，**而且会猜错**。
+**不要把角色卡上的设定当成他知道的事。**`
+}
+
+/** 在 knownBy 里找这个角色名对应的键（精确优先，其次双向包含） */
+function matchKnownKey(known: Record<string, string[]>, name: string): string | null {
+  if (known[name]) return name
+  const keys = Object.keys(known)
+  const loose = keys.find(k => k.length >= 2 && (name.includes(k) || k.includes(name)))
+  return loose ?? null
+}
+
+/**
+ * 把**当前所在地**机械地补进地点树。
+ *
+ * ## 为什么这条不交给模型
+ *
+ * 地点树是七层里唯一有「机械可得」信息的一层：`useGameStore.location` 每轮都准，
+ * 而摘要 AI 要同时交七样东西，最容易漏的就是这一样。
+ * 漏了之后玩家看到的是「你觉得这地方眼熟」—— 因为模型手里没有"你来过"这条依据。
+ *
+ * 所以这里补一道底：**模型漏报，程序兜住**。模型报了更好（它知道层级），
+ * 没报至少不会缺。
+ *
+ * ## 分隔符
+ *
+ * `location` 可能是「伦敦·威斯敏斯特」这种带层级写法，拆成父子两级；
+ * 也可能是「南市」这种单层，就当一个顶层节点。
+ */
+export function ensurePlace(memory: StoryMemory, location: string): StoryMemory {
+  const raw = String(location || '').trim()
+  if (!raw) return memory
+
+  const parts = raw.split(/[·・/／>›]/).map(s => s.trim()).filter(Boolean)
+  if (!parts.length) return memory
+
+  const places = [...memory.places]
+  let parent: string | undefined
+  for (const name of parts) {
+    if (!places.some(p => p.name === name)) {
+      places.push(parent ? { name, parent } : { name })
+    }
+    parent = name
+  }
+
+  // 与 normalize 的上限保持一致：这一层是并集，跑久了会越攒越多
+  return { ...memory, places: places.slice(-PLACE_LIMIT) }
+}
+
+/**
+ * 把地点列表渲染成一棵缩进的树。
+ *
+ * ## 为什么要树，不要平铺
+ *
+ * 平铺的「南市 / 牌墙 / 柳关」看不出谁属于谁 —— 模型会把「牌墙」当成和
+ * 「柳关」平级的另一个地方，于是玩家说"回柳关"它可能写错方向。
+ * 由大到小的缩进是**唯一能表达"套着"关系**的纯文本形式。
+ *
+ * ## 两个防御（都来自真实会出的坏数据）
+ *
+ * - **环**：模型偶尔同时写 `甲→乙` 和 `乙→甲`，递归会死循环 —— 用 `seen` 挡。
+ * - **孤儿**：上级地点没被写进表里（模型只报了子地点），当顶层处理，
+ *   否则那个地点永远渲染不出来，等于从世界里消失了。
+ */
+function renderPlaceTree(places: PlaceNode[], max: number): string[] {
+  const known = new Set(places.map(p => p.name))
+  const byParent = new Map<string, PlaceNode[]>()
+  const roots: PlaceNode[] = []
+
+  for (const p of places) {
+    if (!p.parent || !known.has(p.parent)) roots.push(p)
+    else {
+      const list = byParent.get(p.parent) || []
+      list.push(p)
+      byParent.set(p.parent, list)
+    }
+  }
+
+  const out: string[] = []
+  const seen = new Set<string>()
+  const walk = (n: PlaceNode, depth: number) => {
+    if (out.length >= max || seen.has(n.name)) return
+    seen.add(n.name)
+    out.push(`${'  '.repeat(Math.min(depth, 3))}- ${n.name}`)
+    for (const c of byParent.get(n.name) || []) walk(c, depth + 1)
+  }
+
+  for (const r of roots) walk(r, 0)
+  // 环里没走到的，平铺补上（宁可难看，也不要让它整个消失）
+  for (const p of places) {
+    if (out.length >= max) break
+    if (seen.has(p.name)) continue
+    seen.add(p.name)
+    out.push(`- ${p.name}`)
+  }
+  return out
 }
 
 /**
@@ -425,9 +853,32 @@ function enforceBudget(lines: string[]): string {
       continue
     }
 
+    /*
+      丢的顺序 = **越"物"的越先丢，越"人"的越后丢**。
+      地点与物品是环境与道具（少了只是不全，玩家还能问）；
+      好感与关系少了，模型就会把熟人写成陌生人 —— 那才是真伤。
+    */
+    const places = sectionBody(out, '### 去过的与在的地方')
+    if (places.length > 3) {
+      out.splice(places[0], 1)
+      continue
+    }
+
+    const inv = sectionBody(out, '### 他手上有什么')
+    if (inv.length > 3) {
+      out.splice(inv[0], 1)
+      continue
+    }
+
     const threads = sectionBody(out, '### 未结线索')
     if (threads.length > 2) {
       out.splice(threads[0], 1)
+      continue
+    }
+
+    const aff = sectionBody(out, '### 好感')
+    if (aff.length > 2) {
+      out.splice(aff[0], 1)
       continue
     }
 
