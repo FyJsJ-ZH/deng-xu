@@ -102,6 +102,38 @@ describe('角色卷宗 · 渲染', () => {
   })
 })
 
+describe('角色卷宗 · 存全、渲染短（2026-11 第二十三轮）', () => {
+  /*
+    玩家原话：「这个抽屉相当于只有个目录，或许可以在这里都每个线索中补充原本就有的线索详情」。
+
+    病根是**截断放错了层**：存储与渲染共用同一个 40 字上限，
+    于是面板上看到的是「……房东太太没赶他，说爷爷…」——
+    一句被砍半的话，而那正是他点开这张卡唯一想看的东西。
+
+    现在：存储留 200（面板看全文），渲染截 40（提示词只要提醒）。
+  */
+  const long = '诺姆住在秤钩巷后头，过一条水沟、有棵歪脖子树的那片，一间小屋，灶在院子里，下雨得搭棚。爷爷的草席还铺着没动。'
+
+  it('★ 存储不截断（面板要显示全文）', () => {
+    const m = mergeMemory(emptyMemory(), { dossiers: { 诺姆: [long] } })
+    expect(m.dossiers['诺姆'][0]).toBe(long)
+  })
+
+  it('★ 渲染要截断（提示词只要提醒，不要原文）', () => {
+    const m = mergeMemory(emptyMemory(), { dossiers: { 诺姆: [long] } })
+    const text = renderDossiersForPrompt(m, ['诺姆'])
+    expect(text).toContain('秤钩巷')
+    expect(text).not.toContain('草席')
+  })
+
+  it('超过存储上限（200 字）才截，并留一个省略号', () => {
+    const huge = '这是一句非常长的底细描写，'.repeat(30)
+    const m = mergeMemory(emptyMemory(), { dossiers: { 诺姆: [huge] } })
+    expect(m.dossiers['诺姆'][0].length).toBeLessThanOrEqual(200)
+    expect(m.dossiers['诺姆'][0].endsWith('…')).toBe(true)
+  })
+})
+
 describe('线索归属判断（factOwner）', () => {
   it('名字里带角色名 → 记在他名下', () => {
     expect(factOwner('小满的住处', ['小满', '炉边女人'])).toBe('小满')

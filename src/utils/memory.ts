@@ -270,7 +270,24 @@ export const KNOWN_FACT_CHARS = 30
  * 和 `knownBy` 同量级，同样**不进主记忆预算**。
  */
 export const DOSSIER_PER_CHARACTER = 8
+/** **渲染**上限：写进提示词时单条截到这么长 */
 export const DOSSIER_FACT_CHARS = 40
+/**
+ * **存储**上限（2026-11 第二十三轮）。
+ *
+ * 原先存储和渲染用的是同一个 40 —— 于是玩家在人物卡里看到的是
+ * 「诺姆还住在爷爷留下的院子，在河边那排、门口有棵歪脖子柳。房东太太没赶他，说爷爷…」，
+ * 一句话被砍在半途，而那正是他点开这张卡唯一想看的东西。
+ *
+ * 现在的分工：
+ *  - **存**的时候留全（200 字，够放下一整段底细）；
+ *  - **渲染**的时候截到 40 字 —— 提示词那边要的是"提醒"，不是原文。
+ *
+ * 换句话说，截断属于**呈现**，不属于**数据**。之前把它放在存储层，
+ * 等于为了省 token 把玩家的档案剪掉了一角，而省下的那点 token 在
+ * 每轮三万输入的账上根本看不出来。
+ */
+export const DOSSIER_STORE_CHARS = 200
 
 /**
  * 新增三层的**存储上限**（不是渲染上限 —— 渲染时另有更严的截断）。
@@ -374,13 +391,13 @@ export function normalizeMemory(raw: unknown): StoryMemory {
   )
   /*
     dossiers 与 knownBy 共用同一套收敛规则（名字非空、条目非空、去重、按上限截断），
-    但**上限不同**：卷宗里的一句话可以更长（"爷爷上个月去世，临终把怀表给了他"
-    压到 30 字会丢掉"临终"这个关键因果），而且它按角色分组，总量本就可控。
+    但**上限不同**：卷宗存的是**底细**，玩家要点开人物卡看的正是它，
+    所以在存储层留全（`DOSSIER_STORE_CHARS`），裁切留给渲染那一步。
   */
   const dossiers: Record<string, string[]> = normalizeNameIndex(
     (m as { dossiers?: unknown }).dossiers,
     DOSSIER_PER_CHARACTER,
-    DOSSIER_FACT_CHARS,
+    DOSSIER_STORE_CHARS,
   )
 
   // ── 好感双轨：只收敛形状，不替模型判断档位 ──
@@ -885,7 +902,8 @@ export function renderDossiersForPrompt(
     // 一无所知的人**不写进来**：这段是"他已经是什么人"，
     // 没有经历的人写一行"暂无"只会占地方、并暗示模型"这个人很重要但没东西写"。
     if (!facts.length) continue
-    blocks.push(`- **${name}**：\n${facts.map(f => `  - ${f}`).join('\n')}`)
+    // 渲染时截到 `DOSSIER_FACT_CHARS`：存储留全是为了面板，提示词这里要的是提醒
+    blocks.push(`- **${name}**：\n${facts.map(f => `  - ${clip(f, DOSSIER_FACT_CHARS)}`).join('\n')}`)
   }
 
   if (!blocks.length) return ''

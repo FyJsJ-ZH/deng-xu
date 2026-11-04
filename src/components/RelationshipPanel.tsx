@@ -13,6 +13,31 @@ interface RelationshipPanelProps {
 }
 
 /**
+ * 卷宗里的一条：可能带标题，也可能只是一句话。
+ *
+ * ## 为什么要有 `title`（2026-11 第二十三轮）
+ *
+ * 玩家原话：「这个抽屉相当于只有个目录，或许可以在这里都每个线索中补充原本就有的线索详情」。
+ *
+ * 他说得准。第一版的卷宗里，来自 `dossiers` 的条目是一句话事实，
+ * 而来自 `facts` 的条目**只推了 `f.name`** —— 于是玩家看到的是
+ * 「诺姆的住处」「诺姆没有别的家人」两行光秃秃的标题，
+ * 而真正的内容（描述）躺在 `f.description` 里，被丢掉了。
+ *
+ * 那正是抽屉最没用的形态：**目录没有正文**。
+ *
+ * 现在两来源合成同一个结构：
+ *  - `facts` → `{ title: 标题, text: 详情 }`（它是"一条线索"，本来就分标题与描述）
+ *  - `dossiers` → `{ text: 一句话 }`（它是一条记录，没有标题）
+ */
+interface DossierEntry {
+  title?: string
+  text: string
+  /** 这条是从哪儿来的，面板上标一格小字 */
+  from: 'fact' | 'memory'
+}
+
+/**
  * 一个人名下的**卷宗**：这一局里他已经确定的事。
  *
  * ## 它为什么要在这里，而不是在线索页
@@ -24,51 +49,79 @@ interface RelationshipPanelProps {
  * 而改变下一个动作，他只会在跟小满说话时用上它。
  * 所以它该长在这个人的卡片里，跟着他一起被看见。
  *
- * ## 两个来源，去重后排在一起
+ * ## 两个来源，`facts` 优先
  *
- * 1. `memory.dossiers` —— 摘要 AI 与程序兜底写进去的卷宗（模型认为"该记住的"）；
- * 2. `facts` 里名字带他这个人的线索（数据 AI 当年发成 ADD_FACT 的那些）。
+ * 1. `facts` 里名字带他这个人的线索 —— **带完整描述**，是这张卡的正文；
+ * 2. `memory.dossiers` —— 摘要 AI 与程序兜底写进去的卷宗。
  *
- * 第 2 条是**历史数据**：这些线索早就存在存档里了，不会自己搬进卷宗。
- * 在这里即时归类，就不必做一次存档迁移 ——
- * 而迁移一旦写错，玩家的旧存档就回不来了。
+ * 第 1 条是**历史数据**（早就躺在存档里，不会自己搬进卷宗），
+ * 在这里即时归类就不必做存档迁移 —— 而迁移一旦写错，玩家旧存档就回不来。
+ *
+ * ⚠️ **去重按"包含"**，不是按全等：`dossiers` 里那一条往往是
+ * `facts` 描述的**前 200 字**（`recordFactIntoDossier` 就是从中抄的），
+ * 按全等去重会让同一件事在抽屉里出现两遍 —— 一遍长一遍短。
  */
 function dossierOf(
   charName: string,
   memory: ReturnType<typeof useGameStore.getState>['memory'],
   facts: ReturnType<typeof useGameStore.getState>['facts'],
   knownFacts: string[],
-): string[] {
-  const out: string[] = []
+): DossierEntry[] {
+  const entries: DossierEntry[] = []
   const seen = new Set<string>()
-  const push = (s: string) => {
-    const t = String(s || '').trim()
-    if (!t || seen.has(t)) return
-    seen.add(t)
-    out.push(t)
-  }
 
-  const k = matchKnownKey(memory.dossiers || {}, charName)
-  if (k) for (const f of memory.dossiers[k] || []) push(f)
-
-  // 归属判断按**单个角色**遍历：只问"这条是不是他的"，不问"是谁的"
+  // ── ① 线索来的（带正文）──
   for (const id of knownFacts) {
     const f = facts.find(x => x.id === id)
     if (!f) continue
+    // 归属判断按**单个角色**问：只问"这条是不是他的"，不问"是谁的"
     if (factOwner(f.name, [charName]) !== charName) continue
-    push(f.name)
+    const text = String(f.description || '').trim()
+    const seenKey = `${f.name}::${text}`
+    if (seen.has(seenKey)) continue
+    seen.add(seenKey)
+    entries.push({ title: f.name, text, from: 'fact' })
   }
 
-  return out
+  // ── ② 卷宗来的（一句话）；已经是上面某条正文的一部分就跳过 ──
+  const factBlob = entries.map(e => `${e.title || ''}${e.text}`).join('\n')
+  const dossierKey = matchKnownKey(memory.dossiers || {}, charName)
+  for (const raw of (dossierKey ? memory.dossiers[dossierKey] || [] : [])) {
+    const text = String(raw || '').trim()
+    if (!text) continue
+    if (seen.has(text)) continue
+    /*
+      包含判断只做一次"短的在长的里"：
+      「诺姆还住在爷爷留下的院子……房东太太没赶他」是「诺姆住在秤钩巷后头，
+      过一条水沟、有棵歪脖子树的那片，一间小屋……」的前缀 —— 那是同一件事。
+      反向（长的在短的里）也查一次，因为模型偶尔会写得更啰嗦。
+    */
+    const dup = factBlob.includes(text)
+      || entries.some(e => e.text && text.includes(e.text.slice(0, 20)) && e.text.length >= 20)
+    if (dup) continue
+    seen.add(text)
+    entries.push({ text, from: 'memory' })
+  }
+
+  return entries
 }
 
 export function RelationshipPanel({ className = '' }: RelationshipPanelProps) {
   const { characters, memory, facts, knownFacts } = useGameStore();
   const world = useSessionStore(s => s.world);
   const [expandedCharId, setExpandedCharId] = useState<string | null>(null);
+  /**
+   * 卷宗里哪一条正文被展开了（key = `${charId}:${index}`）。
+   *
+   * 只允许展开**一条**：玩家点开它是因为想看清某件事，
+   * 一次全部摊开会让整张卡变成一屏密密麻麻的字，而那时他反而找不着自己在看哪条。
+   */
+  const [expandedFact, setExpandedFact] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
     setExpandedCharId(expandedCharId === id ? null : id);
+    // 收起卡片时把展开的那条也收回去，下次点开是干净的
+    if (expandedCharId === id) setExpandedFact(null);
   };
 
   return (
@@ -214,13 +267,49 @@ export function RelationshipPanel({ className = '' }: RelationshipPanelProps) {
                       {dossier.length === 0 ? (
                         <p className="text-[10px] text-text-muted/70 italic">还没记下他做过什么。</p>
                       ) : (
-                        <ul className="space-y-1">
-                          {dossier.map((fact, i) => (
-                            <li key={i} className="flex gap-1.5 text-[11px] text-text-secondary leading-relaxed font-serif">
-                              <span className="text-text-muted/50 shrink-0">·</span>
-                              <span className="flex-1">{fact}</span>
-                            </li>
-                          ))}
+                        <ul className="space-y-2">
+                          {dossier.map((entry, i) => {
+                            const key = `${char.id}:${i}`
+                            const open = expandedFact === key
+                            /*
+                              长正文默认折三行，点一下展开。
+                              这一条的正文往往就是**玩家最想看的那段**
+                              （「诺姆住在秤钩巷后头，过一条水沟、有棵歪脖子树的那片……」），
+                              一次摊开四条会把整张卡推得很长，而玩家通常只关心其中一条。
+                            */
+                            const long = entry.text.length > 60
+                            return (
+                              <li
+                                key={key}
+                                className={long ? 'cursor-pointer group/fact' : ''}
+                                onClick={long ? () => setExpandedFact(open ? null : key) : undefined}
+                              >
+                                {entry.title && (
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="text-[11px] text-text-primary">{entry.title}</span>
+                                    {entry.from === 'fact' && (
+                                      <span className="text-[9px] px-1 py-0.5 rounded-sm bg-black/30 text-text-muted/70 border border-text-muted/15 shrink-0">
+                                        线索
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                {entry.text ? (
+                                  <p className={`text-[11px] text-text-secondary leading-relaxed font-serif pl-0
+                                    ${open ? '' : long ? 'line-clamp-3' : ''}`}>
+                                    {entry.text}
+                                  </p>
+                                ) : (
+                                  <p className="text-[10px] text-text-muted/60 italic">（这条线索没有记录详情）</p>
+                                )}
+                                {long && (
+                                  <span className="text-[9px] text-text-muted/50 group-hover/fact:text-text-muted">
+                                    {open ? '收起' : '展开'}
+                                  </span>
+                                )}
+                              </li>
+                            )
+                          })}
                         </ul>
                       )}
                     </div>
