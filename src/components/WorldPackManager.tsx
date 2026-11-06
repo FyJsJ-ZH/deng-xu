@@ -5,6 +5,7 @@ import { exportPack, importPackFile } from '@/utils/worldPack'
 import { collectSave } from '@/utils/saveFile'
 import { parseWorldbook, worldbookToPack } from '@/utils/worldbook'
 import { fromSillyTavernLorebook, isSillyTavernLorebook, toSillyTavernLorebook } from '@/utils/stLorebook'
+import { describePreset, fromSillyTavernPreset, isSillyTavernPreset } from '@/utils/stPreset'
 import { downloadFile, safeFilename, timestampSuffix } from '@/utils/files'
 
 /**
@@ -149,6 +150,46 @@ export function WorldPackManager() {
             + `${world.lores.length} 条知识条目。`
             + '注意：ST 的**关键词触发在本作不生效** —— 这些条目会全量注入提示词，'
             + '触发词只作为「触发词：…」一行留在条目正文里备查。',
+        })
+      } catch (e) {
+        setMsg({ kind: 'err', text: `写入失败：${(e as Error)?.message || e}` })
+      }
+      return
+    }
+
+    /*
+      ⚠️ **SillyTavern 的「预设」和「世界书」是两样东西**（2026-11 第二十五轮）。
+
+      玩家拖进来两个 `.json`，说"下了两个世界书，发现不兼容"。那两个文件里
+      一条世界设定都没有 —— 它们是 ST 的 completion preset
+      （`temperature` / `prompts[]` / `prompt_order`），写的是"**怎么写**"，
+      不是"写什么"。而本作的世界书装的是后者。所以"不兼容"不是坏了，是拿 A 当 B。
+
+      但玩家的诉求是真的：想用上。所以这里把它**转成一张规则包**而不是报错 ——
+      规则进 `rules`、文风进 `customStyle`、其余进 `worldLore`，内容一个字不丢。
+      转出来的卡不是世界，文案里必须说清楚（见 `stPreset.ts` 的说明）。
+    */
+    if (isSillyTavernPreset(raw)) {
+      const brief = describePreset(raw)
+      const world = fromSillyTavernPreset(raw, file.name)
+      if (!world) {
+        setMsg({
+          kind: 'err',
+          text: '这是一份 SillyTavern 提示词预设，但里面的条目全是停用的或空的 —— 没有可转换的内容。'
+            + '（预设的条目在 ST 里用开关控制，去 ST 里打开再导出一次即可。）',
+        })
+        return
+      }
+      try {
+        await importWorlds([world])
+        setMsg({
+          kind: 'ok',
+          text: `这是一份 SillyTavern **提示词预设**（不是世界书），已转成规则包《${world.title}》并导入：`
+            + `${brief?.total ?? 0} 条启用条目 —— 文风 ${brief?.style ?? 0} 条进「文风」，`
+            + `规则 ${brief?.rules ?? 0} 条进「规则」，其余 ${brief?.other ?? 0} 条进世界观正文。`
+            + '它不是世界设定（没有地点/人物/物价）。想叠到你自己的世界上：'
+            + '用卡片编辑器打开它，把「规则」与「文风」两段复制过去。'
+            + '超出篇幅预算的条目名字写在每段末尾。',
         })
       } catch (e) {
         setMsg({ kind: 'err', text: `写入失败：${(e as Error)?.message || e}` })

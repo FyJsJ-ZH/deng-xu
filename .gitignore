@@ -13,3 +13,7 @@ __pycache__/
 audit-shots/
 
 playtest-shots/
+
+# 转换脚本的产物（玩家的素材，不进仓库）
+converted/
+
