@@ -5,7 +5,7 @@ import { exportPack, importPackFile } from '@/utils/worldPack'
 import { collectSave } from '@/utils/saveFile'
 import { parseWorldbook, worldbookToPack } from '@/utils/worldbook'
 import { fromSillyTavernLorebook, isSillyTavernLorebook, toSillyTavernLorebook } from '@/utils/stLorebook'
-import { describePreset, fromSillyTavernPreset, isSillyTavernPreset } from '@/utils/stPreset'
+import { isSillyTavernPreset, stPresetToNarrativePreset } from '@/utils/stPreset'
 import { readStCardFromPng } from '@/utils/pngCard'
 import { stCardToWorld } from '@/utils/stCardToWorld'
 import { downloadFile, safeFilename, timestampSuffix } from '@/utils/files'
@@ -31,6 +31,7 @@ export function WorldPackManager() {
   const worlds = useLibraryStore(s => s.worlds)
   const exportAll = useLibraryStore(s => s.exportAll)
   const importWorlds = useLibraryStore(s => s.importWorlds)
+  const saveNarrativePreset = useLibraryStore(s => s.saveNarrativePreset)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [includeSave, setIncludeSave] = useState(false)
@@ -220,14 +221,20 @@ export function WorldPackManager() {
       （`temperature` / `prompts[]` / `prompt_order`），写的是"**怎么写**"，
       不是"写什么"。而本作的世界书装的是后者。所以"不兼容"不是坏了，是拿 A 当 B。
 
-      但玩家的诉求是真的：想用上。所以这里把它**转成一张规则包**而不是报错 ——
-      规则进 `rules`、文风进 `customStyle`、其余进 `worldLore`，内容一个字不丢。
-      转出来的卡不是世界，文案里必须说清楚（见 `stPreset.ts` 的说明）。
+      但玩家的诉求是真的：想用上。
+
+      ── 第二十九轮改道 ──
+      上一版把它转成**世界卡**塞进卡片库，于是它跟真世界混在一张卡片墙上，
+      点进去开一局发现世界是空的；而且世界卡是"一局一个"，换世界就得重做一遍。
+
+      玩家自己的说法更准：「或许可以像世界书或卡片库一样，存储预设并可切换」。
+      所以现在存进**叙事预设库**（`narrativePresets`）：全局只启用一份，
+      叠加在**当前世界**上 —— 换世界不丢文风，换文风不改世界卡。
+      入口在「主菜单 → 叙事预设」，那边也能直接导入。
     */
     if (isSillyTavernPreset(raw)) {
-      const brief = describePreset(raw)
-      const world = fromSillyTavernPreset(raw, file.name)
-      if (!world) {
+      const preset = stPresetToNarrativePreset(raw, file.name)
+      if (!preset) {
         setMsg({
           kind: 'err',
           text: '这是一份 SillyTavern 提示词预设，但里面的条目全是停用的或空的 —— 没有可转换的内容。'
@@ -236,15 +243,15 @@ export function WorldPackManager() {
         return
       }
       try {
-        await importWorlds([world])
+        await saveNarrativePreset(preset)
+        const c = preset.counts
         setMsg({
           kind: 'ok',
-          text: `这是一份 SillyTavern **提示词预设**（不是世界书），已转成规则包《${world.title}》并导入：`
-            + `${brief?.total ?? 0} 条启用条目 —— 文风 ${brief?.style ?? 0} 条进「文风」，`
-            + `规则 ${brief?.rules ?? 0} 条进「规则」，其余 ${brief?.other ?? 0} 条进世界观正文。`
-            + '它不是世界设定（没有地点/人物/物价）。想叠到你自己的世界上：'
-            + '用卡片编辑器打开它，把「规则」与「文风」两段复制过去。'
-            + '超出篇幅预算的条目名字写在每段末尾。',
+          text: `这是一份 SillyTavern **提示词预设**（不是世界书），已存进「叙事预设」并自动启用：`
+            + `《${preset.name}》${c.total} 条启用条目 —— 规则 ${c.rules} 条、文风 ${c.style} 条、`
+            + `其余 ${c.other} 条只存档不注入。下一轮生成即生效。`
+            + '它管"怎么写"、不管"写什么"，所以不会出现在卡片墙上；'
+            + '要关掉或换一份，去主菜单 →「叙事预设」。',
         })
       } catch (e) {
         setMsg({ kind: 'err', text: `写入失败：${(e as Error)?.message || e}` })
@@ -384,6 +391,11 @@ export function WorldPackManager() {
         <b className="text-text-secondary">注意语义差别</b>：ST 的条目靠关键词触发，
         本作的 lore 是<b>全量注入</b>，导入后所有条目都会进提示词；
         触发词会以「触发词：…」一行留在条目正文里备查，并不会真的"生效"。
+        <br />
+        <b className="text-text-secondary">拖进来的是写作预设</b>（有 <code>prompts</code> 和 <code>prompt_order</code> 的那种）时，
+        它不会被放进这张卡片墙 —— 而是收进
+        <b className="text-text-secondary">「主菜单 → 叙事预设」</b>并自动启用：
+        预设管"怎么写"，可以随时切换，换世界也不会丢。
       </p>
 {/* 官方世界书既是范例也是可直接导入的成品 */}
 <div className="text-[10px] text-text-muted leading-relaxed">

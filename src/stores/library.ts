@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { WorldCard, HeroPreset, PlayerCard } from '@/types/cards';
+import type { WorldCard, HeroPreset, PlayerCard, NarrativePreset } from '@/types/cards';
 import { makeId } from '@/utils/files';
 import { createKVStore, isIdbAvailable } from '@/utils/idb';
 import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds } from '@/data/builtinWorldIds';
@@ -38,6 +38,24 @@ const PRESETS_KEY = 'heroPresets';
  * 玩家看到的是"删除无效"。所以删内置卡时在这里记一笔。
  */
 const REMOVED_BUILTIN_KEY = 'removedBuiltinWorlds';
+
+/**
+ * 叙事预设（文风 / 规则包）的键。
+ *
+ * ## 为什么又是**一个新的键**（2026-11 第二十九轮）
+ *
+ * 玩家把 ST 的写作预设丢进来，说「或许可以像世界书或卡片库一样，存储预设并可切换」。
+ * 上一版把它转成**世界卡**塞进 `WORLDS_KEY`，于是它跟真世界混在一张卡片墙上：
+ * 点进去开一局，世界是空的；而且世界卡是"一局一个"，换世界就得重做一遍。
+ *
+ * 预设是**玩家口味**，不是作品 —— 换任何一个世界都想沿用同一套文风。
+ * 所以它独立成键，全局只启用一份，叠加在**当前世界**上。
+ *
+ * 结构与 `PRESETS_KEY` 一样：`{ presets: [...], activeId: string }`。
+ * 两个字段放**同一个键**里，是因为它们必须一起生效 ——
+ * 分两个键写，中间断一次就会出现"激活了一份不存在的预设"。
+ */
+const NARRATIVE_PRESETS_KEY = 'narrativePresets';
 
 /**
  * 上次播种内置卡时用的**内容指纹**（见 `data/builtinStamp.ts`）。
@@ -132,6 +150,27 @@ export interface LibraryState {
   /** 以现有资料新建一个预设（不开游戏也能先设主角） */
   createHeroPreset: (label: string, player: PlayerCard) => Promise<HeroPreset>;
 
+  // ── 叙事预设（文风 / 规则包，可切换）────────────────────────────
+  /** 全部叙事预设，最近导入的在最前 */
+  narrativePresets: NarrativePreset[];
+  /**
+   * 当前启用的那份的 id；`''` = 不启用任何预设。
+   *
+   * 刻意做成单一 id 而不是 `enabled: boolean` 数组：
+   * 文风的指令是**互相排斥**的（「简练网文」与「超细腻大段描写」同时开，
+   * 模型只能二选一地瞎猜）。全局只留一份，语义清楚，玩家也不必调试玄学。
+   */
+  activeNarrativePresetId: string;
+  /** 新增或就地替换（按 id 匹配）；第一次导入会自动启用 */
+  saveNarrativePreset: (preset: NarrativePreset, options?: { activate?: boolean }) => Promise<void>;
+  deleteNarrativePreset: (id: string) => Promise<void>;
+  /** 切换启用项；传 `''` 表示都不用 */
+  setActiveNarrativePreset: (id: string) => Promise<void>;
+  /** 同 getWorld：返回库内引用，请当只读用 */
+  getNarrativePreset: (id: string) => NarrativePreset | undefined;
+  /** 当前启用的那份（没有就是 undefined） */
+  getActiveNarrativePreset: () => NarrativePreset | undefined;
+
   /** 从 IndexedDB 载入全部世界卡；首次运行会写入内置示例卡 */
   loadWorlds: () => Promise<void>;
   /** 新增或整体替换（按 id 匹配） */
@@ -200,6 +239,41 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
     return writeChain;
   }
 
+  /**
+   * 叙事预设的写回。同样共用 `writeChain` —— 三个键（世界卡 / 主角 / 预设）
+   * 的写入必须有序，否则"刚切换的预设下次打开又变回去了"。
+   */
+  async function persistNarrativePresets(): Promise<void> {
+    const wasAvailable = isIdbAvailable();
+    try {
+      await kv.set(NARRATIVE_PRESETS_KEY, JSON.stringify({
+        presets: get().narrativePresets,
+        activeId: get().activeNarrativePresetId,
+      }));
+      if (!isIdbAvailable()) {
+        set({ loadError: idbDownMessage(wasAvailable) });
+      } else if (get().loadError) {
+        set({ loadError: null });
+      }
+    } catch (err) {
+      set({ loadError: `叙事预设写回失败：${describeError(err)}` });
+    }
+  }
+
+  function queuePersistNarrativePresets(): Promise<void> {
+    writeChain = writeChain.then(persistNarrativePresets);
+    return writeChain;
+  }
+
+  /** 叙事预设改动统一入口：先同步改内存（UI 立刻响应），再排队写回 */
+  async function commitNarrativePresets(
+    presets: NarrativePreset[],
+    activeId: string,
+  ): Promise<void> {
+    set({ narrativePresets: presets, activeNarrativePresetId: activeId });
+    await queuePersistNarrativePresets();
+  }
+
   /** 预设改动统一入口：先同步改内存，再排队写回 */
   async function commitPresets(presets: HeroPreset[]): Promise<void> {
     set({ heroPresets: presets });
@@ -241,6 +315,8 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
   return {
     worlds: [],
     heroPresets: [],
+    narrativePresets: [],
+    activeNarrativePresetId: '',
     loaded: false,
     loadError: null,
 
@@ -266,6 +342,35 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           }
         } catch {
           // 预设读失败不该影响世界卡可用性：当作"还没有预设"，不覆盖 error
+        }
+
+        /*
+          叙事预设一并读出（见 NARRATIVE_PRESETS_KEY）。
+          同样不参与下面的内置卡播种逻辑：初始值就是空数组。
+          activeId 指向一份**已不存在**的预设时按"没启用"处理 ——
+          这只会出现在手动改过 IndexedDB 或跨版本迁移的情况下，
+          留着它会让每次构建提示词都去找一个空对象。
+        */
+        let narrativePresets: NarrativePreset[] = [];
+        let activeNarrativePresetId = '';
+        try {
+          const rawN = await kv.get<unknown>(NARRATIVE_PRESETS_KEY);
+          const parsedN = typeof rawN === 'string' && rawN.trim() ? JSON.parse(rawN) : rawN;
+          if (parsedN && typeof parsedN === 'object' && !Array.isArray(parsedN)) {
+            const o = parsedN as { presets?: unknown; activeId?: unknown };
+            if (Array.isArray(o.presets)) {
+              narrativePresets = (o.presets as NarrativePreset[]).filter(
+                (p): p is NarrativePreset =>
+                  !!p && typeof p === 'object' && typeof p.id === 'string',
+              );
+            }
+            if (typeof o.activeId === 'string') activeNarrativePresetId = o.activeId;
+          }
+        } catch {
+          // 同主角预设：读不出来就当没有，不影响开游戏
+        }
+        if (activeNarrativePresetId && !narrativePresets.some(p => p.id === activeNarrativePresetId)) {
+          activeNarrativePresetId = '';
         }
 
         try {
@@ -381,7 +486,14 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           首次运行、但每一张内置卡都在"删过的"名单里（换过设备又清过库），
           那时 `fresh` 是空的，`worlds` 会一直是 null，直接塞进 store 会让下游 `w.id` 崩。
         */
-        set({ worlds: worlds ?? [], heroPresets: presets, loaded: true, loadError: error });
+        set({
+          worlds: worlds ?? [],
+          heroPresets: presets,
+          narrativePresets,
+          activeNarrativePresetId,
+          loaded: true,
+          loadError: error,
+        });
         if (needSeed) await queuePersist();
         if (storedStamp !== BUILTIN_STAMP) {
           /*
@@ -578,6 +690,55 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       };
       await commitPreset(preset);
       return preset;
+    },
+
+    // ── 叙事预设（文风 / 规则包，可切换）──────────────────────────
+    saveNarrativePreset: async (preset, options) => {
+      const now = Date.now();
+      const list = get().narrativePresets;
+      const next: NarrativePreset = {
+        ...deepClone(preset),
+        id: preset.id || makeId('preset'),
+        createdAt: preset.createdAt || now,
+        updatedAt: now,
+      };
+      const index = list.findIndex((p) => p.id === next.id);
+      // 新导入的排最前（列表天然按最近导入排序），替换则原地不动
+      const presets = index === -1
+        ? [next, ...list]
+        : list.map((p) => (p.id === next.id ? next : p));
+
+      /*
+        **第一次导入自动启用。**
+        玩家拖一份预设进来，期待的立刻是"下一轮就照这个写"，
+        而不是"存进去了，还得自己再点一下启用"。
+        已经有激活项时不动他的选择 —— 那是他自己挑的。
+      */
+      const activate = options?.activate ?? !get().activeNarrativePresetId;
+      await commitNarrativePresets(presets, activate ? next.id : get().activeNarrativePresetId);
+    },
+
+    deleteNarrativePreset: async (id) => {
+      const before = get().narrativePresets;
+      const presets = before.filter((p) => p.id !== id);
+      if (presets.length === before.length) return;
+      // 删掉的正好是启用中的那份 → 回到"不用预设"，别让 activeId 悬空
+      const activeId = get().activeNarrativePresetId === id ? '' : get().activeNarrativePresetId;
+      await commitNarrativePresets(presets, activeId);
+    },
+
+    setActiveNarrativePreset: async (id) => {
+      if (id && !get().narrativePresets.some((p) => p.id === id)) return;
+      if (get().activeNarrativePresetId === id) return;
+      await commitNarrativePresets(get().narrativePresets, id);
+    },
+
+    getNarrativePreset: (id) => get().narrativePresets.find((p) => p.id === id),
+
+    getActiveNarrativePreset: () => {
+      const id = get().activeNarrativePresetId;
+      if (!id) return undefined;
+      return get().narrativePresets.find((p) => p.id === id);
     },
   };
 });

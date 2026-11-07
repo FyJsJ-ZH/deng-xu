@@ -48,6 +48,13 @@ export type View =
   | { name: 'setup'; worldId: string; intent?: 'play' | 'worldbook' | 'library' }
   /** 主角预设管理页（「提前设定主角」） */
   | { name: 'heroes' }
+  /**
+   * 叙事预设库（「怎么写」的那一摞，可切换）。
+   *
+   * 与 `heroes` 同为"开局前先设好"的二级页，所以层级并列在 menu 之下，
+   * 不进 library —— 它管的不是卡，而是叠加在所有卡上的那层文风。
+   */
+  | { name: 'presets' }
   | { name: 'game' }
 
 interface NavState {

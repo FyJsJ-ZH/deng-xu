@@ -35,7 +35,7 @@
  * 免得玩家开一局发现世界一片空白，以为导入坏了。
  */
 
-import type { WorldCard } from '@/types/cards'
+import type { NarrativePreset, WorldCard } from '@/types/cards'
 import { makeId } from '@/utils/files'
 
 type JsonObject = Record<string, unknown>
@@ -60,13 +60,13 @@ const LORE_BUDGET = 12000
 /** 这条像不像"文风 / 笔法"要求 */
 function looksLikeStyle(name: string, content: string): boolean {
   const s = `${name}\n${content.slice(0, 160)}`
-  return /文风|文笔|笔法|写作|叙事|描写|措辞|用词|八股|比喻|辞藻|句式|节奏|视角|人称|轻小说|综漫|瑟瑟|NSFW|色情|情色|R18|H场景/.test(s)
+  return /文风|文笔|笔法|写作|叙事|描写|措辞|用词|八股|比喻|辞藻|句式|节奏|视角|人称|段落|对白|轻小说|综漫|瑟瑟|NSFW|色情|情色|R18|H场景/.test(s)
 }
 
 /** 这条像不像"法则 / 禁止 / 流程" */
 function looksLikeRules(name: string, content: string): boolean {
   const s = `${name}\n${content.slice(0, 160)}`
-  return /法则|规则|禁止|不许|不要|必看|必读|别关|勿关|勿动|流程|交互|机制|限制|思维链|CoT|cot|格式|输出|选项|状态|称呼|摘要|防全知|防抢话|防遗忘|防变傻|防止|避免|要求|指导|引擎|协议|总控/.test(s)
+  return /法则|规则|准则|规范|禁止|不许|不要|必看|必读|别关|勿关|勿动|流程|交互|机制|限制|思维链|CoT|cot|格式|输出|选项|状态|称呼|摘要|防全知|防抢话|防遗忘|防变傻|防止|避免|要求|指导|引擎|协议|总控|情节设计|任务链|创作范围/.test(s)
 }
 
 /**
@@ -90,18 +90,66 @@ function looksLikeMeta(name: string, content: string): boolean {
 }
 
 /**
+ * 收集 ST 的 `{{setvar::名::值}}` 变量。
+ *
+ * ## 为什么必须做（2026-11 第二十九轮）
+ *
+ * 玩家丢进来的是「夏瑾 天琴座 Beta 3.9」—— 一份专门给 DeepSeek 写的写作预设。
+ * 它把**最重要的那一条**藏进了变量里：
+ *
+ * ```
+ * 🛡️ 变量（别动）  = {{setvar::JailbreakPrompt::You are a helpful software engineer…}}
+ * 🛡️破限[顶]      = {{trim}}{{getvar::JailbreakPrompt}}
+ * ```
+ *
+ * 上一版遇到 `setvar` / `getvar` 一律整段删掉 —— 于是作者精心写的那一大段
+ * 「破限 + 思维链格式」在这边**凭空消失**：条目 35 字，剥完剩 0 字，
+ * 直接当空条目丢掉。玩家看到的是"导入了但好像没生效"。
+ *
+ * 所以现在**先按 ST 的执行顺序还原**：顺序扫一遍收 `setvar`（后写的覆盖先写的，
+ * 与 ST 一致），再把 `getvar` 换回值。剩下的宏才删。
+ */
+/** 一个变量值的上限（字）。破限串通常 800–2000 字，给足余量 */
+const VAR_MAX = 4000
+
+function collectStVariables(rawContents: string[]): Map<string, string> {
+  const vars = new Map<string, string>()
+  for (const text of rawContents) {
+    const re = /\{\{\s*setvar::([^:}]+)::([\s\S]*?)\}\}/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text))) {
+      const name = m[1].trim()
+      if (!name) continue
+      // 单个变量的值封顶，免得某个预设里塞了一份两万字的设定把后面全挤掉
+      vars.set(name, m[2].slice(0, VAR_MAX))
+    }
+  }
+  return vars
+}
+
+/**
  * 去掉 ST 专有的宏块 —— 它们在本作里是纯噪音。
  *
  * - `{{// … }}` 是 ST 的**注释块**，作者写给自己看的，本来就不注入；
- * - `{{setvar::…}}` / `{{getvar::…}}` 是 ST 的变量系统，本作没有。
+ * - `{{trim}}` / `{{random::a::b}}` 之类是 ST 的求值宏；
+ * - `{{setvar::…}}` / `{{getvar::…}}` 已被 `collectStVariables` 处理过，
+ *   走到这里的是**没解析出来的残留**，删掉。
  *
  * ⚠️ `{{user}}` / `{{char}}` **保留**：它们是"谁"的占位，语义仍然成立，
  * 只是本作不会替换 —— 这一点在卡片开头已经写明，让玩家自己改。
  */
-function stripStMacros(text: string): string {
-  return text
+function stripStMacros(text: string, vars?: Map<string, string>): string {
+  let out = text
+  if (vars && vars.size) {
+    // `{{getvar::X}}` 换成值；换不出来（作者写错名/值在别的方案里）就留空
+    out = out.replace(/\{\{\s*getvar::([^:}]+)\s*\}\}/g, (_, name: string) => vars.get(name.trim()) ?? '')
+  }
+  return out
     .replace(/\{\{\/\/[\s\S]*?\}\}/g, '')
     .replace(/\{\{\s*(?:setvar|getvar|addvar|incvar|decvar|setglobalvar|getglobalvar)::[\s\S]*?\}\}/g, '')
+    // 求值宏：`{{trim}}` 无参、`{{random::a::b}}` 随机取一个 —— 取第一个分支即可
+    .replace(/\{\{\s*random::([\s\S]*?)\}\}/g, (_, list: string) => list.split('::')[0].trim())
+    .replace(/\{\{\s*(?:trim|newline)\s*\}\}/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
@@ -134,54 +182,155 @@ interface PresetEntry {
 }
 
 /**
- * 取出**启用且非空**的条目，保持作者排的顺序。
+ * 这条只是**拼接骨架**，不是内容。
  *
- * 顺序很重要：ST 里条目顺序就是注入顺序，作者有意让"总控"排在前面。
- * 用 `prompt_order[0].order` 排，没有就退回 `prompts` 的原始顺序。
+ * ST 的作者常把一段提示词拆进好几个 order 槽位，让每个槽位只装一个标签：
+ *
+ * ```
+ * 【设定首】        = <相关资料>\n\n<{{user}}设定>
+ * 【设定集/前文】    = </相关资料>\n\n<互动历史>
+ * 【前文结束】      = </互动历史>
+ * ```
+ *
+ * 在 ST 里它们和真正的设定拼起来才成句，**单独拎出来一个字的信息都没有**。
+ * 上一版把它们当普通条目收进 `worldLore`，转出来的卡正文开头是
+ * 一串 `<相关资料>` `<互动历史>` —— 玩家看到只会以为转换坏了。
  */
-function readEntries(raw: JsonObject): PresetEntry[] {
-  const prompts = Array.isArray(raw.prompts) ? raw.prompts : []
-  const order = (raw.prompt_order as { order?: unknown }[] | undefined)?.[0]?.order
-  const enabledMap = new Map<string, boolean>()
-  if (Array.isArray(order)) {
+function isStructuralMarker(content: string): boolean {
+  const solid = content.replace(/\s/g, '')
+  if (!solid) return true
+  /*
+    ⚠️ 判据只用"标签占了绝大多数"和"整条就是一个书名号标题"两种，
+    **不要**用「字数少就丢」—— 预设里真有六个字的硬规矩（`不许抢话`），
+    按长度一刀切会把它误伤掉，而玩家只会发现"我明明开了这条却没生效"。
+  */
+  const tagChars = (solid.match(/<[^<>]*>/g) ?? []).join('').length
+  if (tagChars > 0 && tagChars / solid.length > 0.6) return true
+  // 通篇只有【…】/（…）包起来的一个说法，没有任何其他字
+  return /^(?:[【\[（(][^】\]）)]*[】\]）)])+$/.test(solid) && solid.length <= 14
+}
+
+/**
+ * 从 `prompt_order` 里挑出**作者当前用的那一套方案**。
+ *
+ * ## 为什么不能只看 `prompt_order[0]`（2026-11 第二十九轮）
+ *
+ * ST 的 `prompt_order` 是个**数组**，每个元素是「一套提示词管理方案」
+ * （`{ character_id, order }`）。玩家给的这份预设里有两套：
+ *
+ * | character_id | 条目数 | 启用 | 是什么 |
+ * |---|---|---|---|
+ * | 100000 | 11 | 3 条有内容 | 一个精简方案 |
+ * | 100001 | 62 | 30 条有内容 | 作者真正调好的完整方案 |
+ *
+ * 老代码写死取 `[0]`，正好取到精简的那套：只拿到「扩写输入 / 字数 / 变量」
+ * 三条，而**文风、创作准则、各种开关全在第二套里** —— 导进去像个空壳。
+ *
+ * 所以改成「哪套里有内容的启用条目最多，就用哪套」。
+ *
+ * ## 同时修掉另一个更严重的错
+ *
+ * `prompts` 数组里有 144 条，两套方案加起来只覆盖 73 条 ——
+ * 剩下 71 条是作者**堆在抽屉里的备选**（三选一的人称、三选一的冒险度、
+ * 各种「开了再关」的实验条目）。
+ *
+ * 老代码对"不在 order 里"的条目一律当成 `enabled: true` 收进来，
+ * 于是同一份预设里同时出现了「🧭保守」「🧭冒险」「🧭特别冒险」、
+ * 「第一人称」「第二人称」「第三人称」—— **互相打架的指令一起注进提示词**，
+ * 模型只能在矛盾里瞎猜。
+ *
+ * ST 的语义很明确：**不在 order 里的条目不会被发送**。所以现在照办。
+ */
+function pickMainOrder(raw: JsonObject, contentById: Map<string, string>): Map<string, boolean> | null {
+  const list = Array.isArray(raw.prompt_order) ? raw.prompt_order : []
+  let best: Map<string, boolean> | null = null
+  let bestScore = -1
+  for (const g of list) {
+    if (!isPlainObject(g)) continue
+    const order = Array.isArray(g.order) ? g.order : []
+    if (!order.length) continue
+    const map = new Map<string, boolean>()
+    let score = 0
     for (const o of order) {
       if (!isPlainObject(o)) continue
       const id = asText(o.identifier)
-      if (id) enabledMap.set(id, o.enabled !== false)
+      if (!id) continue
+      const on = o.enabled !== false
+      map.set(id, on)
+      if (on && (contentById.get(id) ?? '').trim().length > 0) score++
+    }
+    if (map.size && score > bestScore) {
+      best = map
+      bestScore = score
     }
   }
+  return best
+}
 
-  const byId = new Map<string, PresetEntry>()
+/**
+ * 取出**启用且非空**的条目，保持作者排的顺序。
+ *
+ * 顺序很重要：ST 里条目顺序就是注入顺序，作者有意让"总控"排在前面。
+ */
+function readEntries(raw: JsonObject): PresetEntry[] {
+  const prompts = Array.isArray(raw.prompts) ? raw.prompts : []
+
+  // 先建「id → 原文」的表，供挑方案时统计"哪一套里有内容"
+  const rawById = new Map<string, JsonObject>()
   for (const p of prompts) {
     if (!isPlainObject(p)) continue
     const id = asText(p.identifier) || asText(p.name)
-    if (!id) continue
-    const rawContent = asText(p.content)
-    const content = stripStMacros(rawContent.trim())
+    if (id) rawById.set(id, p)
+  }
+  const contentById = new Map<string, string>()
+  for (const [id, p] of rawById) contentById.set(id, asText(p.content))
+
+  // 变量是**顺序执行**的：先扫一遍全部原文，才能把 `getvar` 换出来
+  const vars = collectStVariables([...rawById.values()].map(p => asText(p.content)))
+
+  const order = pickMainOrder(raw, contentById)
+
+  const byId = new Map<string, PresetEntry>()
+  for (const [id, p] of rawById) {
+    // 有方案表时，**不在表里就是没勾选** —— 备选池不参与注入
+    const enabled = order ? (order.get(id) ?? false) : true
+    if (!enabled) continue
+    const content = stripStMacros(asText(p.content).trim(), vars)
     // marker 是分隔线，content 永远是空；空 content 的普通条目也没有信息
     if (!content) continue
-    const enabled = enabledMap.has(id) ? enabledMap.get(id)! : true
+    if (isStructuralMarker(content)) continue
     byId.set(id, {
       id,
       name: asText(p.name).trim() || id.slice(0, 24),
       content,
-      enabled,
+      enabled: true,
     })
   }
 
   const ordered: PresetEntry[] = []
   const seen = new Set<string>()
-  if (Array.isArray(order)) {
-    for (const o of order) {
-      if (!isPlainObject(o)) continue
-      const id = asText(o.identifier)
-      const hit = id ? byId.get(id) : undefined
+  if (order) {
+    for (const id of order.keys()) {
+      const hit = byId.get(id)
       if (hit && !seen.has(hit.id)) { ordered.push(hit); seen.add(hit.id) }
     }
   }
   for (const e of byId.values()) if (!seen.has(e.id)) ordered.push(e)
 
-  return ordered.filter(e => e.enabled)
+  /*
+    兜底：万一方案表里一条有内容的都没有（作者的方案指向的全是空占位），
+    退回"全部有内容的条目"，至少别交出一张空卡。
+    这种情况在只有一套 order、且那份 order 是别人方案残留时会遇到。
+  */
+  if (!ordered.length) {
+    for (const [id, p] of rawById) {
+      const content = stripStMacros(asText(p.content).trim(), vars)
+      if (!content || isStructuralMarker(content)) continue
+      ordered.push({ id, name: asText(p.name).trim() || id.slice(0, 24), content, enabled: true })
+    }
+  }
+
+  return ordered
 }
 
 /**
@@ -209,15 +358,14 @@ function fill(
 }
 
 /**
- * 一份 ST 预设 → 一张世界卡。
- *
- * 返回 `null` 表示这份预设里没有可用的条目（全被停用 / 全空）。
+ * 同一套分类：转换世界卡、统计面板、预设库**都走这里**。
+ * 三处各写一遍的话，面板上的数字迟早和实际落点对不上。
  */
-export function fromSillyTavernPreset(raw: unknown, fileName = ''): WorldCard | null {
-  if (!isPlainObject(raw)) return null
-  const entries = readEntries(raw)
-  if (!entries.length) return null
-
+function classifyEntries(entries: PresetEntry[]): {
+  world: PresetEntry[]
+  rules: PresetEntry[]
+  style: PresetEntry[]
+} {
   const world: PresetEntry[] = []
   const rules: PresetEntry[] = []
   const style: PresetEntry[] = []
@@ -228,15 +376,31 @@ export function fromSillyTavernPreset(raw: unknown, fileName = ''): WorldCard | 
     else if (looksLikeRules(e.name, e.content)) rules.push(e)
     else world.push(e)
   }
+  return { world, rules, style }
+}
+
+/** 被预算裁掉时如实写在段末 —— 悄悄截断等于把作者的东西吃掉一半还不告诉他 */
+function droppedNote(part: { dropped: PresetEntry[] }, label: string): string {
+  return part.dropped.length
+    ? `\n\n（另有 ${part.dropped.length} 条${label}因超出篇幅预算未并入：${part.dropped.map(e => e.name).join('、')}）`
+    : ''
+}
+
+/**
+ * 一份 ST 预设 → 一张世界卡。
+ *
+ * 返回 `null` 表示这份预设里没有可用的条目（全被停用 / 全空）。
+ */
+export function fromSillyTavernPreset(raw: unknown, fileName = ''): WorldCard | null {
+  if (!isPlainObject(raw)) return null
+  const entries = readEntries(raw)
+  if (!entries.length) return null
+
+  const { world, rules, style } = classifyEntries(entries)
 
   const lorePart = fill(world, LORE_BUDGET)
   const rulesPart = fill(rules, RULES_BUDGET)
   const stylePart = fill(style, STYLE_BUDGET)
-
-  const droppedNote = (part: { dropped: PresetEntry[] }, label: string) =>
-    part.dropped.length
-      ? `\n\n（另有 ${part.dropped.length} 条${label}因超出篇幅预算未并入：${part.dropped.map(e => e.name).join('、')}）`
-      : ''
 
   const baseName = fileName.replace(/\.json$/i, '').trim()
   const now = Date.now()
@@ -288,13 +452,48 @@ export function describePreset(raw: unknown): { total: number; rules: number; st
   if (!isSillyTavernPreset(raw)) return null
   const entries = readEntries(raw as JsonObject)
   if (!entries.length) return null
-  let rules = 0, style = 0, other = 0
-  for (const e of entries) {
-    // 与 `fromSillyTavernPreset` 同一套顺序，不然面板上的数字会和实际落点对不上
-    if (looksLikeMeta(e.name, e.content)) other++
-    else if (looksLikeStyle(e.name, e.content)) style++
-    else if (looksLikeRules(e.name, e.content)) rules++
-    else other++
+  const { world, rules, style } = classifyEntries(entries)
+  return { total: entries.length, rules: rules.length, style: style.length, other: world.length }
+}
+
+/**
+ * 一份 ST 预设 → **一份可切换的叙事预设**（2026-11 第二十九轮）。
+ *
+ * 与 `fromSillyTavernPreset` 的区别只在**去处**：那边产出世界卡，
+ * 这边产出 `NarrativePreset` —— 存进卡片库旁边的预设库，全局只启用一份，
+ * 叠加到**当前世界**上，不必为了换文风去重开一局或改每张世界卡。
+ *
+ * 预算与分类完全一致（同一个 `classifyEntries` 与 `fill`），
+ * 所以两张入口看到的内容不会互相矛盾。
+ */
+export function stPresetToNarrativePreset(raw: unknown, fileName = ''): NarrativePreset | null {
+  if (!isPlainObject(raw)) return null
+  const entries = readEntries(raw)
+  if (!entries.length) return null
+
+  const { world, rules, style } = classifyEntries(entries)
+  const lorePart = fill(world, LORE_BUDGET)
+  const rulesPart = fill(rules, RULES_BUDGET)
+  const stylePart = fill(style, STYLE_BUDGET)
+
+  const now = Date.now()
+  const baseName = fileName.replace(/\.json$/i, '').trim()
+
+  return {
+    id: makeId('preset'),
+    name: (baseName || '导入的叙事预设').slice(0, 60),
+    source: fileName,
+    rules: rulesPart.text + droppedNote(rulesPart, '规则类条目'),
+    style: stylePart.text + droppedNote(stylePart, '文风类条目'),
+    lore: lorePart.text + droppedNote(lorePart, '设定类条目'),
+    counts: {
+      total: entries.length,
+      rules: rulesPart.used.length,
+      style: stylePart.used.length,
+      other: lorePart.used.length,
+      dropped: [...rulesPart.dropped, ...stylePart.dropped, ...lorePart.dropped].map(e => e.name),
+    },
+    createdAt: now,
+    updatedAt: now,
   }
-  return { total: entries.length, rules, style, other }
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Play, BookOpen, Library, Settings, ChevronRight, ScrollText, Sparkles, Clock, X, UserRound,
+  Play, BookOpen, Library, Settings, ChevronRight, ScrollText, Sparkles, Clock, X, UserRound, Feather,
 } from 'lucide-react'
 import { useGameStore } from '@/stores/game'
 import { useSessionStore } from '@/stores/session'
@@ -27,13 +27,15 @@ export interface MainMenuProps {
   onLibrary: () => void
   /** 打开「我的主角」——提前设定主角，开局直接选用 */
   onHeroes: () => void
+  /** 打开「叙事预设」——换文风 / 写作规则，全局生效 */
+  onPresets: () => void
   onOpenSettings: () => void
   /** 点「最近玩过」里的某一条 → 直接用它开局 */
   onPickWorld: (worldId: string) => void
 }
 
 export function MainMenu({
-  onContinue, onNewGame, onWorldbook, onLibrary, onHeroes, onOpenSettings, onPickWorld,
+  onContinue, onNewGame, onWorldbook, onLibrary, onHeroes, onPresets, onOpenSettings, onPickWorld,
 }: MainMenuProps) {
   const world = useSessionStore(s => s.world)
   const history = useGameStore(s => s.history)
@@ -58,6 +60,24 @@ export function MainMenu({
     : presets.length === 0
       ? '还没有设定过主角，点这里先设一个'
       : `${presets.length} 位主角，开新局可直接选用`
+
+  /**
+   * 「叙事预设」的副标题。
+   *
+   * 它必须写明**当前是不是启用中** —— 这一项的破坏力全在"悄悄生效"上：
+   * 玩家几个月前导入过一份文风预设、后来忘了，会一直觉得"模型怎么越写越怪"。
+   * 所以没启用时也明说"未启用"，而不是只报个数。
+   */
+  const narrativePresets = useLibraryStore(s => s.narrativePresets)
+  const activePresetId = useLibraryStore(s => s.activeNarrativePresetId)
+  const activePreset = narrativePresets.find(p => p.id === activePresetId)
+  const presetDesc = !loaded
+    ? '载入中…'
+    : narrativePresets.length === 0
+      ? '还没有预设，可导入 SillyTavern 写作预设'
+      : activePreset
+        ? `启用中：${activePreset.name}`
+        : `未启用（${narrativePresets.length} 份可选）`
 
   /**
    * 「最近玩过」。
@@ -211,6 +231,13 @@ export function MainMenu({
           onClick={onOpenSettings}
           warn={needsKey}
           delay={0.3}
+        />
+        <MenuCard
+          icon={<Feather size={18} className="text-text-muted" />}
+          title="叙事预设"
+          desc={presetDesc}
+          onClick={onPresets}
+          delay={0.35}
         />
       </div>
 

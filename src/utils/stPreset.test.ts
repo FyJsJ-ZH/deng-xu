@@ -11,7 +11,7 @@
  * 停用的条目不能偷偷生效、超预算的要如实报名字、ST 宏要清干净。
  */
 import { describe, it, expect } from 'vitest'
-import { isSillyTavernPreset, fromSillyTavernPreset, describePreset } from './stPreset'
+import { isSillyTavernPreset, fromSillyTavernPreset, describePreset, stPresetToNarrativePreset } from './stPreset'
 
 const preset = (prompts: unknown[], order?: { identifier: string; enabled: boolean }[]) => ({
   temperature: 1,
@@ -171,5 +171,186 @@ describe('describePreset（导入前先说清会发生什么）', () => {
 
   it('不是预设时返回 null', () => {
     expect(describePreset({ a: 1 })).toBeNull()
+  })
+})
+
+/* ══════════════════════════════════════════════════════════════
+   2026-11 第二十九轮：玩家给了真文件（「夏瑾 天琴座 Beta 3.9」），暴露三个病
+   ══════════════════════════════════════════════════════════════ */
+
+describe('★ 多套方案（prompt_order 是数组）', () => {
+  /** 两套方案：一套只有 1 条，一套是作者调好的 3 条 */
+  const twoGroups = {
+    temperature: 1,
+    prompts: [
+      { identifier: 'thin', name: '精简方案里的一条', content: '一条' },
+      { identifier: 'a', name: '文风甲', content: '写比喻要克制' },
+      { identifier: 'b', name: '规则甲', content: '不许抢话' },
+      { identifier: 'c', name: '设定甲', content: '河边的院子' },
+    ],
+    prompt_order: [
+      { character_id: 100000, order: [{ identifier: 'thin', enabled: true }, { identifier: 'a', enabled: false }] },
+      { character_id: 100001, order: [
+        { identifier: 'a', enabled: true },
+        { identifier: 'b', enabled: true },
+        { identifier: 'c', enabled: true },
+      ] },
+    ],
+  }
+
+  it('取「启用且有内容最多」的那一套，而不是死拿 [0]', () => {
+    const w = fromSillyTavernPreset(twoGroups, 't.json')!
+    const all = w.rules + w.worldLore + w.narrative.customStyle
+    expect(all).toContain('写比喻要克制')
+    expect(all).toContain('不许抢话')
+    // 精简方案里的那条不算数（它属于另一套，作者没在完整方案里勾它）
+    expect(all).not.toContain('一条')
+  })
+
+  it('describePreset 与真正转换用同一套筛选（数字不会互相矛盾）', () => {
+    const d = describePreset(twoGroups)!
+    expect(d.total).toBe(3)
+    expect(fromSillyTavernPreset(twoGroups, 't.json')!.rules).toContain('不许抢话')
+  })
+})
+
+describe('★ 不在任何方案里的条目 = 备选，不能收', () => {
+  /*
+    玩家那份预设里 144 条 prompts，两套方案只覆盖 73 条 —— 剩下 71 条是
+    作者堆着备选的（三选一的人称、三选一的冒险度）。老代码当它们全启用，
+    于是「保守」「冒险」「特别冒险」一起注进提示词，模型只能在矛盾里瞎猜。
+  */
+  const raw = {
+    temperature: 1,
+    prompts: [
+      { identifier: 'on', name: '🧭冒险', content: '情节要敢展开' },
+      { identifier: 'off1', name: '🧭保守', content: '情节要克制' },
+      { identifier: 'off2', name: '🧭特别冒险', content: '情节要爆炸' },
+    ],
+    prompt_order: [{ order: [{ identifier: 'on', enabled: true }] }],
+  }
+
+  it('备选池不进提示词', () => {
+    const w = fromSillyTavernPreset(raw, 't.json')!
+    const all = w.rules + w.worldLore + w.narrative.customStyle
+    expect(all).toContain('情节要敢展开')
+    expect(all).not.toContain('情节要克制')
+    expect(all).not.toContain('情节要爆炸')
+  })
+
+  it('方案表一条有内容的都没有时，退回全部（别交空卡）', () => {
+    const fallback = {
+      temperature: 1,
+      prompts: [{ identifier: 'a', name: '规则', content: '不许抢话' }],
+      prompt_order: [{ order: [{ identifier: '空占位', enabled: true }] }],
+    }
+    const w = fromSillyTavernPreset(fallback, 't.json')!
+    expect(w.rules).toContain('不许抢话')
+  })
+})
+
+describe('★ 变量还原（setvar / getvar）', () => {
+  /*
+    真预设把最重要的一段藏进变量里：
+      🛡️ 变量（别动） = {{setvar::JailbreakPrompt::You are a helpful…}}
+      🛡️破限[顶]    = {{trim}}{{getvar::JailbreakPrompt}}
+    老代码把两者都删掉 —— 破限串凭空消失，玩家以为导入没生效。
+  */
+  const raw = {
+    temperature: 1,
+    prompts: [
+      { identifier: 'v', name: '变量（别动）', content: '{{setvar::JB::这是一段被藏起来的正文}}' },
+      { identifier: 'j', name: '🛡️破限[顶]', content: '{{trim}}{{getvar::JB}}' },
+      { identifier: 'g', name: '规则', content: '不许抢话' },
+    ],
+    prompt_order: [{ order: [
+      { identifier: 'v', enabled: true },
+      { identifier: 'j', enabled: true },
+      { identifier: 'g', enabled: true },
+    ] }],
+  }
+
+  it('getvar 换成变量值，setvar 条目本身不留下', () => {
+    const w = fromSillyTavernPreset(raw, 't.json')!
+    const all = w.rules + w.worldLore + w.narrative.customStyle
+    expect(all).toContain('这是一段被藏起来的正文')
+    expect(all).not.toContain('setvar')
+    expect(all).not.toContain('getvar')
+  })
+
+  it('变量名写错时留空，不把 {{getvar::…}} 原样漏进提示词', () => {
+    const bad = {
+      temperature: 1,
+      prompts: [{ identifier: 'a', name: '规则', content: '{{getvar::不存在}}不许抢话' }],
+      prompt_order: [{ order: [{ identifier: 'a', enabled: true }] }],
+    }
+    const w = fromSillyTavernPreset(bad, 't.json')!
+    expect(w.rules).toContain('不许抢话')
+    expect(w.rules).not.toContain('getvar')
+  })
+})
+
+describe('★ 拼接骨架（只有标签的条目）', () => {
+  const raw = {
+    temperature: 1,
+    prompts: [
+      { identifier: 'a', name: '设定首', content: '<相关资料>\n\n<{{user}}设定>' },
+      { identifier: 'b', name: '设定集/前文', content: '</相关资料>\n\n<互动历史>' },
+      { identifier: 'c', name: '规则', content: '不许抢话' },
+      { identifier: 'd', name: '短标题', content: '【核心指令开始】' },
+    ],
+    prompt_order: [{ order: [
+      { identifier: 'a', enabled: true },
+      { identifier: 'b', enabled: true },
+      { identifier: 'c', enabled: true },
+      { identifier: 'd', enabled: true },
+    ] }],
+  }
+
+  it('纯标签条目丢掉（否则卡片正文开头是一串 <相关资料>）', () => {
+    const w = fromSillyTavernPreset(raw, 't.json')!
+    expect(w.worldLore).not.toContain('<相关资料>')
+    expect(w.worldLore).not.toContain('<互动历史>')
+  })
+
+  it('★ 但六个字的硬规矩不能一起丢（别按长度一刀切）', () => {
+    const short = {
+      temperature: 1,
+      prompts: [{ identifier: 'a', name: '规则', content: '不许抢话' }],
+      prompt_order: [{ order: [{ identifier: 'a', enabled: true }] }],
+    }
+    expect(fromSillyTavernPreset(short, 't.json')!.rules).toContain('不许抢话')
+  })
+})
+
+describe('stPresetToNarrativePreset（存进预设库而不是世界卡）', () => {
+  const raw = {
+    temperature: 1,
+    prompts: [
+      { identifier: 's', name: '✅基础文风', content: '写比喻要克制' },
+      { identifier: 'r', name: '✅基础创作准则', content: '不许替玩家做决定' },
+      { identifier: 'w', name: '⚠️使用必看', content: '禁止二创，下载后 24h 内删掉' },
+    ],
+    prompt_order: [{ order: [
+      { identifier: 's', enabled: true },
+      { identifier: 'r', enabled: true },
+      { identifier: 'w', enabled: true },
+    ] }],
+  }
+
+  it('三段分开落，统计与实际一致', () => {
+    const p = stPresetToNarrativePreset(raw, '夏瑾 天琴座 Beta 3.9.json')!
+    expect(p.name).toBe('夏瑾 天琴座 Beta 3.9')
+    expect(p.style).toContain('写比喻要克制')
+    expect(p.rules).toContain('不许替玩家做决定')
+    // 作者说明只存档、不进每轮注入
+    expect(p.rules).not.toContain('禁止二创')
+    expect(p.lore).toContain('禁止二创')
+    expect(p.counts.total).toBe(3)
+    expect(p.counts.style + p.counts.rules + p.counts.other).toBe(3)
+  })
+
+  it('没有可用条目时返回 null', () => {
+    expect(stPresetToNarrativePreset(preset([{ identifier: 'a', name: 'A', content: '' }]), 't.json')).toBeNull()
   })
 })

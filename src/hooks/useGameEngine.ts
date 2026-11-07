@@ -17,6 +17,7 @@ import { resolveAiLook } from '@/utils/lookSpec'
 import { isKnownSceneId } from '@/utils/sceneArt'
 import { renderMemoryForPrompt, renderKnownByForPrompt, renderDossiersForPrompt } from '@/utils/memory'
 import { factOwner } from '@/utils/facts'
+import { withNarrativePreset } from '@/utils/narrativePreset'
 import { LlmError, classifyLlmError } from '@/api/llmErrors'
 import type { LLMConfig, WorldCard } from '@/types/cards'
 import { detectTruncation } from '@/utils/truncation'
@@ -1095,7 +1096,21 @@ export function useGameEngine(): GameEngineReturn {
             从第二幕起就再也进不了叙事提示词。背景与属性双双退化成
             "开局点一下就作废"的表单。详见 `buildBackgroundBriefing` 的注释。
           */
-          content: buildNarrativeSystemPrompt(activeWorld, activeCharacters, player, {
+          /*
+            ── 叙事预设在这里叠加（2026-11 第二十九轮）──
+
+            预设是**玩家口味**（文风 / 句式禁令 / 对白规范），世界卡是**作品设定**。
+            两者独立存在、各自可换：换一个世界不该丢文风，换一套文风也不该改世界卡。
+            所以在这里现算一份"叠好预设的世界"传给提示词构建器，
+            世界卡本身一个字节都不动（详见 utils/narrativePreset.ts）。
+
+            没有启用预设时 `withNarrativePreset` 原样返回同一个引用 —— 零成本。
+          */
+          content: buildNarrativeSystemPrompt(
+            withNarrativePreset(activeWorld, useLibraryStore.getState().getActiveNarrativePreset()),
+            activeCharacters,
+            player,
+            {
             backgroundChoices: useSessionStore.getState().backgroundChoices,
             backgroundCustom: useSessionStore.getState().backgroundCustom,
             aspects: updatedStore.aspects,

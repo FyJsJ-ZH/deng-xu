@@ -17,6 +17,7 @@ import { SaveManager } from '@/components/SaveManager'
 import { WorldPackManager } from '@/components/WorldPackManager'
 import { MainMenu } from '@/components/MainMenu'
 import { HeroPresets } from '@/components/HeroPresets'
+import { PresetLibrary } from '@/components/PresetLibrary'
 import { useNavStore } from '@/stores/nav'
 import { WorldbookPreview } from '@/components/WorldbookPreview'
 
@@ -377,6 +378,14 @@ export function StartScreen() {
     return <HeroPresets onBack={() => navBack()} />
   }
 
+  /*
+    叙事预设独立一屏，与「我的主角」并列 —— 两者都是"开局前先设好"的东西，
+    但一个管人、一个管笔。放在卡片库里会让人以为它也是一张卡。
+  */
+  if (view.name === 'presets') {
+    return <PresetLibrary onBack={() => navBack()} />
+  }
+
   /** 主菜单视图：不渲染卡片墙，只有若干入口 */
   if (view.name === 'menu') {
     return (
@@ -401,6 +410,7 @@ export function StartScreen() {
             onWorldbook={() => navPush({ name: 'library', intent: 'worldbook' })}
             onLibrary={() => navPush({ name: 'library', intent: 'library' })}
             onHeroes={() => navPush({ name: 'heroes' })}
+            onPresets={() => navPush({ name: 'presets' })}
             onOpenSettings={() => setApiKeyModalOpen(true)}
             onPickWorld={id => beginSetup(id)}
           />
