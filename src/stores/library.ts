@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { WorldCard, HeroPreset, PlayerCard, NarrativePreset } from '@/types/cards';
+import { EMPTY_STYLE_CHOICE, styleById, type StyleChoice } from '@/data/narrativeStyles';
 import { makeId } from '@/utils/files';
 import { createKVStore, isIdbAvailable } from '@/utils/idb';
 import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds } from '@/data/builtinWorldIds';
@@ -170,6 +171,17 @@ export interface LibraryState {
   getNarrativePreset: (id: string) => NarrativePreset | undefined;
   /** 当前启用的那份（没有就是 undefined） */
   getActiveNarrativePreset: () => NarrativePreset | undefined;
+  /**
+   * 玩家现拨的**文风开关**（核心单选 + 附加/基础/纠偏多选）。
+   *
+   * 它的层级比预设更高：预设是"别人整套给我的"，文风选择是"我自己要的那一档"。
+   * 两者同时生效 —— 预设提供规则与文风底盘，选择覆盖文风。
+   *
+   * 与预设放在**同一个 kv 键**里（见 NARRATIVE_PRESETS_KEY）：
+   * 它们叠在一起才构成完整的"怎么写"，分开存迟早出现半套配置。
+   */
+  styleChoice: StyleChoice;
+  setStyleChoice: (next: StyleChoice) => Promise<void>;
 
   /** 从 IndexedDB 载入全部世界卡；首次运行会写入内置示例卡 */
   loadWorlds: () => Promise<void>;
@@ -249,6 +261,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       await kv.set(NARRATIVE_PRESETS_KEY, JSON.stringify({
         presets: get().narrativePresets,
         activeId: get().activeNarrativePresetId,
+        style: get().styleChoice,
       }));
       if (!isIdbAvailable()) {
         set({ loadError: idbDownMessage(wasAvailable) });
@@ -269,8 +282,9 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
   async function commitNarrativePresets(
     presets: NarrativePreset[],
     activeId: string,
+    styleChoice: StyleChoice = get().styleChoice,
   ): Promise<void> {
-    set({ narrativePresets: presets, activeNarrativePresetId: activeId });
+    set({ narrativePresets: presets, activeNarrativePresetId: activeId, styleChoice });
     await queuePersistNarrativePresets();
   }
 
@@ -317,6 +331,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
     heroPresets: [],
     narrativePresets: [],
     activeNarrativePresetId: '',
+    styleChoice: { ...EMPTY_STYLE_CHOICE },
     loaded: false,
     loadError: null,
 
@@ -353,11 +368,12 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
         */
         let narrativePresets: NarrativePreset[] = [];
         let activeNarrativePresetId = '';
+        let styleChoice: StyleChoice = { ...EMPTY_STYLE_CHOICE };
         try {
           const rawN = await kv.get<unknown>(NARRATIVE_PRESETS_KEY);
           const parsedN = typeof rawN === 'string' && rawN.trim() ? JSON.parse(rawN) : rawN;
           if (parsedN && typeof parsedN === 'object' && !Array.isArray(parsedN)) {
-            const o = parsedN as { presets?: unknown; activeId?: unknown };
+            const o = parsedN as { presets?: unknown; activeId?: unknown; style?: unknown };
             if (Array.isArray(o.presets)) {
               narrativePresets = (o.presets as NarrativePreset[]).filter(
                 (p): p is NarrativePreset =>
@@ -365,6 +381,24 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
               );
             }
             if (typeof o.activeId === 'string') activeNarrativePresetId = o.activeId;
+            /*
+              文风选择的**逐字段**归一化，不整块信任存档：
+              某个 id 后来被我从库里删掉（或改了名），整块塞进去会让
+              渲染时查不到那条、静默少一段。这里把不认识的 id 直接扔掉。
+            */
+            const s = o.style as Partial<StyleChoice> | undefined;
+            if (s && typeof s === 'object') {
+              const only = (list: unknown): string[] =>
+                Array.isArray(list)
+                  ? list.filter((x): x is string => typeof x === 'string' && !!styleById(x))
+                  : [];
+              styleChoice = {
+                core: typeof s.core === 'string' && s.core && styleById(s.core) ? s.core : '',
+                extra: only(s.extra),
+                base: only(s.base),
+                polish: only(s.polish),
+              };
+            }
           }
         } catch {
           // 同主角预设：读不出来就当没有，不影响开游戏
@@ -491,6 +525,7 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           heroPresets: presets,
           narrativePresets,
           activeNarrativePresetId,
+          styleChoice,
           loaded: true,
           loadError: error,
         });
@@ -739,6 +774,18 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       const id = get().activeNarrativePresetId;
       if (!id) return undefined;
       return get().narrativePresets.find((p) => p.id === id);
+    },
+
+    setStyleChoice: async (next) => {
+      // 只在真的变了才写：滑块式的开关点两下会连写两次，IndexedDB 没必要跟着跑
+      const cur = get().styleChoice;
+      if (
+        cur.core === next.core
+        && cur.extra.join() === next.extra.join()
+        && cur.base.join() === next.base.join()
+        && cur.polish.join() === next.polish.join()
+      ) return;
+      await commitNarrativePresets(get().narrativePresets, get().activeNarrativePresetId, next);
     },
   };
 });

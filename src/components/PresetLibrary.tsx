@@ -6,6 +6,7 @@ import { useLibraryStore } from '@/stores/library'
 import type { NarrativePreset } from '@/types/cards'
 import { isSillyTavernPreset, stPresetToNarrativePreset } from '@/utils/stPreset'
 import { describeNarrativePreset, presetHasContent, presetWarnings } from '@/utils/narrativePreset'
+import { StyleChooser } from '@/components/StyleChooser'
 import { downloadFile, timestampSuffix } from '@/utils/files'
 
 /**
@@ -193,6 +194,9 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
               （作者说明、越狱串、实验性玩法的开关那些，注入进去只会互相打架）。
             </p>
           </div>
+
+          {/* 文风在最上面：它比预设更常调（今天想写轻一点，不必换整套预设） */}
+          <StyleChooser />
 
           {/* 「不用预设」永远是列表里的第一项：不启用也是一种合法的选择 */}
           <button

@@ -7,7 +7,11 @@
  * 两份要求撞在一起时，模型需要一句明确的裁决，而不是自己去猜。
  */
 import { describe, it, expect } from 'vitest'
-import { withNarrativePreset, presetHasContent, describeNarrativePreset, presetWarnings } from './narrativePreset'
+import {
+  withNarrativePreset, presetHasContent, describeNarrativePreset, presetWarnings,
+  renderStyleChoice, styleConflicts,
+} from './narrativePreset'
+import { EMPTY_STYLE_CHOICE, styleById, type StyleChoice } from '@/data/narrativeStyles'
 import type { NarrativePreset, WorldCard } from '@/types/cards'
 
 const world = {
@@ -140,5 +144,125 @@ describe('presetWarnings（会跟本作打架的东西要提前说）', () => {
 
   it('干净的预设不报任何警告', () => {
     expect(presetWarnings(presetOf())).toEqual([])
+  })
+})
+
+/* ══════════════════════════════════════════════════════════════
+   2026-11 第三十轮：文风做成可切换的开关
+   ══════════════════════════════════════════════════════════════ */
+
+const choice = (patch: Partial<StyleChoice> = {}): StyleChoice => ({ ...EMPTY_STYLE_CHOICE, ...patch })
+
+describe('renderStyleChoice（把选中的文风拼成正文）', () => {
+  it('什么都没选时是空串（不该往提示词里塞一个空标题）', () => {
+    expect(renderStyleChoice(EMPTY_STYLE_CHOICE)).toBe('')
+    expect(renderStyleChoice(null)).toBe('')
+  })
+
+  it('★ 核心文风：单选，选一条就只有那一条', () => {
+    const a = renderStyleChoice(choice({ core: 'plain-web' }))
+    expect(a).toContain('简练流畅')
+    expect(a).not.toContain('大量冗长描写')
+    const b = renderStyleChoice(choice({ core: 'ultra-delicate' }))
+    expect(b).toContain('大量冗长描写')
+    expect(b).not.toContain('简练流畅')
+  })
+
+  it('附加 / 基础 / 纠偏是多选，可以一起上', () => {
+    const text = renderStyleChoice(choice({
+      core: 'plain-web',
+      extra: ['western'],
+      base: ['base-baimiao'],
+      polish: ['polish-anti-sublime'],
+    }))
+    expect(text).toContain('简练流畅')       // 核心
+    expect(text).toContain('翻译腔')         // 附加
+    expect(text).toContain('白描')           // 基础
+    expect(text).toContain('情感升华')       // 纠偏
+  })
+
+  it('★ 顺序是 核心 → 附加 → 基础 → 纠偏（纠偏最该被记住，放最后）', () => {
+    const text = renderStyleChoice(choice({
+      core: 'plain-web',
+      extra: ['western'],
+      base: ['base-baimiao'],
+      polish: ['polish-anti-sublime'],
+    }))
+    expect(text.indexOf('简练流畅')).toBeLessThan(text.indexOf('翻译腔'))
+    expect(text.indexOf('翻译腔')).toBeLessThan(text.indexOf('白描'))
+    expect(text.indexOf('白描')).toBeLessThan(text.indexOf('情感升华'))
+  })
+
+  it('存档里混进不认识的 id 时，静默跳过而不是拼出 "undefined"', () => {
+    const text = renderStyleChoice(choice({ core: 'not-a-real-style' }))
+    expect(text).toBe('')
+  })
+})
+
+describe('styleConflicts（真冲突要说出来）', () => {
+  it('★ 西式文学 vs 基础文风：一个要翻译腔，一个明令杜绝欧化句式', () => {
+    const c = styleConflicts(choice({ extra: ['western'], base: ['base-prose'] }))
+    expect(c.length).toBe(1)
+    expect(c[0].a + c[0].b).toContain('西式文学')
+    expect(c[0].a + c[0].b).toContain('基础文风')
+  })
+
+  it('只开一条时不报冲突', () => {
+    expect(styleConflicts(choice({ extra: ['western'] }))).toEqual([])
+    expect(styleConflicts(EMPTY_STYLE_CHOICE)).toEqual([])
+  })
+
+  it('超细腻与简练网文属于"选一个"而不是"禁止同开" —— 核心本来就单选', () => {
+    // 核心只能存一个 id，所以这条冲突在 UI 层就不可达
+    expect(styleConflicts(choice({ core: 'ultra-delicate' }))).toEqual([])
+  })
+})
+
+describe('withNarrativePreset 三层（世界卡 → 预设 → 文风选择）', () => {
+  it('★ 只选文风、不启用预设时也生效', () => {
+    const out = withNarrativePreset(world, null, choice({ core: 'plain-web' }))
+    expect(out.narrative.customStyle).toContain('简练流畅')
+    expect(out.narrative.customStyle).toContain('短句为主')   // 世界卡自己那段还在
+  })
+
+  it('★ 三层都在时，文风选择排在最后（玩家刚拨的那一下最强）', () => {
+    const out = withNarrativePreset(world, presetOf({ style: '比喻要克制。' }), choice({ core: 'plain-web' }))
+    const s = out.narrative.customStyle
+    expect(s.indexOf('短句为主')).toBeLessThan(s.indexOf('比喻要克制'))
+    expect(s.indexOf('比喻要克制')).toBeLessThan(s.indexOf('简练流畅'))
+  })
+
+  it('世界卡原有的规则在预设之前（冲突时以世界为准）', () => {
+    const out = withNarrativePreset(world, presetOf(), choice({ core: 'plain-web' }))
+    expect(out.rules.indexOf('本作不写露骨细节')).toBeLessThan(out.rules.indexOf('不许替玩家做决定'))
+  })
+
+  it('文风选择**不进** rules（它管笔法，不管世界法则）', () => {
+    const out = withNarrativePreset(world, null, choice({ polish: ['polish-anti-sublime'] }))
+    expect(out.rules).toBe(world.rules)
+    expect(out.narrative.customStyle).toContain('情感升华')
+  })
+
+  it('三层全空时返回同一个引用', () => {
+    expect(withNarrativePreset(world, null, EMPTY_STYLE_CHOICE)).toBe(world)
+  })
+})
+
+describe('内置文风库本身', () => {
+  it('每条都有正文与一句"强项"（选了才知道自己在选什么）', () => {
+    for (const id of ['plain-web', 'ultra-delicate', 'immersive', 'western', 'base-baimiao', 'polish-dialogue']) {
+      const s = styleById(id)!
+      expect(s, id).toBeTruthy()
+      expect(s.text.length, id).toBeGreaterThan(20)
+      expect(s.note.length, id).toBeGreaterThan(5)
+    }
+  })
+
+  it('不含 ST 宏与未替换的占位（灯叙不替换这些，会原样发出去）', () => {
+    for (const id of ['plain-web', 'base-prose', 'base-baimiao', 'polish-anti-omniscient']) {
+      const s = styleById(id)!
+      expect(s.text, id).not.toContain('{{')
+      expect(s.text, id).not.toContain('<user>')
+    }
   })
 })

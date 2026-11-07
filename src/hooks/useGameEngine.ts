@@ -1107,7 +1107,11 @@ export function useGameEngine(): GameEngineReturn {
             没有启用预设时 `withNarrativePreset` 原样返回同一个引用 —— 零成本。
           */
           content: buildNarrativeSystemPrompt(
-            withNarrativePreset(activeWorld, useLibraryStore.getState().getActiveNarrativePreset()),
+            (() => {
+              const lib = useLibraryStore.getState()
+              // 三层：世界卡 → 叙事预设 → 玩家现拨的文风开关（最后的最强）
+              return withNarrativePreset(activeWorld, lib.getActiveNarrativePreset(), lib.styleChoice)
+            })(),
             activeCharacters,
             player,
             {

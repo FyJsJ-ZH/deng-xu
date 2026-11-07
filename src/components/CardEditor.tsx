@@ -11,6 +11,8 @@ import { createEmptyCharacter, parseCharacterFile, toSillyTavern } from '@/utils
 import { downloadFile, makeId, readFileAsDataURL, safeFilename, timestampSuffix } from '@/utils/files'
 import { WORLD_TONES, WORLD_TONE_IDS, toneAccent } from '@/utils/worldTone'
 import { generateScene } from '@/utils/sceneArt'
+import { stylesOf } from '@/data/narrativeStyles'
+import { styleTextOf } from '@/components/StyleChooser'
 
 /**
  * 世界卡编辑器
@@ -1145,8 +1147,49 @@ export function CardEditor() {
               </Field>
 
               <Field label="额外文风要求" hint="例如「文风阴冷克制，避免华丽辞藻」「多用短句与对话」">
-                <textarea className={`${areaCls} h-28`} value={draft.narrative.customStyle}
-                  onChange={e => patchNarrative({ customStyle: e.target.value })} />
+                {/*
+                  内置文风可以**一键插入**（2026-11 第三十轮）。
+
+                  为什么是"插入文本"而不是"存一个 id 引用"：
+                  世界卡是要被导出、分享、拖给别人用的。存 id 的话，
+                  对方机器上没有那份内置库，拿到手的卡就少了一整段文风，
+                  而且**不会报错** —— 只会安静地变成另一张卡。
+                  写进 `customStyle` 则是自包含的：谁打开都一模一样。
+
+                  代价说清楚：插入之后它与内置库脱钩，库里改了它不跟。
+                  想跟就再插一次（旧的那段自己删）。
+                */}
+                <div className="space-y-2">
+                  <select
+                    className={`${inputCls} text-xs`}
+                    value=""
+                    onChange={e => {
+                      const id = e.target.value
+                      e.target.value = ''
+                      if (!id) return
+                      const text = styleTextOf(id)
+                      if (!text) return
+                      const cur = draft.narrative.customStyle.trim()
+                      patchNarrative({ customStyle: cur ? `${cur}\n\n${text}` : text })
+                    }}
+                  >
+                    <option value="">＋ 插入内置文风…</option>
+                    <optgroup label="核心文风（单选，插入新的前先删掉旧的）">
+                      {stylesOf('core').map(s => <option key={s.id} value={s.id}>{s.name} —— {s.note}</option>)}
+                    </optgroup>
+                    <optgroup label="附加风格（可叠）">
+                      {stylesOf('extra').map(s => <option key={s.id} value={s.id}>{s.name} —— {s.note}</option>)}
+                    </optgroup>
+                    <optgroup label="基础规范（可叠）">
+                      {stylesOf('base').map(s => <option key={s.id} value={s.id}>{s.name} —— {s.note}</option>)}
+                    </optgroup>
+                    <optgroup label="纠偏（可叠）">
+                      {stylesOf('polish').map(s => <option key={s.id} value={s.id}>{s.name} —— {s.note}</option>)}
+                    </optgroup>
+                  </select>
+                  <textarea className={`${areaCls} h-28`} value={draft.narrative.customStyle}
+                    onChange={e => patchNarrative({ customStyle: e.target.value })} />
+                </div>
               </Field>
 
               <div className="p-4 bg-surface/20 border border-text-muted/20 rounded space-y-4">

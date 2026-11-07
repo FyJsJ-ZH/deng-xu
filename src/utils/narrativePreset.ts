@@ -21,6 +21,7 @@
  */
 
 import type { NarrativePreset, WorldCard } from '@/types/cards'
+import { chosenStyleIds, styleById, type StyleChoice } from '@/data/narrativeStyles'
 
 /** 预设两段各自的上限（字）。与 `stPreset.ts` 的预算一致，防止手动粘贴超长 */
 const PRESET_RULES_MAX = 4000
@@ -36,31 +37,43 @@ function joinBlock(base: string, extra: string): string {
 }
 
 /**
- * 把一份预设叠到世界上，返回**新的** world 对象（原对象不变）。
+ * 把预设与文风叠到世界上，返回**新的** world 对象（原对象不变）。
  *
- * 传 `null` / `undefined`（没有启用任何预设）时原样返回同一个引用 ——
- * 调用方常把它放在渲染路径上，能不新建对象就不新建。
+ * 三层，从下到上：
+ *
+ *   1. 世界卡自己的 `customStyle` / `rules`（作者定的，永远在最前）
+ *   2. 叙事预设（从 ST 文件转来的整套规则 + 文风）
+ *   3. 文风选择（玩家在预设页里现拨的开关，**最强**，放最后）
+ *
+ * 为什么第三层排最后：模型对越靠后的指令越敏感，而玩家刚点的那一下
+ * 才是他此刻真正想要的。世界卡作者三年前写的文风不该压过他现在的选择。
+ *
+ * 全空时原样返回同一个引用 —— 调用方常把它放在生成路径上，能不新建就不新建。
  */
 export function withNarrativePreset(
   world: WorldCard,
   preset: NarrativePreset | null | undefined,
+  styleChoice?: StyleChoice | null,
 ): WorldCard {
-  if (!preset) return world
+  const presetRules = preset ? preset.rules.trim().slice(0, PRESET_RULES_MAX) : ''
+  const presetStyle = preset ? preset.style.trim().slice(0, PRESET_STYLE_MAX) : ''
+  const chosenStyle = renderStyleChoice(styleChoice).slice(0, PRESET_STYLE_MAX)
 
-  const rules = preset.rules.trim().slice(0, PRESET_RULES_MAX)
-  const style = preset.style.trim().slice(0, PRESET_STYLE_MAX)
-  if (!rules && !style) return world
+  if (!presetRules && !presetStyle && !chosenStyle) return world
 
-  const rulesBlock = rules
-    ? `### 叙事预设：${preset.name}\n\n${rules}`
+  const rulesBlock = presetRules
+    ? `### 叙事预设：${preset!.name}\n\n${presetRules}`
     : ''
   /*
     ⚠️ 这句话不是客套：世界卡的作者与预设的作者不是同一个人，
     两份要求打起来时模型需要知道该听谁的。世界卡在前、且写明"冲突时以本作为准"，
     是为了保住这个题材自己的底线（比如《极乐》那张卡明确不写露骨细节）。
   */
-  const styleBlock = style
-    ? `（以下文风要求来自叙事预设「${preset.name}」；与世界本身的规则冲突时，以世界为准）\n\n${style}`
+  const presetStyleBlock = presetStyle
+    ? `（以下文风要求来自叙事预设「${preset!.name}」；与世界本身的规则冲突时，以世界为准）\n\n${presetStyle}`
+    : ''
+  const chosenBlock = chosenStyle
+    ? `（以下是玩家当前选定的文风，优先级高于以上风格描述）\n\n${chosenStyle}`
     : ''
 
   return {
@@ -68,7 +81,10 @@ export function withNarrativePreset(
     rules: joinBlock(world.rules, rulesBlock),
     narrative: {
       ...world.narrative,
-      customStyle: joinBlock(world.narrative.customStyle, styleBlock),
+      customStyle: joinBlock(
+        joinBlock(world.narrative.customStyle, presetStyleBlock),
+        chosenBlock,
+      ),
     },
   }
 }
@@ -77,6 +93,50 @@ export function withNarrativePreset(
 export function presetHasContent(preset: NarrativePreset | null | undefined): boolean {
   if (!preset) return false
   return Boolean(preset.rules.trim() || preset.style.trim())
+}
+
+/**
+ * 把一套文风选择拼成一段正文。
+ *
+ * 顺序是**核心 → 附加 → 基础 → 纠偏**：模型读到的最后一段印象最深，
+ * 而纠偏器（抗升华、对白强化）最该被记住 —— 它们治的都是"读着读着就犯"的毛病。
+ */
+export function renderStyleChoice(choice: StyleChoice | null | undefined): string {
+  if (!choice) return ''
+  return chosenStyleIds(choice)
+    .map(id => styleById(id))
+    .filter((s): s is NonNullable<typeof s> => !!s)
+    .map(s => s.text)
+    .join('\n\n')
+}
+
+/**
+ * 选择里的**真冲突**（不是风格偏好，是语义打架）。
+ *
+ * 例：`📖 西式文学` 要"轻微翻译腔"，`✅基础文风` 明写"杜绝欧化句式"。
+ * 两条同时注入，模型只能挑一边 —— 于是同一份提示词里出现自相矛盾的要求，
+ * 而玩家看到的是"AI 怎么忽冷忽热"。
+ *
+ * 只在 UI 提示，不自动取消：那是玩家自己的选择，但得知道自己在选什么。
+ */
+export function styleConflicts(choice: StyleChoice | null | undefined): { a: string; b: string }[] {
+  if (!choice) return []
+  const ids = new Set(chosenStyleIds(choice))
+  const out: { a: string; b: string }[] = []
+  for (const id of ids) {
+    const s = styleById(id)
+    if (!s?.conflicts) continue
+    for (const other of s.conflicts) {
+      // 只报一次（A→B 与 B→A 不重复）
+      if (!ids.has(other)) continue
+      const o = styleById(other)
+      if (!o) continue
+      const key = [s.id, o.id].sort().join('|')
+      if (out.some(x => [styleById(x.a)?.id, styleById(x.b)?.id].sort().join('|') === key)) continue
+      out.push({ a: s.name, b: o.name })
+    }
+  }
+  return out
 }
 
 /** 给 UI 用的一句话摘要 */
