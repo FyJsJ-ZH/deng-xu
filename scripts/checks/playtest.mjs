@@ -147,7 +147,23 @@ for (let k = 0; k < budget; k++) {
 }
 await sleep(1200)
 await click('开始故事')
-await sleep(4500)
+/*
+  ⚠️ 这里必须**轮询**，不能睡一个固定时长（2026-11 第二十九轮）。
+
+  这一局会真的发一次 LLM 请求，走查环境的 key 是无效的，所以期望的结果是
+  「请求失败 → 出现错误横幅 + 重试按钮」。但失败要等 HTTP 响应回来：
+  本地一两秒，CI 冷启动的 dev server 首次按需编译 + 401 往返可能超过 4.5 秒。
+
+  睡死时长换来的是一个**随机器快慢而变的结论** —— 同一份代码，
+  本机绿、CI 红，而两次红的都是同一项「API Key 无效时给出了明确错误」。
+  轮询把这件事变成确定的：等到就通过，20 秒还没等到才算真的没提示。
+*/
+for (let i = 0; i < 15; i++) {
+  const seen = await ev(`/API Key|鉴权|Authentication/.test(document.body.innerText)`)
+  if (seen) break
+  await sleep(2000)
+}
+await sleep(400)
 
 console.log('=== 4) 游戏界面：玩家能不能开始玩 ===')
 const g = JSON.parse(await ev(`(()=>{
@@ -158,15 +174,40 @@ const g = JSON.parse(await ev(`(()=>{
     started:G.isGameStarted, playerName:G.playerName,
     actionInput: inputs.some(i=>/输入你的行动/.test(i.ph)),
     inputCount: inputs.length,
-    // 有错误横幅时玩家知道发生了什么
-    hasErrorBanner: /API Key|鉴权|Authentication/.test(T),
+    // 失败时界面有没有把**为什么**说出来
+    hasErrorBanner: /网络连接失败|请求失败|请求超时|API Key|鉴权|Authentication|限流|额度|余额/.test(T),
+    // 其中"鉴权失败被认成 API Key 问题"这一条单独看（只在真拿到 401 时才成立）
+    hasAuthHint: /API Key|鉴权|Authentication/.test(T),
     hasRetry: /重试/.test(T),
   });})()`))
 console.log('  ' + JSON.stringify(g))
+if (process.env.DX_DUMP_TEXT) {
+  console.log('  [dump] ' + (await ev(`document.body.innerText`)).replace(/\n+/g, ' ⏎ ').slice(0, 900))
+}
 check('进入游戏界面', g.started)
 check('主角名带进来了', g.playerName === '体验测试者', g.playerName)
 check('有行动输入框（能找到怎么继续）', g.actionInput, JSON.stringify(g.inputCount))
-check('API Key 无效时给出了明确错误与重试入口', g.hasErrorBanner && g.hasRetry)
+/*
+  ⚠️ **不要把"服务商返回 401"当成产品断言**（2026-11 第二十九轮）。
+
+  这一项原先要求页面文本里出现「API Key / 鉴权 / Authentication」——
+  意思是"服务商拒绝了 key → 界面要说出是 key 的问题"。
+
+  问题在于它**依赖真实外网**：走查配的是假 key（`sk-playtest`）指向
+  `api.deepseek.com`，指望拿到 401。而跨境网络时不时直接连不上，
+  这时界面会正确地报「网络连接失败」—— **产品是对的，断言是错的**。
+  它已经让 CI 红过两次，而两次都只有一句"没通过"，看不出到底发生了什么。
+
+  「鉴权失败要翻译成 API Key 提示」这件事，由 `api/llmErrors.test.ts`
+  在**可控条件**下钉着（把 401/403 的响应体贴进去看分类）。
+  走查这一层只该保证一件事：**失败被呈现出来了 —— 有原因，有重试按钮。**
+*/
+if (!g.hasErrorBanner) {
+  const T = await ev(`document.body.innerText`)
+  console.log('  [dump] ' + String(T).replace(/\n+/g, ' ⏎ ').slice(0, 600))
+}
+check('请求失败时给出了明确原因与重试入口', g.hasErrorBanner && g.hasRetry)
+if (g.hasAuthHint) console.log('  · 且这次拿到的正是鉴权失败，界面认成了 API Key 问题')
 await shot('p2-03-game')
 
 console.log('\n=== 5) 游戏内操作可达性（**趁游戏还开着**检查）===')
