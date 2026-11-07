@@ -40,8 +40,17 @@ const outIdx = args.indexOf('-o')
 const coverIdx = args.indexOf('--cover')
 const outDir = outIdx >= 0 ? path.resolve(args[outIdx + 1]) : path.join(root, 'converted')
 const coverPath = coverIdx >= 0 ? args[coverIdx + 1] : ''
-const files = args.filter((a, i) =>
-  a !== '-o' && a !== '--cover' && i !== outIdx + 1 && i !== coverIdx + 1)
+/*
+  ⚠️ `i !== outIdx + 1` 单独写是**错的**：没给 `-o` 时 `outIdx` 是 -1，
+  加一正好是 0，于是唯一的那个文件参数被当成"选项的值"过滤掉，
+  脚本报一句"用法"，而命令明明是对的。判据必须先确认 `>= 0`。
+*/
+const files = args.filter((a, i) => {
+  if (a === '-o' || a === '--cover') return false
+  if (outIdx >= 0 && i === outIdx + 1) return false
+  if (coverIdx >= 0 && i === coverIdx + 1) return false
+  return true
+})
 
 if (!files.length) {
   console.error('用法: node scripts/st-card-to-world.mjs <卡文件> [-o 目录] [--cover img]')

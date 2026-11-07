@@ -145,8 +145,8 @@ describe('fromSillyTavernLorebook 的映射', () => {
     const w = fromSillyTavernLorebook(huge)!
     expect(w.lores).toHaveLength(80)                       // 内容没丢
     expect(w.worldLore).toContain('未并入这段正文')          // 但明说了有省略
-    // 上限 2026-11 从 120k 提到 200k（理由见 stLorebook 里 WORLD_LORE_MAX 的注释）
-    expect(w.worldLore.length).toBeLessThan(210_000)
+    // 上限 2026-11 从 120k → 200k → 300k（理由见 stLorebook 里 WORLD_LORE_MAX 的注释）
+    expect(w.worldLore.length).toBeLessThan(310_000)
   })
 })
 
