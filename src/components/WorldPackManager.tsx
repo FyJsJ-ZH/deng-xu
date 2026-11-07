@@ -6,7 +6,8 @@ import { collectSave } from '@/utils/saveFile'
 import { parseWorldbook, worldbookToPack } from '@/utils/worldbook'
 import { fromSillyTavernLorebook, isSillyTavernLorebook, toSillyTavernLorebook } from '@/utils/stLorebook'
 import { describePreset, fromSillyTavernPreset, isSillyTavernPreset } from '@/utils/stPreset'
-import { hasBook, readStCardFromPng } from '@/utils/pngCard'
+import { readStCardFromPng } from '@/utils/pngCard'
+import { stCardToWorld } from '@/utils/stCardToWorld'
 import { downloadFile, safeFilename, timestampSuffix } from '@/utils/files'
 
 /**
@@ -149,16 +150,40 @@ export function WorldPackManager() {
         })
         return
       }
-      if (!hasBook(card)) {
+
+      /*
+        **卡片走"完整世界卡"这条路**（2026-11 第二十八轮）。
+
+        原先这里只是把 `character_book` 交给 `fromSillyTavernLorebook`，
+        得到的是"一本设定集"：有 worldLore，但角色表是空的、没有属性、
+        没有出身、没有物品 —— 玩家点开始会发现只能读设定，玩不起来。
+
+        而这类卡的原作者其实把属性、资源、人物档案全写在 `[initvar]` 里了。
+        `stCardToWorld` 就是读那张表，把它翻成灯叙的字段。
+      */
+      const converted = stCardToWorld(card)
+      if (!converted) {
         setMsg({
           kind: 'err',
-          text: '这是一张 SillyTavern 角色卡，但卡里没有内嵌世界书 —— '
-            + '它的人物设定在 `description` 字段里，而本作的导入只吃世界书。'
-            + '把这张卡导入 SillyTavern，或手抄设定到本作的角色卡编辑器。',
+          text: '这张 SillyTavern 角色卡里的世界书是空的（条目都被停用或没有正文）。',
         })
         return
       }
-      raw = card
+      try {
+        await importWorlds([converted.world])
+        const s = converted.stats
+        setMsg({
+          kind: 'ok',
+          text: `已转换：《${converted.world.title}》—— `
+            + `${s.characters} 个角色、${s.attributes} 项属性、${s.resources} 条资源、`
+            + `${s.backgrounds} 个出身槽、${s.items} 件物品、${s.lores} 条设定。`
+            + (s.attributes > 0 ? '机制层已开启，开局可以分配属性点。' : '')
+            + (s.dropped.length ? `　（跳过变量系统 ${s.dropped.length} 条）` : ''),
+        })
+      } catch (e) {
+        setMsg({ kind: 'err', text: `写入失败：${(e as Error)?.message || e}` })
+      }
+      return
     }
 
     /*
