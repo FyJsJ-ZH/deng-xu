@@ -6,6 +6,7 @@ import { collectSave } from '@/utils/saveFile'
 import { parseWorldbook, worldbookToPack } from '@/utils/worldbook'
 import { fromSillyTavernLorebook, isSillyTavernLorebook, toSillyTavernLorebook } from '@/utils/stLorebook'
 import { describePreset, fromSillyTavernPreset, isSillyTavernPreset } from '@/utils/stPreset'
+import { hasBook, readStCardFromPng } from '@/utils/pngCard'
 import { downloadFile, safeFilename, timestampSuffix } from '@/utils/files'
 
 /**
@@ -123,12 +124,41 @@ export function WorldPackManager() {
 
     // 先看是不是世界书 —— 两者都是 JSON，靠 format 字段区分，
     // 让用户不必先分辨自己手里是哪种文件该走哪个按钮
+    /*
+      ⚠️ 先按**字节**读，不按 `text()` 读。
+      因为 ST 的"重设定卡"是 **PNG**：JSON 被 base64 塞在图片的 tEXt chunk 里，
+      `file.text()` 得到的是一堆解码失败的二进制，`JSON.parse` 直接抛。
+      而本作此前只认 JSON —— 这类卡等于**整批进不来**，报错还只有一句
+      "文件不是合法 JSON"，玩家完全看不出发生了什么。
+
+      2026-11 第二十六轮：加一条 PNG 卡通道（见 utils/pngCard.ts）。
+      实测那张卡 `description` 是空的，226 条、26 万字的设定全在 `character_book` 里。
+    */
+    const buf = await file.arrayBuffer()
     let raw: unknown = null
     try {
-      raw = JSON.parse(await file.text())
+      raw = JSON.parse(new TextDecoder().decode(buf))
     } catch {
-      setMsg({ kind: 'err', text: '文件不是合法 JSON' })
-      return
+      // 不是 JSON —— 可能是 PNG 角色卡
+      const card = readStCardFromPng(buf)
+      if (!card) {
+        setMsg({
+          kind: 'err',
+          text: '这个文件既不是合法 JSON，里面也没有 SillyTavern 的角色卡数据。'
+            + '（WebP / JPEG **存不了**卡数据 —— 那只是一张图，不是卡。）',
+        })
+        return
+      }
+      if (!hasBook(card)) {
+        setMsg({
+          kind: 'err',
+          text: '这是一张 SillyTavern 角色卡，但卡里没有内嵌世界书 —— '
+            + '它的人物设定在 `description` 字段里，而本作的导入只吃世界书。'
+            + '把这张卡导入 SillyTavern，或手抄设定到本作的角色卡编辑器。',
+        })
+        return
+      }
+      raw = card
     }
 
     /*

@@ -45,6 +45,7 @@
 
 import type { LoreTemplate, WorldCard } from '@/types/cards'
 import { makeId } from '@/utils/files'
+import { isStVariableEntry, pickStEntryTitle, stripStBoilerplate } from '@/utils/stNoise'
 
 type JsonObject = Record<string, unknown>
 
@@ -202,8 +203,20 @@ function oneLine(text: string): string {
  *  · 不设上限时，一本大书能直接把提示词顶爆（模型只看到前几行）；
  *  · `lores` **仍然全量保留**，所以这不是丢内容 —— 只是"世界观正文"这一段
  *    不把整本书抄一遍，末尾会写明还有多少条在知识条目里。
+ *
+ * ## 2026-11 第二十六轮：120k → 200k
+ *
+ * 实测一张 `chara_card_v3` 的修仙卡：150 条、15.7 万字。卡在 120k 时，
+ * 那 3.7 万字**只进 `lores`** —— 而本作的 `lores` 要玩家"掌握"才注入，
+ * 也就是说那三分之一的世界在这局游戏里几乎不会出现。
+ *
+ * 而 15 万字的 `worldLore` 对注入**没有代价**：`loreDigest` 按段检索，
+ * 一轮只捞 9000 汉字。大只影响 localStorage（约 470KB/卡），
+ * 而这一点由玩家自己决定要导入几张。
+ *
+ * 所以上限提到 200k —— 不是"放开"，是"按检索的真实代价重算"。
  */
-const WORLD_LORE_MAX = 120_000
+const WORLD_LORE_MAX = 200_000
 
 /**
  * 把 SillyTavern 世界书映射成**一张本作世界卡**。
@@ -233,11 +246,19 @@ export function fromSillyTavernLorebook(payload: unknown): WorldCard | null {
     if (isDisabledEntry(entry)) continue
 
     const keys = readKeys(entry)
-    const content = asText(entry.content).trim()
+    // 脚手架话术先清掉：它出现在几十条正文的开头，会反复命中检索打分（见 stNoise.ts）
+    const content = stripStBoilerplate(asText(entry.content))
     const comment = asText(entry.comment).trim() || asText(entry.name).trim()
     if (!content && !keys.length && !comment) continue
 
-    const name = comment || keys[0] || `条目 ${lores.length + 1}`
+    const name = pickStEntryTitle(entry, content, lores.length)
+
+    /*
+      **变量系统**（`[initvar]` / `[mvu_update]`）直接跳过。
+      本作没有变量引擎，那些条目是给 ST 的扩展脚本跑的逻辑 ——
+      留着只会在检索里占位置，让 AI 读一段"请输出 JSONPatch"的指令。
+    */
+    if (isStVariableEntry(name, content)) continue
 
     lores.push({
       id: `st_${lores.length + 1}`,
