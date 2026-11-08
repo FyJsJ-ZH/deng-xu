@@ -77,23 +77,24 @@ async function tryContinueNarrative(
   partial: string,
   config: LLMConfig,
   world: WorldCard | null | undefined
-): Promise<string | null> {
+): Promise<{ text: string; response: any; messages: ChatMessage[]; raw: string } | null> {
   try {
     const tail = partial.slice(-600)   // 只把结尾交给模型，避免上下文翻倍
+    const messages: ChatMessage[] = [
+      {
+        role: 'system',
+        content: '你是一个续写助手。用户会给你一段被截断的小说正文，'
+          + '请**接着最后一个字继续写完**。'
+          + '要求：不要重复已写的内容；不要写任何解释、标题或标记；'
+          + '不要另起一段重讲；直接输出接下来的文字，直到这一段自然结束。',
+      },
+      {
+        role: 'user',
+        content: `以下正文在结尾处被截断了，请接着写完：\n\n---\n${tail}\n---`,
+      },
+    ]
     const res = await llmChat({
-      messages: [
-        {
-          role: 'system',
-          content: '你是一个续写助手。用户会给你一段被截断的小说正文，'
-            + '请**接着最后一个字继续写完**。'
-            + '要求：不要重复已写的内容；不要写任何解释、标题或标记；'
-            + '不要另起一段重讲；直接输出接下来的文字，直到这一段自然结束。',
-        },
-        {
-          role: 'user',
-          content: `以下正文在结尾处被截断了，请接着写完：\n\n---\n${tail}\n---`,
-        },
-      ],
+      messages,
       config,
       model: config.narrativeModel,
       stream: false,
@@ -104,7 +105,14 @@ async function tryContinueNarrative(
     const clean = String(text).trim()
     if (!clean) return null
 
-    return mergeContinuation(partial, clean, world)
+    /*
+      ⚠️ 把 `response` 与 `messages` 一起交回去，是为了让调用方**记账**。
+
+      在此之前这里只返回拼好的正文 —— 这次调用花了真钱，却从来没进过
+      「本轮 / 累计」那两个数字。而它恰恰是**在被截断时才触发**的：
+      正是玩家觉得"怎么又要多写一段"的时候，偏偏那笔钱不显示。
+    */
+    return { text: mergeContinuation(partial, clean, world), response: res, messages, raw: clean }
   } catch (e) {
     console.warn('[continue] 续写失败，退回提示路径', e)
     return null
@@ -198,17 +206,24 @@ export function usageFromResponse(
   const u = response?.usage
   const promptTokens = Number(u?.prompt_tokens)
   const completionTokens = Number(u?.completion_tokens)
+  /*
+    DeepSeek 会回 `prompt_cache_hit_tokens`（命中价与未命中价差 50 倍）。
+    拿不到就留 undefined —— 计价那边会按"全部未命中"算，偏保守。
+  */
+  const cacheHit = Number(u?.prompt_cache_hit_tokens)
 
   if (Number.isFinite(promptTokens) || Number.isFinite(completionTokens)) {
     const p = Number.isFinite(promptTokens) ? promptTokens : estimateTokens(promptMessages.map(m => m.content).join(''))
     const c = Number.isFinite(completionTokens) ? completionTokens : estimateTokens(output)
-    return {
+    const out: TokenUsage = {
       promptTokens: p,
       completionTokens: c,
       // total 自己算，不信服务商给的 total_tokens：有些端点会把它漏掉或算错
       totalTokens: p + c,
       estimated: false,
     }
+    if (Number.isFinite(cacheHit) && cacheHit > 0) out.cacheHitTokens = cacheHit
+    return out
   }
 
   const p = estimateTokens(promptMessages.map(m => m.content).join(''))
@@ -265,12 +280,16 @@ export function parseSseUsage(line: string): TokenUsage | null {
     if (!Number.isFinite(p) && !Number.isFinite(c)) return null
     const promptTokens = Number.isFinite(p) ? p : 0
     const completionTokens = Number.isFinite(c) ? c : 0
-    return {
+    const out: TokenUsage = {
       promptTokens,
       completionTokens,
       totalTokens: promptTokens + completionTokens,
       estimated: false,
     }
+    // 流式最后那个 chunk 同样带着缓存命中数（DeepSeek），有就收下
+    const cacheHit = Number(u.prompt_cache_hit_tokens)
+    if (Number.isFinite(cacheHit) && cacheHit > 0) out.cacheHitTokens = cacheHit
+    return out
   } catch {
     return null
   }
@@ -1279,7 +1298,12 @@ export function useGameEngine(): GameEngineReturn {
       if (trunc.truncated) {
         const continued = await tryContinueNarrative(finalNarrative, config, activeWorld)
         if (continued) {
-          finalNarrative = continued
+          finalNarrative = continued.text
+          /*
+            记账。续写是一次**额外的真调用**，而它只在这段被截断时才会发生 ——
+            不记的话，玩家越是被截断，账面上越是看不见。
+          */
+          recordUsage(continued.response, continued.messages, continued.raw)
           trunc = detectTruncation(finalNarrative, activeWorld?.narrative?.replyLength)
           if (!trunc.truncated) {
             // 续写成功：明确告诉玩家发生了什么，而不是静默拼上

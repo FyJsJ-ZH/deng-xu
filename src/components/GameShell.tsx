@@ -18,6 +18,7 @@ import { useGameStore, MAX_TURN_SNAPSHOTS, type TokenUsage } from '@/stores/game
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useGameEngine } from '@/hooks/useGameEngine'
+import { estimateCost, formatCost, priceSourceNote } from '@/utils/cost'
 import { X, AlertTriangle, ChevronUp, ChevronDown, ScrollText, Sparkles } from 'lucide-react'
 import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary'
@@ -36,26 +37,25 @@ const NarrativeView = lazyWithRetry(() =>
   import('@/components/NarrativeView').then(m => ({ default: m.NarrativeView }))
 )
 
-/** 参考单价（元 / 千 token）—— DeepSeek 官方在 2026 年前后的档位，只用于给玩家一个量级感 */
-const PRICE_PER_1K = { prompt: 0.001, completion: 0.002 }
-
 /**
  * 把用量渲染成给玩家看的一行字（C9）。
  *
  * 两个刻意的取舍：
- *  1. **token 数永远显示**，金额只在拿得到单价时附在后面。单价会变（服务商调价、
- *     玩家换模型），把金额当主角迟早会出错 —— 而 token 数是客观发生的量。
+ *  1. **token 数永远显示**，金额只在拿得到价目表时附在后面。单价会变（服务商调价、
+ *     模型换代），把金额当主角迟早会出错 —— 而 token 数是客观发生的量。
  *  2. 估算值必须带 `约` 与明确标注。只有一部分端点会回 `usage`（流式响应里尤其少见），
  *     拿不到就按字符数估 —— 但**不能让玩家把估算当账单**。
+ *
+ * ⚠️ 金额走 `utils/cost.ts`，它按**服务商 + 模型 + 峰谷 + 缓存命中**折算，
+ * 拿不到价目表时返回空串（只显示 token）。原先这里是三个写死的常量
+ * （1 元/百万输入、2 元/百万输出），把输出低估了二到四倍，也不分服务商。
  */
-function formatUsage(u?: TokenUsage | null): string {
+function formatUsage(u: TokenUsage | null | undefined, provider: string, model: string): string {
   if (!u || (!u.promptTokens && !u.completionTokens)) return '—'
   const approx = u.estimated ? '约' : ''
   const tokens = `${approx}${u.promptTokens + u.completionTokens} tok`
-  const cost = (u.promptTokens / 1000) * PRICE_PER_1K.prompt
-    + (u.completionTokens / 1000) * PRICE_PER_1K.completion
-  const money = cost > 0 ? ` ¥${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}` : ''
-  return `${tokens}${money}`
+  const money = formatCost(estimateCost(provider, model, u))
+  return money ? `${tokens} ${money}` : tokens
 }
 
 /**
@@ -77,15 +77,21 @@ function costHint(tokens: number): string {
 }
 
 /** 悬浮说明：把"这个数字是怎么来的"讲清楚，而不是只给一个数 */
-function tokenTooltip(u: TokenUsage | null | undefined, label: string): string {
+function tokenTooltip(
+  u: TokenUsage | null | undefined,
+  label: string,
+  provider: string,
+  model: string,
+): string {
   if (!u || (!u.promptTokens && !u.completionTokens)) return `${label}：暂无记录`
   const src = u.estimated
     ? '接口未返回 usage，数字按字符数估算（仅供参考）'
     : '取自接口返回的 usage'
-  const money = (u.promptTokens / 1000) * PRICE_PER_1K.prompt
-    + (u.completionTokens / 1000) * PRICE_PER_1K.completion
-  return `${label}\n输入 ${u.promptTokens} tok / 输出 ${u.completionTokens} tok\n`
-    + `按 DeepSeek 参考单价折算约 ¥${money.toFixed(4)}\n${src}`
+  const hit = u.cacheHitTokens
+    ? `\n其中缓存命中 ${u.cacheHitTokens} tok（命中价比未命中便宜得多）`
+    : ''
+  return `${label}\n输入 ${u.promptTokens} tok / 输出 ${u.completionTokens} tok${hit}\n`
+    + `${priceSourceNote(provider, model)}\n${src}`
 }
 
 /** 回溯可用的轮次上限（与 gameStore 保持同一个数字，只用于提示文案） */
@@ -361,8 +367,8 @@ export function GameShell() {
           而不是常驻铺开。
         */}
         <div className="flex items-center gap-2 px-3 py-1 text-[10px] font-mono text-text-muted border-b border-text-muted/20 flex-wrap">
-          <span title={tokenTooltip(lastUsage, '上一轮（叙事 + 数据结算两次调用）')}>
-            本轮 <span className="text-text-secondary">{formatUsage(lastUsage)}</span>
+          <span title={tokenTooltip(lastUsage, '上一轮（叙事 + 数据结算两次调用）', llm.provider, llm.narrativeModel)}>
+            本轮 <span className="text-text-secondary">{formatUsage(lastUsage, llm.provider, llm.narrativeModel)}</span>
             {/*
               **单独把"输出"拎出来显示**（2026-11）。
 
@@ -381,10 +387,10 @@ export function GameShell() {
           <span className="opacity-40">|</span>
           <span
             className="cursor-pointer hover:text-text-secondary"
-            title={`${tokenTooltip(sessionUsage, '本局累计（从开局算起，刷新后仍然保留）')}${costHint(sessionTokens)}\n点击清零重新统计`}
+            title={`${tokenTooltip(sessionUsage, '本局累计（从开局算起，刷新后仍然保留）', llm.provider, llm.narrativeModel)}${costHint(sessionTokens)}\n点击清零重新统计`}
             onClick={() => useGameStore.getState().resetSessionUsage()}
           >
-            累计 <span className={sessionTokens >= COST_WARN.high ? 'text-accent-grail font-bold' : sessionTokens >= COST_WARN.mid ? 'text-amber-400' : 'text-text-secondary'}>{formatUsage(sessionUsage)}</span>
+            累计 <span className={sessionTokens >= COST_WARN.high ? 'text-accent-grail font-bold' : sessionTokens >= COST_WARN.mid ? 'text-amber-400' : 'text-text-secondary'}>{formatUsage(sessionUsage, llm.provider, llm.narrativeModel)}</span>
             {sessionTokens >= COST_WARN.high && <span className="text-accent-grail ml-1">（花得有点多了）</span>}
           </span>
 

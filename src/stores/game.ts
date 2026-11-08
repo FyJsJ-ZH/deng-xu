@@ -135,6 +135,17 @@ export interface TokenUsage {
   totalTokens: number
   /** true = 接口没回 usage，数字是按字符数估的 */
   estimated: boolean
+  /**
+   * 输入里**命中缓存**的那部分 token（DeepSeek 等会回 `prompt_cache_hit_tokens`）。
+   *
+   * 为什么值得单独存：命中价与未命中价能差 **50 倍**（0.02 对 1 元/百万）。
+   * 不记它就只能把全部输入按未命中算，玩家看到的金额会被明显高估 ——
+   * 而这个项目的提示词**每轮开头几乎完全一样**（世界书、规则、主角卡都在前面），
+   * 服务商的自动前缀缓存命中率其实很高。
+   *
+   * 拿不到就是 `undefined`（按全部未命中算，偏保守）。
+   */
+  cacheHitTokens?: number
 }
 
 /**
@@ -357,12 +368,16 @@ export const EMPTY_USAGE: TokenUsage = {
 
 /** 两次用量相加（累加时只要有一次是估算，整体就标成估算） */
 export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
-  return {
+  const hit = (a.cacheHitTokens ?? 0) + (b.cacheHitTokens ?? 0)
+  const out: TokenUsage = {
     promptTokens: a.promptTokens + b.promptTokens,
     completionTokens: a.completionTokens + b.completionTokens,
     totalTokens: a.totalTokens + b.totalTokens,
     estimated: a.estimated || b.estimated,
   }
+  // 两边都没报缓存命中就保持 undefined —— 0 会让"未知"看起来像"确实没命中"
+  if (hit > 0) out.cacheHitTokens = hit
+  return out
 }
 
 export interface GameState {
