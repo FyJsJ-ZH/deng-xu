@@ -8,6 +8,7 @@ import type { HeroPreset, PlayerCard } from '@/types/cards'
 import { useLibraryStore } from '@/stores/library'
 import { useNavStore } from '@/stores/nav'
 import { downloadFile, readFileAsText, safeFilename, timestampSuffix, makeId } from '@/utils/files'
+import { PRESET_FORMAT, PRESET_VERSION, coercePlayer, extractPresetList } from '@/utils/heroPresetFile'
 
 /**
  * 「我的主角」——提前设定主角。
@@ -62,10 +63,10 @@ function summarize(p: HeroPreset): string {
   ⚠️ 导入的语义是**追加**，不是覆盖：
   每条都分配新 id，label 撞名就加后缀。理由见下 ——
   玩家导入别人的主角包时，绝不该弄丢自己已有的主角。
-*/
-const PRESET_FORMAT = 'deng-xu-hero-presets'
-const PRESET_VERSION = 1
 
+  ⚠️ 解析与格式常量都搬去了 `utils/heroPresetFile.ts` —— 内嵌在组件里时
+  它没法被单测覆盖，而它恰好漏过一次（look / avatar 在导入时被丢掉）。
+*/
 /** 把若干主角导出成一个 JSON 文件 */
 function exportPresets(list: HeroPreset[], filename: string): void {
   downloadFile(filename, {
@@ -75,23 +76,6 @@ function exportPresets(list: HeroPreset[], filename: string): void {
     count: list.length,
     presets: list,
   })
-}
-
-/** 从任意形状的 JSON 里尽量抠出一个主角档案；抠不出返回 null */
-function coercePlayer(v: unknown): PlayerCard | null {
-  if (!v || typeof v !== 'object') return null
-  const o = v as Record<string, unknown>
-  // 允许两种写法：{ label, player:{…} } 或直接就是一个 PlayerCard
-  const src = (o.player && typeof o.player === 'object' ? o.player : o) as Record<string, unknown>
-  const str = (k: string) => (typeof src[k] === 'string' ? (src[k] as string) : '')
-  const player: PlayerCard = {
-    name: str('name'), gender: str('gender'), age: str('age'),
-    appearance: str('appearance'), personality: str('personality'),
-    background: str('background'), extra: str('extra'),
-  }
-  // 七个字段全空 = 这不是一个主角档案
-  if (!Object.values(player).some(Boolean)) return null
-  return player
 }
 
 interface ImportResult { added: number; skipped: number; error?: string }
@@ -115,11 +99,7 @@ async function importPresets(
     return { added: 0, skipped: 0, error: '这不是一个合法的 JSON 文件' }
   }
 
-  const raw: unknown[] = Array.isArray(data)
-    ? data
-    : (data && typeof data === 'object' && Array.isArray((data as { presets?: unknown[] }).presets))
-      ? (data as { presets: unknown[] }).presets
-      : []
+  const raw = extractPresetList(data)
   if (!raw.length) {
     return { added: 0, skipped: 0, error: '文件里没有主角列表（缺少 presets 数组）' }
   }

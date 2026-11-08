@@ -90,7 +90,7 @@ describe('fromSillyTavern：读得回来的字段', () => {
 
 describe('toSillyTavern：导得出去的字段', () => {
   it('★ 项目扩展字段（关系/状态/地点/立绘/在场）都写进 data', () => {
-    const out = toSillyTavern(mkCard()) as { data: Record<string, unknown> }
+    const out = toSillyTavern(mkCard()) as { spec?: string; data: Record<string, unknown> }
     expect(out.spec).toBe('chara_card_v2')
     expect(out.data.relationship).toBe('护卫')
     expect(out.data.status).toBe('健康')
