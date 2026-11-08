@@ -54,7 +54,7 @@ export function NarrativeControls() {
         ) : presets.length === 0 ? (
           <p className="text-[10px] text-text-muted leading-relaxed">
             本机还没有叙事预设。回主菜单「叙事预设」可以导入酒馆预设或从头写一份 ——
-            那是**开局前**的入口，导入完回到这里就能直接切。
+            那是<b className="text-text-secondary">开局前</b>的入口，导入完回到这里就能直接切。
           </p>
         ) : (
           <select
@@ -77,7 +77,11 @@ export function NarrativeControls() {
 
         <p className="text-[10px] text-accent-lantern/80 flex items-start gap-1 leading-relaxed">
           <Info size={10} className="mt-0.5 shrink-0" />
-          <span>改动**下一轮**生效 —— 提示词每轮现拼，不用重开一局。</span>
+          {/*
+            ⚠️ 这里不能写 `**下一轮**` —— 这是 JSX 文本节点，不是 markdown，
+            星号会被原样渲染出来。玩家看到的就是一行"改动\*\*下一轮\*\*生效"。
+          */}
+          <span>改动<b className="font-bold">下一轮</b>生效 —— 提示词每轮现拼，不用重开一局。</span>
         </p>
       </section>
 

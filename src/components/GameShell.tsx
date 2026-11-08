@@ -519,8 +519,19 @@ export function GameShell() {
                 主菜单「叙事预设」那一屏 —— 得退到标题、改完、再重开，正好打断那一刻。
                 从「更多」进而不是上底栏：底栏四个入口是走查钉住的，且这不是每轮都点的动作。
               */}
+              {/*
+                ⚠️ 这里**不能**用 `closeOverlay()`。
+
+                `closeOverlay` 会同时做两件事：关菜单 + 把 `mobileTab` 设回 null。
+                而这一格要的就是"关菜单、开抽屉" —— 写成
+                `setMobileTab('style'); closeOverlay()` 的话，后半句立刻把自己刚设的
+                那个 tab 又清掉，玩家看到的是"点了一下，菜单关了，什么都没出来"。
+
+                （这个 bug 我在 2026-11 交付时没验过就推了，玩家一次点中。
+                  编年史那格用 closeOverlay 是对的 —— 它开的是独立 state，不吃 mobileTab。）
+              */}
               <button
-                onClick={() => { setMobileTab('style'); closeOverlay() }}
+                onClick={() => { setIsMobileMenuOpen(false); setMobileTab('style') }}
                 className="w-full mb-3 flex items-center justify-center gap-2 p-2.5 text-sm text-text-secondary hover:text-accent-lantern hover:bg-accent-lantern/10 border border-text-muted/30 hover:border-accent-lantern/40 rounded transition-all"
               >
                 <Sparkles size={15} />

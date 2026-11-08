@@ -397,6 +397,64 @@ const consumed =
 check('这次返回被消费（关抽屉 / 退一级 / 放行退出）', consumed,
   `抽屉 ${before7.sheet}→${after7.sheet}，层级 ${before7.view}→${after7.view}，history ${before7.len}→${after7.len}`)
 
+/*
+  ── 8) 局内切换文风的面板 ──
+
+  玩家报：「一点就退到游戏对话页面了，不起作用」。
+
+  病根：`closeOverlay()` 会同时做两件事 —— 关菜单 **并且** 把 `mobileTab` 设回 null。
+  于是 `setMobileTab('style'); closeOverlay()` 里后半句立刻把刚设的值清掉，
+  界面上就是"点了一下，菜单关了，什么都没出来"。
+
+  断言必须落在**抽屉真的出现**上，不能只看 store 里的值：
+  改坏的那一版里 `mobileSheet` 单独读也是对的，它是被紧接着的第二次写入清掉的。
+*/
+console.log('\n=== 8) 「更多」→「文风与预设」→ 面板必须真的打开 ===')
+await launchGame()
+console.log('  点「更多」:', await tapByLabel('更多'))
+await sleep(1000)
+check('「更多」菜单里有「文风与预设」入口', await ev(`/文风与预设/.test(document.body.innerText)`))
+
+/** 点页面里任意一个文字匹配的按钮（不限于底栏） */
+async function tapAnywhereByText(label) {
+  const box = await ev(`(()=>{
+    const b = [...document.querySelectorAll('button')].find(x => (x.textContent||'').trim().includes(${JSON.stringify(label)}));
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    return JSON.stringify({ x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) });
+  })()`)
+  if (!box || typeof box !== 'string' || !box.startsWith('{')) return 'no-button'
+  const { x, y } = JSON.parse(box)
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
+  return 'ok'
+}
+
+console.log('  点「文风与预设」:', await tapAnywhereByText('文风与预设'))
+await sleep(1300)
+
+const styleSheet = JSON.parse(await ev(`(()=>{
+  const T = document.body.innerText;
+  const sheet = [...document.querySelectorAll('div')].find(d=>/justify-end/.test(String(d.className)) && /fixed/.test(String(d.className)));
+  const st = typeof __uiStore === 'function' ? __uiStore.getState() : {};
+  return JSON.stringify({
+    sheetTitle: !!sheet && /文风与预设/.test(sheet.textContent||''),
+    hasPresetBlock: /叙事预设/.test(T),
+    hasStyleBlock: /核心文风/.test(T),
+    menuClosed: !/返回标题/.test(T),
+    mobileSheet: st.mobileSheet,
+    menuOpen: st.mobileMenuOpen,
+  });})()`))
+console.log('  ' + JSON.stringify(styleSheet))
+check('抽屉真的打开了（标题「文风与预设」）', styleSheet.sheetTitle)
+check('面板里有「叙事预设」一节', styleSheet.hasPresetBlock)
+check('面板里有文风四组（核心文风）', styleSheet.hasStyleBlock)
+check('「更多」菜单已让位（不会两个都开着）', styleSheet.menuClosed)
+check('store 状态一致（mobileSheet=style 且菜单关）',
+  styleSheet.mobileSheet === 'style' && styleSheet.menuOpen === false,
+  `sheet=${styleSheet.mobileSheet} menu=${styleSheet.menuOpen}`)
+await shot('mob-05-style-sheet')
+
 const failed = results.filter(r => !r.ok)
 console.log('\n=== 汇总 ===')
 console.log(`  通过 ${results.length - failed.length}/${results.length}`)
