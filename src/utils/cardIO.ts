@@ -17,7 +17,7 @@ type JsonObject = Record<string, unknown>;
 const UNKNOWN_KEY = '__unknown';
 
 /** 本项目内部字段：可以解析进来，但不属于 SillyTavern 规范，导出时必须剔除 */
-const PROJECT_ONLY_KEYS = ['id', 'present', 'location', 'relationship', 'status', 'playable'] as const;
+const PROJECT_ONLY_KEYS = ['id', 'present', 'location', 'relationship', 'status', 'playable', 'look', 'avatarId'] as const;
 
 /** 已识别字段（同时覆盖 snake_case 与 camelCase 两种写法），其余一律算「未识别」 */
 const KNOWN_KEYS = new Set<string>([
@@ -212,6 +212,22 @@ export function fromSillyTavern(data: any, avatar?: string): CharacterCard {
   if (status) card.status = status;
   if (typeof source.playable === 'boolean') card.playable = source.playable;
 
+  /*
+    结构化外观（`SpriteLook`）。
+
+    ## 为什么要单独认这个字段（2026-11）
+
+    在此之前 `look` **既不被导入、也不被导出** —— 它既不在 `KNOWN_KEYS` 里，
+    也没有映射行，于是带着精确立绘数据的卡一经导入导出就退化成
+    「中文描述 → 正则抽特征」那条猜测路径（`appearance.ts` 的注释里写着
+    那条路错误率下不来）。
+
+    合法性不在这里校验：`lpcSprite` / `appearance` 对不认识的部件 id 是
+    **静默忽略**的（写错的 id 不会把渲染打崩），而 `pnpm check:sprites`
+    专门负责把写错的 id 抓出来。这里只挡掉"根本不是对象"的脏数据。
+  */
+  if (isPlainObject(source.look)) card.look = source.look as CharacterCard['look'];
+
   // 空 extensions 不落地，保持卡对象干净
   if (Object.keys(extensions).length > 0) card.extensions = extensions;
   return card;
@@ -241,6 +257,18 @@ export function toSillyTavern(card: CharacterCard): object {
     character_version: card.characterVersion ?? '',
     extensions,
   };
+
+  /*
+    本项目扩展字段：SillyTavern 不认识它们，但**我们自己要能原样读回来**。
+    不导出的话，「导出 → 再导入」会静默丢掉关系、状态、地点、立绘与在场标记 ——
+    而那正是玩家最常做的一件事（拿一张卡去改改再导回来）。
+  */
+  if (card.relationship) data.relationship = card.relationship;
+  if (card.status) data.status = card.status;
+  if (card.location) data.location = card.location;
+  if (isPlainObject(card.look)) data.look = card.look;
+  data.present = card.present === true;
+  if (typeof card.playable === 'boolean') data.playable = card.playable;
 
   // 未知字段提回顶层（不再嵌在 __unknown 下）；已知字段优先，项目专用字段按规范不导出
   for (const [key, value] of Object.entries(unknown)) {
