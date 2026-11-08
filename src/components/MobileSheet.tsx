@@ -2,12 +2,14 @@ import { X } from 'lucide-react'
 import { StatusPanel } from '@/components/StatusPanel'
 import { InventoryPanel } from '@/components/InventoryPanel'
 import { RelationshipPanel } from '@/components/RelationshipPanel'
+import { NarrativeControls } from '@/components/NarrativeControls'
 import type { MobileTab } from '@/components/MobileTabBar'
 
 const TITLES: Record<MobileTab, string> = {
   status: '状态',
   inventory: '物品',
   relationships: '人物关系',
+  style: '文风与预设',
 }
 
 /**
@@ -71,6 +73,7 @@ export function MobileSheet({
           {tab === 'status' && <StatusPanel className="h-auto overflow-visible border-none p-0 bg-transparent" />}
           {tab === 'inventory' && <InventoryPanel className="h-auto overflow-visible border-none p-0 bg-transparent" />}
           {tab === 'relationships' && <RelationshipPanel className="h-auto overflow-visible border-none p-0 bg-transparent" />}
+          {tab === 'style' && <NarrativeControls />}
         </div>
       </div>
     </div>

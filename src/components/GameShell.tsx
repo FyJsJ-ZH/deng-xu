@@ -25,6 +25,7 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary'
 import { SceneBackdrop } from '@/components/SceneBackdrop'
 import { SideOracle } from '@/components/SideOracle'
 import { MemoryLedgerPanel } from '@/components/MemoryLedgerPanel'
+import { NarrativeControls } from '@/components/NarrativeControls'
 import { RewindConfirm } from '@/components/RewindConfirm'
 
 /**
@@ -173,7 +174,7 @@ export function GameShell() {
    * 它和「物品与线索」不是一回事 —— 那个看的是 `WorldCard.items`（世界上这种物长什么样），
    * 这个看的是**这一局跑出来的状态**（他手上这一件现在在哪）。
    */
-  const [rightPanelTab, setRightPanelTab] = useState<'inventory' | 'relationships' | 'ledger'>('inventory')
+  const [rightPanelTab, setRightPanelTab] = useState<'inventory' | 'relationships' | 'ledger' | 'style'>('inventory')
   /**
    * 编年史浮层是否打开。
    *
@@ -513,10 +514,18 @@ export function GameShell() {
 
             <div className="flex-1 overflow-y-auto p-4">
               {/*
-                编年史入口放在「更多」里而不是底栏：底栏四个页签是**面板**
-                （手机走查里逐个数过按钮个数，加第五个会挤且会破坏那条断言），
-                而编年史是一个回看用的全屏浮层，属于"低频入口"。
+                文风与预设（2026-11）。
+                玩家要的是「写顺了手感的时候随手换一支笔」，而原先的入口只在
+                主菜单「叙事预设」那一屏 —— 得退到标题、改完、再重开，正好打断那一刻。
+                从「更多」进而不是上底栏：底栏四个入口是走查钉住的，且这不是每轮都点的动作。
               */}
+              <button
+                onClick={() => { setMobileTab('style'); closeOverlay() }}
+                className="w-full mb-3 flex items-center justify-center gap-2 p-2.5 text-sm text-text-secondary hover:text-accent-lantern hover:bg-accent-lantern/10 border border-text-muted/30 hover:border-accent-lantern/40 rounded transition-all"
+              >
+                <Sparkles size={15} />
+                <span>文风与预设</span>
+              </button>
               <button
                 onClick={() => { setIsChronicleOpen(true); closeOverlay() }}
                 className="w-full mb-3 flex items-center justify-center gap-2 p-2.5 text-sm text-text-secondary hover:text-accent-lantern hover:bg-accent-lantern/10 border border-text-muted/30 hover:border-accent-lantern/40 rounded transition-all"
@@ -709,11 +718,28 @@ export function GameShell() {
           >
             台账
           </button>
+          {/*
+            「笔」：局内切换叙事预设与文风（2026-11）。
+            提示词是每轮现拼的（见 useGameEngine 里的 withNarrativePreset），
+            所以这里改完**下一轮就生效**，不用重开一局。
+          */}
+          <button
+            onClick={() => setRightPanelTab('style')}
+            className={`flex-1 py-2 text-xs font-medium uppercase tracking-wider transition-colors ${rightPanelTab === 'style' ? 'bg-background text-accent-lantern border-b-2 border-accent-lantern' : 'text-text-muted hover:text-text-primary'}`}
+            title={'换叙事预设与文风。\n改动下一轮生效 —— 不用重开一局。'}
+          >
+            笔
+          </button>
         </div>
         <div className="flex-1 overflow-hidden">
           {rightPanelTab === 'inventory' && <InventoryPanel />}
           {rightPanelTab === 'relationships' && <RelationshipPanel />}
           {rightPanelTab === 'ledger' && <MemoryLedgerPanel />}
+          {rightPanelTab === 'style' && (
+            <div className="h-full overflow-y-auto p-3">
+              <NarrativeControls />
+            </div>
+          )}
         </div>
         <DebugPanel
           dataInput={debugDataInput}

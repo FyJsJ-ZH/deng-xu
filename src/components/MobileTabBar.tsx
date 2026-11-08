@@ -2,7 +2,15 @@ import { useEffect, useRef } from 'react'
 import { User, Package, Users, MoreHorizontal } from 'lucide-react'
 import { useGameStore } from '@/stores/game'
 
-export type MobileTab = 'status' | 'inventory' | 'relationships'
+/**
+ * 手机端抽屉可以装哪几种面板。
+ *
+ * ⚠️ `'style'`（文风与预设）**没有底栏按钮** —— 它从「更多」菜单里进。
+ * 底栏刻意保持四个入口：手机走查里逐个数过
+ * （`mobile.mjs` 断言 `labels.length === 4`），加第五个在 390px 上会挤，
+ * 而且「换笔法」不是每轮都要点的高频动作，不值得占一格。
+ */
+export type MobileTab = 'status' | 'inventory' | 'relationships' | 'style'
 
 export interface MobileTabBarProps {
   /** 当前打开的页签；null = 都关着 */
