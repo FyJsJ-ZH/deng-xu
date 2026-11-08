@@ -1,7 +1,25 @@
 /**
- * 《大延侠客行》世界卡
+ * 《大延侠客行》世界卡 —— **不作为内置卡发布**。
  *
- * 素材来源：SillyTavern 角色卡《大延侠客行 v1.4》（`D:\YOU\卡\`）。
+ * 这个文件是这张卡的**素材源**，前端的 `BUILTIN_WORLD_IDS` / `BUILTIN_WORLDS`
+ * 都**不注册**它。要拿卡，跑：
+ *
+ *     pnpm export:dayan        →  D:\工作区\世界卡\大延侠客行.world.json
+ *
+ * 然后在主菜单「导入」里选那个文件。改这张卡就改这里，再跑一次脚本。
+ *
+ * ## 为什么不内置（2026-11，第三十三轮）
+ *
+ * 我上一轮把它做成了第 10 张内置卡，用户的答复是：
+ * 「不是让你做成预置的，是让你优化完了把卡给我我自己导入」。
+ *
+ * 两种卡在引擎里确实不是一回事：内置卡靠内容指纹整批刷新、默认只读，
+ * 玩家一改就脱离更新；导入卡在玩家自己库里，可自由编辑。
+ * 他要后者 —— 所以注册撤了，卡留在这里当源。
+ *
+ * ## 素材来源
+ *
+ * SillyTavern 角色卡《大延侠客行 v1.4》（`D:\YOU\卡\`）。
  * 经 `stCardToWorld` 转出第一版（90 角色 / 138 知识 / 21 物品），
  * 再由人工重组：把 worldLore 里那些塞在规则段里的**地区档案**与**势力分布**
  * 拆成正经章节，把人物段全部搬进角色卡（原版 80/90 张卡连性别都没写），
@@ -37,7 +55,7 @@ import type { WorldCard } from '@/types/cards'
 import { char, BUILTIN_TIMESTAMP } from './_shared'
 
 export const dayan: WorldCard = {
-  id: 'builtin_dayan',
+  id: 'world_dayan_manual',
   title: '大延侠客行',
   tagline:
     '大延承平一百四十年，老皇帝病了三年，六个皇子各有各的算盘。洛阳城里禁军巡夜，终南山上有道士论道，雁门关外的客栈不接江湖恩怨，藏边大雪谷里有人在练不该练的刀。你可以是名门正派的三代弟子，是没门没派的散人，是替朝廷办事的，也可以是个只想学一门功夫的普通人。',
@@ -2365,5 +2383,9 @@ export const dayan: WorldCard = {
 
   createdAt: BUILTIN_TIMESTAMP,
   updatedAt: BUILTIN_TIMESTAMP,
-  builtin: true,
+  /*
+    ⚠️ 这里**不写 `builtin: true`**。这张卡不注册进内置清单，
+    导出脚本也会删掉 builtin 字段 —— 导入后才算玩家自己的卡，可自由编辑。
+    详见文件头。
+  */
 }

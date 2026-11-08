@@ -33,7 +33,6 @@ export const BUILTIN_WORLD_IDS: readonly string[] = [
   'builtin_ximeng',
   'builtin_elysion',
   'builtin_london1905',
-  'builtin_dayan',
 ]
 
 /**
@@ -94,7 +93,6 @@ const WORLD_LOADERS: Record<string, () => Promise<WorldCard>> = {
   builtin_ximeng: async () => (await import('./worlds/ximeng')).ximeng,
   builtin_elysion: async () => (await import('./worlds/elysion')).elysion,
   builtin_london1905: async () => (await import('./worlds/london1905')).london1905,
-  builtin_dayan: async () => (await import('./worlds/dayan')).dayan,
 }
 
 /** 加载器覆盖了哪些 id（供测试核对，不必真的把卡读进来） */

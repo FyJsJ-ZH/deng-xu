@@ -20,6 +20,7 @@
     "gen:worldbook": "esbuild src/data/builtinWorlds.ts --bundle --platform=node --format=esm --outfile=.check/worlds.mjs --alias:@=./src --log-level=error && node scripts/gen-worldbook.mjs public .check/worlds.mjs",
     "stamp:builtins": "node scripts/stamp-builtins.mjs",
     "gen:credits": "node scripts/gen-credits.mjs",
+    "export:dayan": "esbuild scripts/export-world-card.ts --bundle --platform=node --format=esm --outfile=.check/export-dayan.mjs --alias:@=./src --log-level=warning && node .check/export-dayan.mjs",
     "check:errors": "esbuild scripts/checks/errors.ts --bundle --platform=node --format=esm --outfile=.check/errors.mjs --alias:@=./src && node .check/errors.mjs",
     "check:retry": "esbuild scripts/checks/retry.ts --bundle --platform=node --format=esm --outfile=.check/retry.mjs --alias:@=./src && node .check/retry.mjs",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
