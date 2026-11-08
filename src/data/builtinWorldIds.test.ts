@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   BUILTIN_WORLD_IDS,
   BUILTIN_WORLD_LOADER_IDS,
+  RETIRED_BUILTIN_IDS,
   loadBuiltinWorlds,
   missingBuiltinIds,
+  retireBuiltinWorlds,
 } from '@/data/builtinWorldIds'
 import { BUILTIN_WORLDS } from '@/data/builtinWorlds'
 import { BUILTIN_STAMP } from '@/data/builtinStamp'
@@ -114,5 +116,68 @@ describe('BUILTIN_STAMP 必须跟着内置卡内容走', () => {
       BUILTIN_STAMP,
       '内置卡内容变了但指纹没更新 —— 跑 `node scripts/stamp-builtins.mjs`',
     ).toBe(fp)
+  })
+})
+
+describe('撤下内置卡时的清退（RETIRED_BUILTIN_IDS）', () => {
+  /*
+    为什么这条测试值得存在（2026-11 第三十四轮）：
+
+    《大延侠客行》曾是第 10 张内置卡，已经播种进玩家的 IndexedDB。
+    撤掉注册之后，用户刷新仍然是十张 —— 因为
+    `missingBuiltinIds` 只算「清单里缺哪些」，**从清单里消失的 id 没人管**。
+
+    这是一个"删了代码但删不掉数据"的典型：改完源码、跑完全套测试、
+    部署上去，玩家看到的还是旧状态。所以清退必须是一条显式的、被测过的路径。
+  */
+
+  const fake = (id: string, extra: Record<string, unknown> = {}) =>
+    ({ id, title: id, builtin: true, ...extra }) as any
+
+  it('原装的内置卡被摘掉', () => {
+    const { kept, removed } = retireBuiltinWorlds([
+      fake('builtin_greatchen'),
+      fake('builtin_dayan'),
+    ])
+    expect(removed).toBe(1)
+    expect(kept.map(w => w.id)).toEqual(['builtin_greatchen'])
+  })
+
+  it('玩家复制出来的副本不动（builtin !== true）', () => {
+    const { kept, removed } = retireBuiltinWorlds([
+      fake('builtin_dayan', { builtin: false }),
+    ])
+    expect(removed).toBe(0)
+    expect(kept).toHaveLength(1)
+  })
+
+  it('玩家改过的稿子不动（editedByUser）', () => {
+    const { kept, removed } = retireBuiltinWorlds([
+      fake('builtin_dayan', { editedByUser: true }),
+    ])
+    expect(removed).toBe(0)
+    expect(kept).toHaveLength(1)
+  })
+
+  it('不碰玩家自己的卡', () => {
+    const { kept, removed } = retireBuiltinWorlds([
+      fake('world_abc', { builtin: false }),
+      fake('builtin_dayan'),
+    ])
+    expect(removed).toBe(1)
+    expect(kept.map(w => w.id)).toEqual(['world_abc'])
+  })
+
+  it('空库 / 没有可清的 ⇒ removed 为 0，且原数组原样返回', () => {
+    expect(retireBuiltinWorlds([]).removed).toBe(0)
+    const list = [fake('builtin_greatchen')]
+    const r = retireBuiltinWorlds(list)
+    expect(r.removed).toBe(0)
+    expect(r.kept).toBe(list)
+  })
+
+  it('清退名单与现行内置清单不重叠（撤下的不能再出现）', () => {
+    const overlap = RETIRED_BUILTIN_IDS.filter(id => BUILTIN_WORLD_IDS.includes(id))
+    expect(overlap, 'RETIRED_BUILTIN_IDS 与 BUILTIN_WORLD_IDS 不能同时含一个 id').toEqual([])
   })
 })

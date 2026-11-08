@@ -36,6 +36,55 @@ export const BUILTIN_WORLD_IDS: readonly string[] = [
 ]
 
 /**
+ * 曾经作为内置卡发布、后来**被撤下**的世界 id。
+ *
+ * ## 为什么必须有这张名单（2026-11 第三十四轮踩到的）
+ *
+ * 《大延侠客行》一度是第 10 张内置卡，玩家浏览器里已经播种过一份
+ * （`id: builtin_dayan`，`builtin: true`）。撤掉注册之后，
+ * `missingBuiltinIds` 只会算「清单里缺哪些」，**从清单里消失的 id 没人管** ——
+ * 于是玩家库里那张卡一直留着，卡片墙上照样是 10 张。
+ * 用户的反馈正是「我现在刷新还是十个」。
+ *
+ * 所以撤卡必须做两件事：从 `BUILTIN_WORLD_IDS` 删掉，**再加到这里**。
+ * `stores/library.ts` 加载时会把这些 id 的、没被玩家动过的内置卡清掉。
+ *
+ * ⚠️ 只清 `builtin === true` 且 `!editedByUser` 的：
+ *  · 玩家复制出来的副本（`builtin !== true`）是他自己的东西；
+ *  · 他在编辑器里改过的（`editedByUser`）更不能删 —— 那等于删他的稿子。
+ */
+export const RETIRED_BUILTIN_IDS: readonly string[] = [
+  // 《大延侠客行》：改由用户自己导入（`pnpm export:dayan` 产出 .world.json）
+  'builtin_dayan',
+]
+
+/**
+ * 把**已撤下的**内置卡从库里摘掉（纯函数，便于测试）。
+ *
+ * 判定放宽到只清"原装的"：`builtin === true` 且 `!editedByUser`。
+ * 副本与玩家改过的稿子原样留下。
+ *
+ * @returns `kept` 是过滤后的列表；`removed` 是摘掉的张数（0 = 无事发生）
+ */
+export function retireBuiltinWorlds(worlds: WorldCard[]): {
+  kept: WorldCard[]
+  removed: number
+} {
+  if (!RETIRED_BUILTIN_IDS.length) return { kept: worlds, removed: 0 }
+  const retired = new Set(RETIRED_BUILTIN_IDS)
+  const kept = worlds.filter(w => {
+    if (!retired.has(w.id)) return true
+    if (w.builtin !== true) return true
+    if (w.editedByUser) return true
+    return false
+  })
+  // 一张都没摘就**原样返回同一个数组引用** —— 调用方可以据此判断"库没变"，
+  // 不必多一次无意义的落盘。
+  if (kept.length === worlds.length) return { kept: worlds, removed: 0 }
+  return { kept, removed: worlds.length - kept.length }
+}
+
+/**
  * 库里**缺**哪些内置卡 —— 计算时排除玩家自己删过的。
  *
  * ## 为什么需要它

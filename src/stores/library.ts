@@ -3,7 +3,7 @@ import type { WorldCard, HeroPreset, PlayerCard, NarrativePreset } from '@/types
 import { EMPTY_STYLE_CHOICE, styleById, type StyleChoice } from '@/data/narrativeStyles';
 import { makeId } from '@/utils/files';
 import { createKVStore, isIdbAvailable } from '@/utils/idb';
-import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds } from '@/data/builtinWorldIds';
+import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds, retireBuiltinWorlds } from '@/data/builtinWorldIds';
 import { BUILTIN_STAMP } from '@/data/builtinStamp';
 import { normalizeWorldCard } from '@/utils/worldCard';
 
@@ -442,7 +442,26 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
 
         // 注意：读到空数组不算「首次运行」（`worlds === null` 才算）。
         // 用户自己删光了卡，再把内置卡塞回去会显得删除操作没生效。
-        const firstRun = worlds === null;
+        const firstRun = worlds === null
+
+        /*
+          ── 清退：已经从内置清单里撤下的世界卡 ──
+
+          为什么非要有这一步：`missingBuiltinIds` 只回答"清单里缺哪些"，
+          而**清单里没有的 id 它根本不会提**。所以撤掉一张内置卡之后，
+          玩家库里那张 `builtin: true` 的旧卡会一直躺在卡片墙上 ——
+          表现为"我改了版本，怎么还是十张"。
+
+          判定在 `retireBuiltinWorlds` 里（纯函数，有单测）：只清原装的，
+          副本（`builtin !== true`）与 `editedByUser` 的稿子都留下。
+        */
+        let retiredCount = 0
+        if (worlds) {
+          const r = retireBuiltinWorlds(worlds)
+          worlds = r.kept
+          retiredCount = r.removed
+        }
+
         const haveIds = (worlds ?? []).map(w => w.id);
         const missing = missingBuiltinIds(haveIds, removedBuiltinCache);
 
@@ -475,7 +494,8 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
 
         const refresh = [...new Set([...missing, ...stale])];
 
-        let needSeed = false;
+        // 清退也算"库变了"，必须落盘 —— 否则下次打开又看到那张卡
+        let needSeed = retiredCount > 0;
         if (firstRun || refresh.length) {
           /*
             ⚠️ 走 `loadBuiltinWorlds`（按 id **动态**加载，每个世界各成一个 chunk），
