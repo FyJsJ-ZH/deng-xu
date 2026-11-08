@@ -178,7 +178,8 @@ describe('回溯 · 只回滚玩家能感知的那几项', () => {
     playTurn(2)
     playTurn(3)
     S().rewindTo(2)
-    expect(S().turnSnapshots.map(s => s.turn)).toEqual([1, 2])
+    // turn 0（开局）不在"被取消的未来"里 —— 它永远留着
+    expect(S().turnSnapshots.map(s => s.turn)).toEqual([0, 1, 2])
     expect(S().rewindTo(3)).toBe(false)
   })
 
@@ -186,7 +187,8 @@ describe('回溯 · 只回滚玩家能感知的那几项', () => {
     playTurn(1)
     const before = JSON.stringify({ h: S().history, m: S().memory, r: S().resources })
     expect(S().rewindTo(9)).toBe(false)
-    expect(S().rewindTo(0)).toBe(false)
+    // 早已被裁掉、或压根不存在的轮次（负数是脏数据）也回不去
+    expect(S().rewindTo(-1)).toBe(false)
     expect(JSON.stringify({ h: S().history, m: S().memory, r: S().resources })).toBe(before)
   })
 
@@ -199,8 +201,87 @@ describe('回溯 · 只回滚玩家能感知的那几项', () => {
   })
 })
 
-describe('快照 · 深度隔离与上限', () => {
-  it('★ 快照不是引用：之后的 UPDATE_CHARACTER 不能改到它', () => {
+/**
+ * 回到开局（turn 0）。
+ *
+ * ## 为什么这个锚点必须存在
+ *
+ * 玩家报：「现在的『回到上几轮』不能用于回到游戏开局重新生成开局，
+ * 如果要用一样的配置重开一局很麻烦」。
+ *
+ * 病根很直接：快照是在每轮**结束**时拍的，第一幕没有"结束前"这个时刻，
+ * 于是开场不满意就只能退回标题、重选世界、重配主角、重分配属性点。
+ *
+ * 现在 `startGame()` 在 isGameStarted 变 true 的那一刻拍一份 turn 0 ——
+ * 那时 SessionSetup 已经把世界卡、主角、背景、属性点、开局物品、在场角色
+ * 全部写完了，所以这份快照就是"第一幕生成之前的完整现场"。
+ *
+ * 三件事必须成立：有这份快照、玩多少轮都不被裁、还原后历史清空。
+ */
+describe('回到开局（turn 0 锚点）', () => {
+  it('★ 开局就会留下 turn 0 快照', () => {
+    expect(S().turnSnapshots.map(s => s.turn)).toEqual([0])
+    expect(S().turnSnapshots[0].historyDelta).toEqual([])
+    expect(S().turnSnapshots[0].historyLength).toBe(0)
+  })
+
+  it('★ 玩了几轮之后 rewindTo(0)：历史清空、数值回到开局时的样子', () => {
+    /*
+      ⚠️ 顺序要跟真实流程一致：SessionSetup 是**先**把主角/角色/物品写进 store，
+      **最后**才 onLaunch → startGame（那时才拍 turn 0）。
+      所以这里也先加角色、再重拍一次开局快照。
+    */
+    S().addCharacter({ id: 'pei', name: '裴无咎', description: '', relationship: '陌生人', status: '正常' })
+    S().resetGame()
+    S().addCharacter({ id: 'pei', name: '裴无咎', description: '', relationship: '陌生人', status: '正常' })
+    S().startGame()
+
+    const atStart = JSON.parse(JSON.stringify(S().resources))
+
+    playTurn(1, { item: '一枚铜钱', summary: '第1轮的摘要' })
+    playTurn(2)
+    S().modifyResource('health', -3)
+    expect(S().resources.health).not.toBe(atStart.health)
+    expect(countTurns(S().history)).toBe(2)
+
+    expect(S().rewindTo(0)).toBe(true)
+    expect(S().history).toHaveLength(0)
+    expect(S().summary).toBe('')
+    expect(S().resources).toEqual(atStart)
+    // 开局就在场的人也还在（它在开局快照里，不是被清掉的东西）
+    expect(S().characters.map(c => c.id)).toEqual(['pei'])
+    // 快照链只剩开局那一个锚点
+    expect(S().turnSnapshots.map(s => s.turn)).toEqual([0])
+  })
+
+  it('★ 玩满上限之后 cuối 仍能回到开局（turn 0 不参与裁剪）', () => {
+    for (let t = 1; t <= MAX_TURN_SNAPSHOTS + 5; t++) playTurn(t)
+    expect(S().turnSnapshots.some(s => s.turn === 0)).toBe(true)
+    expect(S().rewindTo(0)).toBe(true)
+    expect(S().history).toHaveLength(0)
+  })
+
+  it('回到开局之后还能继续正常回溯（链从 0 重建）', () => {
+    playTurn(1)
+    playTurn(2)
+    S().rewindTo(0)
+    playTurn(1)
+    expect(S().rewindTo(1)).toBe(true)
+    expect(S().turnSnapshots.map(s => s.turn)).toEqual([0, 1])
+  })
+
+  it('开局快照不会被"外部截短历史"的启发式误清（它是历史的合法起点）', () => {
+    playTurn(1)
+    playTurn(2)
+    // 模拟手动清史：历史被截短，旧快照描述的历史已不存在
+    useGameStore.setState({ history: [] })
+    playTurn(1)
+    // 链从 0 重建：开局锚点仍在
+    expect(S().turnSnapshots[0].turn).toBe(0)
+  })
+})
+
+describe('快照 · 深度隔离与上限', () => {  it('★ 快照不是引用：之后的 UPDATE_CHARACTER 不能改到它', () => {
     S().addCharacter({
       id: 'pei', name: '裴无咎', description: '', relationship: '欠他人情', status: '正常',
     })
@@ -216,7 +297,12 @@ describe('快照 · 深度隔离与上限', () => {
     for (let t = 1; t <= MAX_TURN_SNAPSHOTS + 3; t++) playTurn(t)
     const turns = S().turnSnapshots.map(s => s.turn)
     expect(turns).toHaveLength(MAX_TURN_SNAPSHOTS)
-    expect(turns[0]).toBe(4)
+    /*
+      ⚠️ 首位是 **0**（开局快照），不是 4 —— 它不占"最近 N 轮"的名额，
+      而是常驻。从第 5 轮起才是被窗口保住的轮次。
+    */
+    expect(turns[0]).toBe(0)
+    expect(turns[1]).toBe(5)
     // 超出的最旧几轮**回不去**了 —— 这是设计取舍，接口必须如实返回 false
     expect(S().rewindTo(1)).toBe(false)
     // 而保留窗口里的轮次仍然能正确回滚（增量重放不因裁掉旧快照而失效）
@@ -286,7 +372,8 @@ describe('快照 · 深度隔离与上限', () => {
     playTurn(4)
 
     // 旧链（第 1、2 轮）描述的历史已经不存在了，重放会整体错位 —— 必须被丢掉
-    expect(S().turnSnapshots.map(s => s.turn)).toEqual([3, 4])
+    // （**开局锚点除外**：它描述的是"第一幕之前"，和后来的历史没有依赖关系）
+    expect(S().turnSnapshots.map(s => s.turn)).toEqual([0, 3, 4])
     expect(S().rewindTo(1)).toBe(false)
     expect(S().rewindTo(3)).toBe(true)
     expect(S().history.map(h => h.content)).toEqual(['第2轮的叙事', '第3轮的行动', '第3轮的叙事'])

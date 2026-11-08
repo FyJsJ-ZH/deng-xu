@@ -146,7 +146,9 @@ export function GameShell() {
     clearTruncationWarning,
     rewindTurns,
     rewindOptions,
-    rewindToTurn
+    rewindToTurn,
+    restartOpening,
+    canRestartOpening,
   } = useGameEngine()
 
   /*
@@ -336,6 +338,13 @@ export function GameShell() {
           onConfirm={() => {
             const t = pendingRewind.turn
             setPendingRewind(null)
+            // turn 0 = 回到开局（还原开局快照 + 重新生成第一幕）
+            if (t === 0) {
+              void restartOpening().then((ok: boolean) => {
+                if (!ok) useUIStore.getState().setStatusMessage('这一局没有留下开局快照，回不到开局')
+              })
+              return
+            }
             const done = rewindToTurn(t)
             // 失败要说出来：快照可能已经超出上限，静默什么都不发生会让人以为按钮坏了
             if (!done) useUIStore.getState().setStatusMessage(`第 ${t} 轮的快照已经不在了，回不去`)
@@ -438,16 +447,35 @@ export function GameShell() {
             （只有叙事与状态变更），于是玩家面对一串编号完全想不起当时做过什么，
             也就无从判断该退回哪一轮 —— 这是"回溯"这个功能最实际的用法障碍。
           */}
-          {rewindTurns.length > 0 && (
+          {/*
+            ⚠️ 显示条件是「有轮次快照**或者**有开局快照」。
+            刚开局那一轮还没跑完时 `rewindTurns` 是空的，但此时恰恰最需要
+            「回到开局」—— 第一幕正是不满意的时候。
+          */}
+          {(rewindTurns.length > 0 || canRestartOpening) && (
             <>
               <span className="opacity-40">|</span>
               <select
                 className="bg-transparent border border-text-muted/30 rounded px-1 py-[1px] text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-40 max-w-[16rem]"
                 value=""
                 disabled={isProcessing}
-                title={`回到某一轮结束时：叙事历史、三层记忆、数值（属性/资源/物品/关系/时间）都会一起回滚，之后发生的事全部作废。\n可回滚的轮次：${rewindTurns.join('、')}（更早的轮次已超出快照上限 ${MAX_TURN_SNAPSHOTS_UI}）\n下拉里显示的是**那一轮你输入的行动**。`}
+                title={`回到某一轮结束时：叙事历史、三层记忆、数值（属性/资源/物品/关系/时间）都会一起回滚，之后发生的事全部作废。\n可回滚的轮次：${rewindTurns.join('、') || '（暂无）'}（更早的轮次已超出快照上限 ${MAX_TURN_SNAPSHOTS_UI}）\n下拉里显示的是**那一轮你输入的行动**。\n\n「回到开局」会按同一套配置（世界卡 / 主角 / 背景 / 属性点 / 在场角色）重新生成第一幕。`}
                 onChange={e => {
-                  const t = Number(e.target.value)
+                  const raw = e.target.value
+                  if (!raw) return
+                  if (raw === 'opening') {
+                    /*
+                      回到开局。没有"那一轮的行动"可抄，所以 action 放一段说明，
+                      确认框会按 turn 0 渲染成另一种文案（见 RewindConfirm）。
+                    */
+                    setPendingRewind({
+                      turn: 0,
+                      action: '按同一套配置重新生成第一幕：世界卡、主角、背景选择、'
+                        + '属性点、开局物品与在场角色都保持不动，只把这一局讲过的所有轮次清掉。',
+                    })
+                    return
+                  }
+                  const t = Number(raw)
                   if (!t) return
                   const opt = rewindOptions.find(o => o.turn === t)
                   /*
@@ -465,6 +493,7 @@ export function GameShell() {
                 }}
               >
                 <option value="">回到第…轮</option>
+                {canRestartOpening && <option value="opening">↺ 回到开局（重新生成第一幕）</option>}
                 {[...rewindOptions].reverse().map(o => (
                   <option key={o.turn} value={o.turn}>
                     第 {o.turn} 轮 · {o.action}

@@ -359,6 +359,16 @@ interface GameEngineReturn {
    * 由 UI 明确告诉玩家"这一轮回不去了"，而不是假装成功。
    */
   rewindToTurn: (turnIndex: number) => boolean
+  /**
+   * **回到开局并重新生成第一幕**（2026-11）。
+   *
+   * 返回是否成功：这一局没留下开局快照（老存档、手动清过快照）时返回 false。
+   * 成功时它会把这一局的所有轮次清掉，按同一套会话配置重新发起第一幕 ——
+   * 世界卡、主角、背景、属性点、在场角色都不动，因为它们在 session store 里。
+   */
+  restartOpening: () => Promise<boolean>
+  /** 这一局有没有开局快照可回（决定下拉里那一项显不显示） */
+  canRestartOpening: boolean
 }
 
 /**
@@ -1622,6 +1632,52 @@ export function useGameEngine(): GameEngineReturn {
     return true
   }
 
+  /**
+   * **回到开局，重新生成第一幕**（2026-11）。
+   *
+   * ## 它和 `rewindToTurn` 的区别
+   *
+   * `rewindToTurn` 只能回到第 1 轮之后 —— 快照是在每轮**结束**时拍的，
+   * 第一幕本身没有"结束前"这个时刻。于是玩家遇到「开场不满意」时，
+   * 唯一的出路是退回标题、重选世界、重配主角、重分配属性点，
+   * 而他要的往往只是"这一场重来一次"。
+   *
+   * 现在 `startGame()` 会在开局那一刻拍一份 **turn 0** 快照，这里把它还原：
+   *
+   *  · 数值 / 物品 / 在场角色 / 时间地点 —— 回到第一幕生成**之前**；
+   *  · 世界卡、主角档案、背景选择、属性分配 —— **不动**（它们在 session store 里，
+   *    快照压根不碰），所以"用同样的配置"是天然成立的；
+   *  · 历史 / 摘要 / 记忆 / 快照链 —— 清空，只留 turn 0 这个锚点；
+   *  · `sessionUsage` —— **不清**。那是真花掉的钱，和剧情无关。
+   */
+  const restartOpening = async (): Promise<boolean> => {
+    const ok = useGameStore.getState().rewindTo(0)
+    if (!ok) return false
+
+    setLastAction(null)
+    setStreamingContent(null)
+    setStreamingReasoning(null)
+    setLastError(null)
+    setTruncationWarning(null)
+    // 归档里可能收着"被作废的未来"，不清会被 loadArchive 读回历史里
+    void clearArchive()
+
+    useUIStore.getState().setStatusMessage('已回到开局，正在重新生成第一幕…')
+    setTimeout(() => useUIStore.getState().setStatusMessage(null), 2500)
+
+    /*
+      直接发起生成，不走 App 那个"history 为空就自动开演"的 effect ——
+      那条路依赖 `hasInitialized` 这个组件内的 ref，重开时必须由这里显式触发，
+      否则玩家会停在"开局空白、什么都不会发生"上。
+    */
+    try {
+      await handleAction('init', '开始故事')
+    } catch {
+      // handleAction 内部已经把错误写进 lastError，这里不重复报
+    }
+    return true
+  }
+
   return {
     handleAction,
     retryLastAction,
@@ -1637,11 +1693,21 @@ export function useGameEngine(): GameEngineReturn {
     debugDataOutput,
     isInputAllowed,
     turnCount: countTurns(store.history),
-    rewindTurns: store.turnSnapshots.map(s => s.turn),
-    rewindOptions: store.turnSnapshots.map(s => {
-      const full = String(s.playerAction || '').trim()
-      return { turn: s.turn, action: summarizeAction(full), full }
-    }),
+    /*
+      turn 0 是「开局前」那个锚点，由 `restartOpening` 单独消费 ——
+      不能混进「回到第 N 轮」的下拉里（它会被显示成"第 0 轮"，
+      而且 `Number('0')` 在调用方那边会被当成"没选"直接 return）。
+    */
+    rewindTurns: store.turnSnapshots.map(s => s.turn).filter(t => t > 0),
+    rewindOptions: store.turnSnapshots
+      .filter(s => s.turn > 0)
+      .map(s => {
+        const full = String(s.playerAction || '').trim()
+        return { turn: s.turn, action: summarizeAction(full), full }
+      }),
+    /** 有没有开局快照可回（老存档、或手动清过快照的局可能没有） */
+    canRestartOpening: store.turnSnapshots.some(s => s.turn === 0),
     rewindToTurn,
+    restartOpening,
   }
 }

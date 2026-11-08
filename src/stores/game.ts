@@ -322,6 +322,53 @@ export function replayHistory(
   return history
 }
 
+/**
+ * 把当前状态拍成一份快照。
+ *
+ * `historyDelta` 由调用方给（每轮只存增量；开局那份是空数组）。
+ * 深拷贝是必须的：`characters` 里的元素、`story.flags` 这类嵌套对象会被
+ * AI 就地合并（UPDATE_CHARACTER），只存引用的话快照会**跟着未来一起变**，
+ * 回溯就成了"回到现在"。JSON 往返是最省事且够用的深拷贝（全是纯 JSON 值）。
+ */
+function snapshotOf(
+  state: GameState,
+  turn: number,
+  historyDelta: ChatMessage[],
+  historyLength: number,
+  playerAction?: string,
+): TurnSnapshot {
+  return JSON.parse(JSON.stringify({
+    turn,
+    playerAction: typeof playerAction === 'string' && playerAction.trim() ? playerAction.trim() : undefined,
+    historyDelta,
+    historyLength,
+    summary: state.summary,
+    memory: state.memory,
+    resources: state.resources,
+    aspects: state.aspects,
+    inventory: state.inventory,
+    characters: state.characters,
+    lores: state.lores,
+    rites: state.rites,
+    languages: state.languages,
+    locations: state.locations,
+    unlockedDoors: state.unlockedDoors,
+    knownFacts: state.knownFacts,
+    facts: state.facts,
+    readBooks: state.readBooks,
+    masteredLores: state.masteredLores,
+    tags: state.tags,
+    story: state.story,
+    time: state.time,
+    identity: state.identity,
+    location: state.location,
+    sceneId: state.sceneId,
+    stage: state.stage,
+    currentOptions: state.currentOptions,
+    turnsSinceLastMajorEvent: state.turnsSinceLastMajorEvent,
+  })) as TurnSnapshot
+}
+
 /** 从快照里重建一份完整的运行时状态（缺失字段用当前值兜底） */
 function snapshotToState(snapshot: TurnSnapshot, history: ChatMessage[]) {
   return {
@@ -1118,7 +1165,26 @@ export const useGameStore = create<GameState>()(
         // 与 patchMemory 同一套合并规则，所以同一轮再写一次是**覆盖**而不是追加两条
         memory: appendTimelineBeat(state.memory, turn, text),
       })),
-      startGame: () => set({ isGameStarted: true }),
+      /*
+        开局。
+
+        ⚠️ 顺带拍一份 **turn 0 快照**（2026-11）。
+
+        玩家要的是「用同一套配置重开一局」：第一幕生成得不好、或者想换个开局角度，
+        而「回到上几轮」只能回到第 1 轮之后 —— 开局那一幕本身永远回不去，
+        只能退回标题、重新选世界、重新配主角、重新分配属性点。
+
+        这里在 isGameStarted 变 true 的那一刻（也就是 SessionSetup 已经把
+        世界卡、主角档案、背景、属性点、开局物品、在场角色全部写完之后）
+        把状态整份拍下来。之后「回到开局」= 还原这份快照 + 清历史 + 重新生成第一幕。
+
+        会话配置本身（世界卡 / 主角 / 背景选择）不在快照里 —— 它们在 session store，
+        还原时压根不动，所以"同样的配置"是天然成立的。
+      */
+      startGame: () => set((state) => ({
+        isGameStarted: true,
+        turnSnapshots: [snapshotOf(state, 0, [], state.history.length)],
+      })),
       resetGame: () => set({ ...INITIAL_STATE }),
       returnToTitle: () => set({ isGameStarted: false }),
 
@@ -1197,9 +1263,15 @@ export const useGameStore = create<GameState>()(
           留着它们会让重放整体错位（校验会一路失败）。
           直接丢弃整条链、从现在重新开始 —— 代价是"更早的轮回不去了"，
           而那本来就已经是事实（历史都不在了）。
+
+          ⚠️ **但 turn 0（开局锚点）要留下**：它描述的从来不是"某段历史"，
+          而是"第一幕生成之前"。它和后来那些被截短的轮次没有依赖关系，
+          留着它，玩家清过历史之后仍然能用「回到开局」重开这一局。
         */
         const truncated = !!prev && prev.historyLength > historyLength
-        const base = truncated ? [] : state.turnSnapshots
+        const base = truncated
+          ? state.turnSnapshots.filter(s => s.turn === 0)
+          : state.turnSnapshots
 
         /*
           ⚠️ 起算点用**上一轮快照记录的绝对长度**，绝不能用 `slice(-2)` 之类的写法。
@@ -1217,44 +1289,23 @@ export const useGameStore = create<GameState>()(
           会被 AI 就地合并（UPDATE_CHARACTER），只存引用的话快照会**跟着未来一起变**，
           回溯就成了"回到现在"。JSON 往返是最省事且够用的深拷贝（全是纯 JSON 值）。
         */
-        const snapshot = JSON.parse(JSON.stringify({
-          turn: turnIndex,
-          playerAction: typeof playerAction === 'string' && playerAction.trim() ? playerAction.trim() : undefined,
-          historyDelta,
-          historyLength,
-          summary: state.summary,
-          memory: state.memory,
-          resources: state.resources,
-          aspects: state.aspects,
-          inventory: state.inventory,
-          characters: state.characters,
-          lores: state.lores,
-          rites: state.rites,
-          languages: state.languages,
-          locations: state.locations,
-          unlockedDoors: state.unlockedDoors,
-          knownFacts: state.knownFacts,
-          facts: state.facts,
-          readBooks: state.readBooks,
-          masteredLores: state.masteredLores,
-          tags: state.tags,
-          story: state.story,
-          time: state.time,
-          identity: state.identity,
-          location: state.location,
-          sceneId: state.sceneId,
-          stage: state.stage,
-          currentOptions: state.currentOptions,
-          turnsSinceLastMajorEvent: state.turnsSinceLastMajorEvent,
-        })) as TurnSnapshot
+        const snapshot = snapshotOf(state, turnIndex, historyDelta, historyLength, playerAction)
 
         const kept = base.filter(s => s.turn !== turnIndex)
         kept.push(snapshot)
         kept.sort((a, b) => a.turn - b.turn)
-        return {
-          // 只留最近 MAX_TURN_SNAPSHOTS 轮：这是"退几步"的功能，不是无限时间旅行
-          turnSnapshots: kept.slice(-MAX_TURN_SNAPSHOTS),
-        }
+        /*
+          ⚠️ **turn 0（开局前）永远不裁**，其余仍按最近 MAX_TURN_SNAPSHOTS 轮保留。
+
+          原先这里是 `kept.slice(-MAX_TURN_SNAPSHOTS)` —— 那会把链首的
+          turn 0 一起切掉，玩到六十几轮之后「回到开局」就消失了，
+          而且没有任何提示（下拉里那一项凭空不见）。
+          开局快照是整个功能里**唯一**能回到第一幕的锚点，一条都不能丢。
+        */
+        const opening = kept.filter(s => s.turn === 0)
+        const older = kept.filter(s => s.turn !== 0).slice(-Math.max(0, MAX_TURN_SNAPSHOTS - opening.length))
+        const trimmed = [...opening, ...older].sort((a, b) => a.turn - b.turn)
+        return { turnSnapshots: trimmed }
       }),
 
       rewindTo: (turnIndex) => {

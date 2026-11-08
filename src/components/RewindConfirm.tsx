@@ -14,6 +14,13 @@ interface RewindConfirmProps {
 /**
  * 回溯确认框。
  *
+ * ## `turn === 0` 是「回到开局」
+ *
+ * 开局那一刻也会拍一份快照（`startGame` 里拍的 turn 0），
+ * 用来实现「用同样的配置重开一局」。它在语义上不是"某一轮"，所以文案要分开：
+ * 那里没有"你在那一轮输入的行动"（玩家还没做任何事），
+ * 作废的不是"这一轮之后"，而是**整局**。
+ *
  * ## 为什么从 `window.confirm` 换成自绘的
  *
  * 原先这里是一句 `window.confirm(...)`，把那一轮的行动原文塞在提示文字里。
@@ -37,6 +44,9 @@ interface RewindConfirmProps {
 export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfirmProps) {
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** turn 0 = 回到开局（重新生成第一幕），不是"第 0 轮" */
+  const isOpening = turn === 0
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 
@@ -62,7 +72,7 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
-      aria-label={`回到第 ${turn} 轮结束时`}
+      aria-label={isOpening ? '回到开局并重新生成第一幕' : `回到第 ${turn} 轮结束时`}
     >
       <div
         className="w-full max-w-md bg-background border border-text-muted/25 rounded-lg overflow-hidden shadow-2xl"
@@ -71,13 +81,17 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
         {/* 标题 */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-text-muted/20">
           <RotateCcw size={13} className="text-accent-lantern shrink-0" />
-          <div className="text-sm font-serif text-text-primary">回到第 {turn} 轮结束时？</div>
+          <div className="text-sm font-serif text-text-primary">
+            {isOpening ? '回到开局，重新生成第一幕？' : `回到第 ${turn} 轮结束时？`}
+          </div>
         </div>
 
         <div className="px-4 py-3 space-y-2.5">
-          {/* 那一轮的行动 —— 可选中、可复制 */}
+          {/* 那一轮的行动 —— 可选中、可复制；开局那条没有行动，换成说明 */}
           <div className="space-y-1.5">
-            <div className="text-[10px] text-text-muted tracking-wider">你在那一轮输入的行动</div>
+            <div className="text-[10px] text-text-muted tracking-wider">
+              {isOpening ? '会发生什么' : '你在那一轮输入的行动'}
+            </div>
             {hasAction ? (
               <div className="rounded border border-text-muted/20 bg-black/25 px-2.5 py-2 max-h-[9rem] overflow-y-auto select-text">
                 <p className="text-xs text-text-secondary leading-relaxed font-serif whitespace-pre-wrap break-words">
@@ -93,9 +107,11 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
           <div className="flex items-start gap-1.5 rounded border border-accent-grail/25 bg-accent-grail/5 px-2.5 py-2">
             <AlertTriangle size={11} className="text-accent-grail shrink-0 mt-0.5" />
             <p className="text-[11px] text-text-secondary leading-relaxed">
-              这一轮之后发生的事会
-              <span className="text-accent-grail">全部作废</span>
-              （叙事、数值、关系、记忆一起回滚）。
+              {isOpening
+                ? <>这一局的<strong className="text-accent-grail">所有轮次</strong>都会作废，
+                    按同一套配置（世界卡 / 主角 / 背景 / 属性点 / 在场角色）重新生成第一幕。</>
+                : <>这一轮之后发生的事会<span className="text-accent-grail">全部作废</span>
+                    （叙事、数值、关系、记忆一起回滚）。</>}
             </p>
           </div>
         </div>
