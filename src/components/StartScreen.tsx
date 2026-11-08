@@ -8,18 +8,13 @@ import { useLibraryStore } from '@/stores/library'
 import { useUIStore } from '@/stores/ui'
 import { useGameStore } from '@/stores/game'
 import { useSessionStore } from '@/stores/session'
-import { TutorialModal } from '@/components/TutorialModal'
 import { ApiKeyModal } from '@/components/ApiKeyModal'
-import { SessionSetup } from '@/components/SessionSetup'
 import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary'
 import { SaveManager } from '@/components/SaveManager'
 import { WorldPackManager } from '@/components/WorldPackManager'
 import { MainMenu } from '@/components/MainMenu'
-import { HeroPresets } from '@/components/HeroPresets'
-import { PresetLibrary } from '@/components/PresetLibrary'
 import { useNavStore } from '@/stores/nav'
-import { WorldbookPreview } from '@/components/WorldbookPreview'
 
 /**
  * 世界卡编辑器懒加载。
@@ -29,6 +24,44 @@ import { WorldbookPreview } from '@/components/WorldbookPreview'
 const CardEditor = lazyWithRetry(() =>
   import('@/components/CardEditor').then(m => ({ default: m.CardEditor }))
 )
+
+/**
+ * 下面五个都是**整屏页面**，各自只在点进去之后才渲染 ——
+ * 因此也各成一个独立 chunk，点开时再取。
+ *
+ * 2026-11 第三十四轮拆的。用户报「进入首页很卡」，量下来首屏 gzip 310 KB，
+ * 其中 `index` 一块 221 KB —— 而它装着一个玩家**在卡片墙上根本看不到**的
+ * 选角页（905 行）、世界书预览（573 行）、我的主角（474 行）、
+ * 叙事预设（334 行）与教程（156 行）。
+ *
+ * 代价：点「我的主角」这类入口时多一次请求（本地 <100ms，有兜底占位）。
+ * 收益：每次打开站点都少下这些字节。
+ */
+const SessionSetup = lazyWithRetry(() =>
+  import('@/components/SessionSetup').then(m => ({ default: m.SessionSetup }))
+)
+const WorldbookPreview = lazyWithRetry(() =>
+  import('@/components/WorldbookPreview').then(m => ({ default: m.WorldbookPreview }))
+)
+const HeroPresets = lazyWithRetry(() =>
+  import('@/components/HeroPresets').then(m => ({ default: m.HeroPresets }))
+)
+const PresetLibrary = lazyWithRetry(() =>
+  import('@/components/PresetLibrary').then(m => ({ default: m.PresetLibrary }))
+)
+const TutorialModal = lazyWithRetry(() =>
+  import('@/components/TutorialModal').then(m => ({ default: m.TutorialModal }))
+)
+
+/** 整屏页面在 chunk 还没到时用的占位：结构与背景色一致，不会闪白 */
+function ScreenLoading({ label }: { label: string }) {
+  return (
+    <div className="min-h-screen min-h-[100dvh] w-full bg-background flex items-center justify-center">
+      <span className="text-xs font-mono text-text-muted">{label}</span>
+    </div>
+  )
+}
+
 import { downloadFile, readFileAsText, timestampSuffix } from '@/utils/files'
 import type { CardBundle, WorldCard } from '@/types/cards'
 
@@ -40,7 +73,7 @@ import type { CardBundle, WorldCard } from '@/types/cards'
  */
 export function StartScreen() {
   const { worlds, loaded, loadError, loadWorlds, deleteWorld, duplicateWorld, importWorlds } = useLibraryStore()
-  const { setCardEditorOpen, setEditingWorldId, setApiKeyModalOpen, showTutorial, setShowTutorial, llm, pendingSetup, setPendingSetup } = useUIStore()
+  const { isCardEditorOpen, setCardEditorOpen, setEditingWorldId, setApiKeyModalOpen, showTutorial, setShowTutorial, llm, pendingSetup, setPendingSetup } = useUIStore()
   const { resetGame, startGame, isGameStarted } = useGameStore()
   const clearSession = useSessionStore(s => s.clearSession)
 
@@ -356,16 +389,18 @@ export function StartScreen() {
   */
   if (setupWorld && view.name === 'setup') {
     return (
-      <SessionSetup
-        world={setupWorld}
-        onCancel={() => {
-          setSetupWorldId(null)
-          setPendingSetup(null)
-          // 从选角返回上一级（卡片库/世界书），而不是直接跳回主菜单
-          navBack()
-        }}
-        onLaunch={handleLaunch}
-      />
+      <Suspense fallback={<ScreenLoading label="正在载入选角…" />}>
+        <SessionSetup
+          world={setupWorld}
+          onCancel={() => {
+            setSetupWorldId(null)
+            setPendingSetup(null)
+            // 从选角返回上一级（卡片库/世界书），而不是直接跳回主菜单
+            navBack()
+          }}
+          onLaunch={handleLaunch}
+        />
+      </Suspense>
     )
   }
 
@@ -375,7 +410,11 @@ export function StartScreen() {
     混在一起会让选角页更长、也更难找。
   */
   if (view.name === 'heroes') {
-    return <HeroPresets onBack={() => navBack()} />
+    return (
+      <Suspense fallback={<ScreenLoading label="正在载入「我的主角」…" />}>
+        <HeroPresets onBack={() => navBack()} />
+      </Suspense>
+    )
   }
 
   /*
@@ -383,7 +422,11 @@ export function StartScreen() {
     但一个管人、一个管笔。放在卡片库里会让人以为它也是一张卡。
   */
   if (view.name === 'presets') {
-    return <PresetLibrary onBack={() => navBack()} />
+    return (
+      <Suspense fallback={<ScreenLoading label="正在载入叙事预设…" />}>
+        <PresetLibrary onBack={() => navBack()} />
+      </Suspense>
+    )
   }
 
   /** 主菜单视图：不渲染卡片墙，只有若干入口 */
@@ -392,7 +435,13 @@ export function StartScreen() {
       <div className="min-h-screen min-h-[100dvh] w-full bg-background text-text-primary flex flex-col relative">
         <div className="absolute inset-0 bg-neutral-900 opacity-[0.04] pointer-events-none" />
         <ApiKeyModal />
-        <AnimatePresence>{showTutorial && <TutorialModal onClose={closeTutorial} />}</AnimatePresence>
+        {showTutorial && (
+          <Suspense fallback={null}>
+            <AnimatePresence>
+              <TutorialModal onClose={closeTutorial} />
+            </AnimatePresence>
+          </Suspense>
+        )}
         {toast && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -427,18 +476,20 @@ export function StartScreen() {
         <div className="absolute inset-0 bg-neutral-900 opacity-[0.04] pointer-events-none" />
         <ApiKeyModal />
         <main className="relative z-10 flex-1 overflow-y-auto">
-          <WorldbookPreview
-            world={previewWorld}
-            isBuiltin={previewWorld.builtin}
-            onBack={navBack}
-            onEdit={() => { setEditingWorldId(previewWorld.id); setCardEditorOpen(true) }}
-            onStart={() => {
-              setSetupWorldId(previewWorld.id)
-              // 从详情页起局：详情页可能是从「开始新游戏」或「世界书」进来的，
-              // 把来源原样透传给选角，返回时才回得去该去的那一屏
-              navPush({ name: 'setup', worldId: previewWorld.id, intent: libraryIntent })
-            }}
-          />
+          <Suspense fallback={<ScreenLoading label="正在载入世界书…" />}>
+            <WorldbookPreview
+              world={previewWorld}
+              isBuiltin={previewWorld.builtin}
+              onBack={navBack}
+              onEdit={() => { setEditingWorldId(previewWorld.id); setCardEditorOpen(true) }}
+              onStart={() => {
+                setSetupWorldId(previewWorld.id)
+                // 从详情页起局：详情页可能是从「开始新游戏」或「世界书」进来的，
+                // 把来源原样透传给选角，返回时才回得去该去的那一屏
+                navPush({ name: 'setup', worldId: previewWorld.id, intent: libraryIntent })
+              }}
+            />
+          </Suspense>
         </main>
       </div>
     )
@@ -449,11 +500,19 @@ export function StartScreen() {
       <div className="absolute inset-0 bg-neutral-900 opacity-[0.04] pointer-events-none" />
       <ApiKeyModal />
       <AnimatePresence>{showTutorial && <TutorialModal onClose={closeTutorial} />}</AnimatePresence>
-      <ChunkErrorBoundary label="卡片编辑器加载失败">
-        <Suspense fallback={null}>
-          <CardEditor />
-        </Suspense>
-      </ChunkErrorBoundary>
+      {/*
+        ⚠️ 必须**条件渲染**，不能只是懒加载。
+        组件内部虽然有 `if (!isCardEditorOpen) return null`，但那样写
+        这个 chunk 在卡片墙一挂载时就会立刻被下载（React 会渲染这个懒组件）。
+        1357 行的编辑器占首屏一次请求，而玩家多半根本不会点「新建世界卡」。
+      */}
+      {isCardEditorOpen && (
+        <ChunkErrorBoundary label="卡片编辑器加载失败">
+          <Suspense fallback={null}>
+            <CardEditor />
+          </Suspense>
+        </ChunkErrorBoundary>
+      )}
 
       {/* 顶栏 */}
       <header className="relative z-10 flex items-center justify-between gap-4 px-6 py-4 border-b border-text-muted/20">

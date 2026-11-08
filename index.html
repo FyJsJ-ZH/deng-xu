@@ -29,6 +29,75 @@
   <body class="bg-background text-text-primary font-sans antialiased">
     <div id="root"></div>
 
+    <!--
+      启动屏（纯 CSS，不依赖任何 JS 包）。
+
+      为什么要它：首屏 JS 有 139 KB（gzip），在手机上冷启动要几百毫秒到一两秒，
+      而 `#root` 在此之前是**一片纯黑**——什么都没有。
+      玩家分不清"正在加载"和"卡死了"，于是一边等一边刷新，
+      而每刷一次都从头再下。
+
+      所以先给一块能立刻画出来的东西：一个会呼吸的灯点 + 两行字。
+      React 一渲染出内容，它就淡出（下面的 CSS 规则，零 JS）。
+
+      ⚠️ 这里**不许**引外部字体/图片：多一个请求就多一个可能失败的点。
+    -->
+    <div id="boot-splash" aria-hidden="true">
+      <div class="boot-mark"></div>
+      <div class="boot-word">灯叙</div>
+      <div class="boot-tip" id="boot-tip">正在载入…</div>
+    </div>
+    <style>
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #0c0c0c;
+        transition: opacity .25s ease;
+      }
+      /* #root 一旦有内容（React 渲染完），启动屏立刻让位 */
+      #root:not(:empty) ~ #boot-splash { opacity: 0; pointer-events: none; }
+      .boot-mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        border: 2px solid #f59e0b;
+        position: relative;
+        animation: boot-breathe 1.6s ease-in-out infinite;
+      }
+      .boot-mark::after {
+        content: '';
+        position: absolute;
+        inset: 9px;
+        border-radius: 50%;
+        background: #f59e0b;
+        opacity: .85;
+      }
+      .boot-word {
+        font-size: 15px;
+        letter-spacing: .35em;
+        color: #f59e0b;
+        font-family: system-ui, -apple-system, "Microsoft YaHei", sans-serif;
+      }
+      .boot-tip {
+        font-size: 11px;
+        color: #737373;
+        font-family: ui-monospace, Consolas, monospace;
+        min-height: 1em;
+      }
+      @keyframes boot-breathe {
+        0%, 100% { opacity: .45; transform: scale(.94); }
+        50%      { opacity: 1;   transform: scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-mark { animation: none; opacity: 1; }
+      }
+    </style>
     <!-- 白屏自检守卫。
          三种真实场景：
          1) file:// 双击打开了 index.html —— 它只是 Vite 入口模板，/src/main.tsx 是 TypeScript，
@@ -70,6 +139,9 @@
         function show(reason) {
           if (shown) return
           shown = true
+          // 启动屏让位：否则它会盖在下面变成一块空的灰块
+          var sp = document.getElementById('boot-splash')
+          if (sp && sp.parentNode) sp.parentNode.removeChild(sp)
           var box = document.createElement('div')
           box.setAttribute('style', [
             'position:fixed', 'inset:0', 'z-index:99999', 'display:flex',
@@ -113,7 +185,8 @@
               '或用<b>无痕/隐身窗口</b>打开这个网址，一定能看到最新版</div>' +
               '<div style="color:#e5e5e5;font-size:14px;margin:18px 0 8px"><b>3. 确认网络能访问本站</b></div>' +
               '<div style="color:#a3a3a3;font-size:13px;line-height:1.8">' +
-              '本站托管在 surge.sh。如果切换过 VPN，或所在网络屏蔽了它，页面同样打不开。</div>' +
+              '本站托管在 GitHub Pages（fyjsj-zh.github.io）。国内部分网络到它不稳定，' +
+              '切换过 VPN 或所在网络屏蔽了它，页面同样打不开。</div>' +
               '</div>' +
               (isLocal
                 ? '<p style="color:#737373;font-size:13px;margin:0">本机开发时，请确认 dev server 已启动，' +
@@ -155,6 +228,15 @@
 
         // 兜底：超时仍未挂载。给足时间（冷缓存 + 慢网），
         // 避免把"还在下载"误判成"挂了"而白白触发一次重载。
+        //
+        // 2026-11：拆成两级。原来只有 20 秒一道，而启动屏在 20 秒里一直是同一句话 ——
+        // 玩家看到的就只是"卡住了"。第 6 秒先把话说清楚（还在下、不是死了），
+        // 到第 20 秒才当真失败处理。
+        setTimeout(function () {
+          if (window.__APP_MOUNTED__) return
+          var tip = document.getElementById('boot-tip')
+          if (tip) tip.textContent = '网络有点慢，还在加载…'
+        }, 6000)
         setTimeout(function () {
           if (window.__APP_MOUNTED__) return
           var root = document.getElementById('root')
