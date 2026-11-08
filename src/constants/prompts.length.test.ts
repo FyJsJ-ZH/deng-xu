@@ -382,9 +382,17 @@ describe('战斗向世界 · 篇幅节要换一套节拍', () => {
       .toContain('约 2200 字')
   })
 
-  it('★ 九张内置卡都不许开这个开关（它们全是生活流，开了就全变打斗流水账）', () => {
+  /*
+    ⚠️ 2026-11 之前这里是「九张内置卡都不许开」（当时全是生活流）。
+    新增《刀口账》之后规则变成：**只有战斗向的卡才许开**——
+    其余世界开了就会把过日子写成打斗流水账，而战斗向的不开就会被切成
+    「你这一刀没砍中，对方退开半步」的流水账。两个方向都要挡住。
+  */
+  const COMBAT_WORLDS = new Set(['builtin_daokouzhang'])
+  it('★ 只有战斗向的内置卡才许开这个开关', () => {
     for (const w of BUILTIN_WORLDS) {
-      expect(w.combatPacing ?? false, `《${w.title}》不该开 combatPacing`).toBe(false)
+      const want = COMBAT_WORLDS.has(w.id)
+      expect(w.combatPacing ?? false, `《${w.title}》${want ? '应当' : '不该'}开 combatPacing`).toBe(want)
     }
   })
 })

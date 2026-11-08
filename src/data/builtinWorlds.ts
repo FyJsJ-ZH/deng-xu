@@ -8,6 +8,7 @@ import { zhiming } from '@/data/worlds/zhiming'
 import { ximeng } from '@/data/worlds/ximeng'
 import { elysion } from '@/data/worlds/elysion'
 import { london1905 } from '@/data/worlds/london1905'
+import { daokouzhang } from '@/data/worlds/daokouzhang'
 
 /**
  * 内置世界总表（**9 个深度世界**，每个 ≥5 万字设定）。
@@ -100,6 +101,7 @@ export const BUILTIN_WORLDS: WorldCard[] = [
   ximeng,
   elysion,
   london1905,
+  daokouzhang,
 ].map(withAvatarStyle)
 
 export default BUILTIN_WORLDS
