@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   KNOWN_PER_CHARACTER,
   MEMORY_BUDGET,
+  SUMMARY_LIMIT,
   TIMELINE_KEEP,
   appendTimelineBeat,
+  clipSummary,
   emptyMemory,
   ensurePlace,
   mergeMemory,
@@ -506,6 +508,68 @@ describe('预算 · 丢的顺序是「越物的越先丢，越人的越后丢」
     expect(text.length).toBeLessThan(MEMORY_BUDGET * 2)
     // 关系与好感最不该丢
     expect(text).toContain('老周')
+  })
+})
+
+/**
+ * 前情摘要的预算（2026-11）。
+ *
+ * ## 这组测试守的是一个真实事故
+ *
+ * 玩家报：「本轮近十万 tok 才出 1 千多 tok」。
+ *
+ * 溯源到三个地方同时没有闸门：
+ *  1. 摘要提示词写的是「在旧摘要基础上**累加**」——模型听到的是"扩写"；
+ *  2. `updateSummary` 是 `set({ summary })`，一个字的截断都没有；
+ *  3. 摘要**每一轮整份**塞进提示词。
+ *
+ * 于是每 6 轮它就长一截，一百轮之后是几万字，一轮输入被它一个人撑爆。
+ * 而 `EARLIER_SUMMARY_LIMIT`（200 字）只约束了折进 `earlierSummary` 的那一小撮。
+ */
+describe('clipSummary：前情摘要必须封顶', () => {
+  const LONG = Array.from({ length: 400 }, (_, i) =>
+    `第${i + 1}轮，他在城里办了一件事，牵连到三四个人，最后留下一个没解的扣子。`,
+  ).join('')
+
+  it('没超上限就原样返回（不做任何改写）', () => {
+    const short = '他离开雾都，坐船往北，船上遇见了那个戴铜戒指的人。'
+    expect(clipSummary(short)).toBe(short)
+  })
+
+  it('★ 超上限时长度必须压到上限以内', () => {
+    expect(LONG.length).toBeGreaterThan(SUMMARY_LIMIT * 2)
+    const out = clipSummary(LONG)
+    expect(out.length).toBeLessThanOrEqual(SUMMARY_LIMIT)
+  })
+
+  it('★ 保头保尾：开头来路与最近处境都在，中段有记号', () => {
+    const out = clipSummary(LONG)
+    expect(out.startsWith('第1轮')).toBe(true)
+    expect(out).toContain('中段已经压缩')
+    // 末尾应该是原文末尾那几句，而不是被切断的中间
+    expect(out.trimEnd().endsWith('扣子。')).toBe(true)
+  })
+
+  it('刚好等于上限时不动它（边界不许误伤）', () => {
+    const exact = '字'.repeat(SUMMARY_LIMIT)
+    expect(clipSummary(exact)).toBe(exact)
+  })
+
+  it('空串 / 纯空白 ⇒ 空串', () => {
+    expect(clipSummary('')).toBe('')
+    expect(clipSummary('   \n  ')).toBe('')
+  })
+
+  it('可以传入更小的上限（测试与将来的"快速模式"都用得上）', () => {
+    const out = clipSummary(LONG, 500)
+    expect(out.length).toBeLessThanOrEqual(500)
+    expect(out).toContain('中段已经压缩')
+  })
+
+  it('摘要预算要显著小于它该压住的正文量，否则等于没封顶', () => {
+    // 一轮 1800 字。上限应当只值几轮的体量，而不是几十轮
+    expect(SUMMARY_LIMIT).toBeLessThanOrEqual(1800 * 3)
+    expect(SUMMARY_LIMIT).toBeGreaterThan(1800)
   })
 })
 

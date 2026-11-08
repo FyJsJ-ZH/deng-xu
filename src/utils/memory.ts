@@ -240,6 +240,64 @@ export const TIMELINE_KEEP = 12
 export const EARLIER_SUMMARY_LIMIT = 200
 
 /**
+ * **前情摘要（`summary`）的硬上限（字）。**
+ *
+ * ## 为什么需要它（2026-11，玩家报「本轮近十万 tok 才出 1 千多 tok」）
+ *
+ * 病根在这条链子上：
+ *
+ *  1. `buildSummaryPrompt` 原话是「把剧情压缩成摘要……**在已有旧摘要的基础上累加，
+ *     不要丢失其中仍然有效的信息**」。模型听到的是"扩写"，于是每次压缩都比上一版长。
+ *  2. `updateSummary` 是 `set({ summary })` —— **整体替换，但一个字的截断都没有**。
+ *     源稿 `EARLIER_SUMMARY_LIMIT` 只约束了 `earlierSummary`（200 字），
+ *     主摘要这一条被漏掉了。
+ *  3. 摘要每 6 轮更新一次。100 轮就是十六次累加，几万字打底，
+ *     而它**每一轮都整份塞进提示词**（`[前情摘要]` 那一条，无截断）。
+ *
+ * 实测：大延侠客行 + 一张 6 千字的主角卡，光系统提示就 18738 token；
+ * 历史 6 条约 5600。两者合计两万四 —— 剩下的十几万只能来自这份摘要。
+ *
+ * ## 为什么是 3600 字
+ *
+ * 一轮正文约 1800 字，摘要要能压住"二十来轮"的经过（时间线另有十二拍兜底），
+ * 3600 字约合 2400 token，与历史（5600）同一个量级，不再喧宾夺主。
+ *
+ * ## 截断策略：保头保尾，掐中段
+ *
+ * 直接 `slice(-limit)` 会丢掉"他为什么走到这儿"，而那正是摘要最该保住的东西；
+ * 直接 `slice(0, limit)` 又会把最近的处境切掉。所以两头都留，中段换成一个记号 ——
+ * 中间那些经过本来就该由 `timeline`（每轮一句话）承接。
+ */
+export const SUMMARY_LIMIT = 3600
+
+/**
+ * 把摘要裁进预算。**保头保尾、掐中段**，并在切口留下记号，
+ * 免得模型把断掉的地方当成"剧情真的没有"。
+ */
+export function clipSummary(text: string, limit = SUMMARY_LIMIT): string {
+  const t = (text || '').trim()
+  if (t.length <= limit) return t
+
+  const MARK = '\n……（中段已经压缩，只保留开头与最近的部分）……\n'
+  // 头占三成：够交代来路、身份、关键决定；尾巴七成：近况与未结悬念
+  const headLen = Math.floor(limit * 0.3)
+  const tailLen = limit - headLen - MARK.length
+  const head = t.slice(0, headLen)
+  const tail = t.slice(t.length - Math.max(0, tailLen))
+
+  /*
+    尽量落在句子边界上。找不到边界（整段没有标点）就硬切 ——
+    宁可切一半，也不能因为"切点不好看"就放过一次几十万 token 的上下文。
+  */
+  const headCut = Math.max(head.lastIndexOf('。'), head.lastIndexOf('\n'))
+  const tailCutRaw = tail.search(/[。！？\n]/)
+  const cleanHead = headCut > headLen * 0.6 ? head.slice(0, headCut + 1) : head
+  const cleanTail = tailCutRaw > 0 && tailCutRaw < 120 ? tail.slice(tailCutRaw + 1) : tail
+
+  return `${cleanHead}${MARK}${cleanTail}`
+}
+
+/**
  * 「他知道你什么」的上限：每个角色最多留几条、单条多少字。
  *
  * 这一层按在场角色分开渲染，所以在场 3 个人时整块约 300 字 ——

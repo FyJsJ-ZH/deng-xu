@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { StoryState } from '@/types/story'
 import type { AttributeDef, ResourceDef, SpriteLook, WorldCard } from '@/types/cards'
-import { appendTimelineBeat, emptyMemory, ensurePlace, mergeMemory, normalizeMemory, renameInMemory, type MemoryPatch, type StoryMemory } from '@/utils/memory'
+import { appendTimelineBeat, clipSummary, emptyMemory, ensurePlace, mergeMemory, normalizeMemory, renameInMemory, type MemoryPatch, type StoryMemory } from '@/utils/memory'
 
 /**
  * 运行时存档
@@ -1075,7 +1075,18 @@ export const useGameStore = create<GameState>()(
         turnSnapshots: [],
         currentOptions: [],
       }),
-      updateSummary: (summary) => set({ summary }),
+      /*
+        ⚠️ **必须过 `clipSummary`**（2026-11）。
+
+        原先这里就是一句 `set({ summary })` —— 而 `summary` 每 6 轮被
+        「在旧摘要基础上累加」一次、只增不减，且**每一轮整份塞进提示词**。
+        一百轮之后它能到十万 token，把一轮输入撑到玩家说的「近十万 tok」。
+
+        上限与截断策略见 `utils/memory.ts` 的 `SUMMARY_LIMIT`。
+        放在 store 这一层而不是调用方：`updateSummary` 是全项目唯一的摘要写入口，
+        三条路径（摘要 AI、纯文本兜底、人工编辑）都会经过它。
+      */
+      updateSummary: (summary) => set({ summary: clipSummary(summary) }),
       /*
         写入记忆时**顺手把当前地点补进地点树**。
 

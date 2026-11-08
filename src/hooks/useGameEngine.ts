@@ -15,7 +15,7 @@ import { storySystem } from '@/systems/StorySystem'
 import { pickAvatarId } from '@/utils/avatarArt'
 import { resolveAiLook } from '@/utils/lookSpec'
 import { isKnownSceneId } from '@/utils/sceneArt'
-import { renderMemoryForPrompt, renderKnownByForPrompt, renderDossiersForPrompt } from '@/utils/memory'
+import { renderMemoryForPrompt, renderKnownByForPrompt, renderDossiersForPrompt, clipSummary } from '@/utils/memory'
 import { factOwner } from '@/utils/facts'
 import { withNarrativePreset } from '@/utils/narrativePreset'
 import { LlmError, classifyLlmError } from '@/api/llmErrors'
@@ -1140,7 +1140,16 @@ export function useGameEngine(): GameEngineReturn {
             ...(isOpening ? { loreBudget: 24000 } : {}),
           }),
         },
-        ...(updatedStore.summary ? [{ role: 'system' as const, content: `[前情摘要]\n${updatedStore.summary}` }] : []),
+        /*
+          ⚠️ 注入前再裁一次（`clipSummary`）。
+
+          store 的 `updateSummary` 已经裁过了，但**老存档里的摘要没机会过那道闸** ——
+          它是在这条上限存在之前写进去的，可能已经是几万字。
+          玩家升级后不该等「再玩六轮、触发一次摘要」才看到效果，所以这里兜一道。
+        */
+        ...(updatedStore.summary
+          ? [{ role: 'system' as const, content: `[前情摘要]\n${clipSummary(updatedStore.summary)}` }]
+          : []),
         ...(memoryBlock
           ? [{
               role: 'system' as const,
