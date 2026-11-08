@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, Suspense } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback, startTransition, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Upload, Download, Settings, Trash2, Copy, Pencil, Play,
@@ -73,7 +73,7 @@ import type { CardBundle, WorldCard } from '@/types/cards'
  */
 export function StartScreen() {
   const { worlds, loaded, loadError, loadWorlds, deleteWorld, duplicateWorld, importWorlds } = useLibraryStore()
-  const { isCardEditorOpen, setCardEditorOpen, setEditingWorldId, setApiKeyModalOpen, showTutorial, setShowTutorial, llm, pendingSetup, setPendingSetup } = useUIStore()
+  const { isCardEditorOpen, setCardEditorOpen: setCardEditorOpenRaw, setEditingWorldId, setApiKeyModalOpen, showTutorial, setShowTutorial, llm, pendingSetup, setPendingSetup } = useUIStore()
   const { resetGame, startGame, isGameStarted } = useGameStore()
   const clearSession = useSessionStore(s => s.clearSession)
 
@@ -98,8 +98,35 @@ export function StartScreen() {
    *  只能一路穿透回浏览器主页 —— 这个问题被玩家反馈了两次。
    */
   const view = useNavStore(s => s.view)
-  const navPush = useNavStore(s => s.push)
+  const navPushRaw = useNavStore(s => s.push)
   const navBack = useNavStore(s => s.back)
+
+  /*
+    ── 这两层包装不是为了好看，是为了**别让整页闪一下** ──
+
+    下面五个页面（选角 / 世界书 / 我的主角 / 叙事预设 / 卡片编辑器）都是
+    `lazyWithRetry` 的。玩家点入口时 chunk 可能还没到，组件一渲染就会 suspend。
+
+    suspend 本身没问题 —— 外层有 `<Suspense>`。问题出在**它在"同步输入"
+    （点击）里发生**：React 会打印
+    「A component suspended while responding to synchronous input」，
+    并把**整个界面**换成最近的 Suspense 兜底 —— 玩家点一下「我的主角」，
+    整页变成「正在载入…」，再闪回来。
+
+    包进 `startTransition` 之后，React 会把这次更新当**可中断的低优先级**更新：
+    旧界面继续显示，新 chunk 到了再换上去。这正是 React 18 对这类场景的解法。
+
+    把 `navPush` / `setCardEditorOpen` 各自遮一层，是为了不在二十几个调用点
+    逐个改 —— 漏一个就还会闪。
+  */
+  const navPush = useCallback(
+    (v: Parameters<typeof navPushRaw>[0]) => { startTransition(() => navPushRaw(v)) },
+    [navPushRaw],
+  )
+  const setCardEditorOpen = useCallback(
+    (v: boolean) => { startTransition(() => setCardEditorOpenRaw(v)) },
+    [setCardEditorOpenRaw],
+  )
   /**
    * 卡片墙的**用途**。三个入口原先都 push 同一个 `{ name: 'library' }`，
    * 所以点哪个进去都一样、三个入口等于一个。现在由 intent 决定这一屏做什么：
@@ -165,7 +192,7 @@ export function StartScreen() {
   // 首次进入时的引导
   useEffect(() => {
     if (!localStorage.getItem('hasSeenTutorial')) {
-      const t = setTimeout(() => setShowTutorial(true), 800)
+      const t = setTimeout(() => startTransition(() => setShowTutorial(true)), 800)
       return () => clearTimeout(t)
     }
   }, [setShowTutorial])
@@ -374,7 +401,13 @@ export function StartScreen() {
       游戏界面卡在「尚未选择世界卡」且没有任何办法回到正常流程。
     */
     setPendingSetup(null)
-    startGame()
+    /*
+      包 `startTransition`：`startGame()` 会把 App 切到 `GameShell`，
+      而那一整块是懒加载的。不包的话这次点击就等于"在同步输入里 suspend"，
+      整页会被换成 loading（见上面 navPush 的说明）。
+      包了之后主菜单会一直显示到游戏界面就绪。
+    */
+    startTransition(() => startGame())
     // 进入游戏界面 = 最深的一层，返回键要从这里逐级退回主菜单
     navPush({ name: 'game' })
   }

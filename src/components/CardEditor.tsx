@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Plus, Trash2, Upload, Download, UserPlus, Save, Copy, Play,
-  Globe, Sliders, BookOpen, Users, Wand2, Image as ImageIcon
+  Globe, Sliders, BookOpen, Users, Wand2, Image as ImageIcon, ChevronLeft
 } from 'lucide-react'
 import type { BackgroundOption, BackgroundSlot, CharacterCard, ItemTemplate, LoreTemplate, WorldCard } from '@/types/cards'
 import { useLibraryStore } from '@/stores/library'
@@ -369,13 +369,21 @@ export function CardEditor() {
         className="bg-background border border-text-muted/30 md:rounded-lg w-full max-w-6xl flex flex-col h-full md:h-[92vh] overflow-hidden shadow-2xl"
       >
         {/* 顶栏 */}
-        <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-text-muted/30 bg-surface/50">
+        <div className="flex items-center justify-between gap-2 md:gap-4 px-3 md:px-5 py-2.5 md:py-3 border-b border-text-muted/30 bg-surface/50">
           <div className="min-w-0">
             <h2 className="font-serif font-bold text-accent-lantern truncate">
               {editingWorldId ? '编辑世界卡' : '新建世界卡'}
             </h2>
+            {/*
+              手机上只留「标题 · 角色数」：三个数字拼一行的副标题在 390px 里
+              会被右上那排按钮挤到只剩「大延侠客行 · 91 角色 · 5 …」。
+              「5」是属性数还是资源数根本看不出来，不如干脆先不显示。
+            */}
             <p className="text-[10px] text-text-muted font-mono truncate">
-              {draft.title || '未命名世界'} · {draft.characters.length} 角色 · {draft.attributes.length} 属性 · {draft.resources.length} 资源
+              {draft.title || '未命名世界'} · {draft.characters.length} 角色
+              <span className="hidden sm:inline">
+                {' '}· {draft.attributes.length} 属性 · {draft.resources.length} 资源
+              </span>
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -416,7 +424,12 @@ export function CardEditor() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-xs whitespace-nowrap border-b-2 transition-colors
+                /*
+                  手机上 `px-2.5`：五个页签在 390px 里原本要宽出 26px，
+                  最后一个「角色卡」永远被截掉一截（还得手滑才看得见）。
+                  收一点内边距就全放下了，不必做成横滚。
+                */
+                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2.5 text-xs whitespace-nowrap border-b-2 transition-colors
                   ${tab === t.id
                     ? 'border-accent-lantern text-accent-lantern bg-black/20'
                     : 'border-transparent text-text-muted hover:text-text-secondary'}`}
@@ -428,12 +441,12 @@ export function CardEditor() {
         </div>
 
         {/* 内容区 */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-5 space-y-5 md:space-y-6">
 
           {/* ============ 基础 ============ */}
           {tab === 'basic' && (
             <div className="space-y-5 max-w-3xl">
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Field label="世界名称" hint="会显示在标题与叙事提示词里">
                   <input className={inputCls} value={draft.title}
                     onChange={e => patch({ title: e.target.value })} placeholder="例如：灰烬回响" />
@@ -556,7 +569,7 @@ export function CardEditor() {
                   placeholder={'1. 这个世界没有魔法，超自然仅限于…\n2. 使用「遗物」「共鸣」等术语，不要出现现代科技词汇。\n3. 死人不会说话。'} />
               </Field>
 
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/*
                   ⚠️ 标签从「主线目标」改为「长期目标（可选）」。
                   这个字段在沙盒世界里是"几个宏大宽泛的方向"，
@@ -1057,7 +1070,7 @@ export function CardEditor() {
               </div>
 
               {/* 物品与知识 */}
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 bg-surface/20 border border-text-muted/20 rounded">
                   <SectionTitle action={
                     <button onClick={addItem} className="flex items-center gap-1 text-[10px] text-accent-lantern hover:underline">
@@ -1122,7 +1135,7 @@ export function CardEditor() {
           {/* ============ 文风 ============ */}
           {tab === 'narrative' && (
             <div className="space-y-5 max-w-3xl">
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Field label="叙事人称">
                   <select className={inputCls} value={draft.narrative.pov}
                     onChange={e => patchNarrative({ pov: e.target.value as any })}>
@@ -1224,9 +1237,25 @@ export function CardEditor() {
 
           {/* ============ 角色卡 ============ */}
           {tab === 'characters' && (
-            <div className="grid lg:grid-cols-[16rem_1fr] gap-5 h-full">
-              {/* 左：角色列表 */}
-              <div className="space-y-2">
+            /*
+              ⚠️ `grid-cols-1` 不能省（2026-11，手机截图报障）。
+
+              Tailwind 的网格在没写 `grid-template-columns` 时，列宽是 `auto` ——
+              由**内容**决定。而这里每一项都含一整段人物小传（「宋修竹（大徒弟）：
+              周景贤最…」这种），auto 列会被那段文字撑到几千像素宽，
+              整个内容区于是横向溢出、连带整页可以左右拖。玩家看到的就是
+              「左边被裁掉、只看得见半行字」。
+
+              写了 `grid-cols-1` 才会变成 `minmax(0, 1fr)`，列宽服从容器。
+              所有 `md:grid-cols-2` 的块同理，都已补上 `grid-cols-1`。
+
+              手机上另有一步：列表与详情**不并排**，而是一屏一样。
+              选中一张卡 ⇒ 显示详情（顶部有「← 角色列表」）；
+              没选 ⇒ 只显示列表。否则手机上要往下滑过整张列表才找得到表单。
+            */
+            <div className="grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-4 lg:gap-5 lg:h-full">
+              {/* 左：角色列表（手机上选中某个角色后隐藏） */}
+              <div className={`space-y-2 min-w-0 ${editingChar ? 'hidden lg:block' : ''}`}>
                 <div className="flex items-center gap-2">
                   <button onClick={() => {
                     // 新建的角色默认**不在场**（与项目规范一致：谁在场由玩家勾或 AI 定）
@@ -1248,7 +1277,7 @@ export function CardEditor() {
                   支持导入 SillyTavern 的 <b>PNG</b> 角色卡与 <b>JSON</b> 卡。
                 </p>
 
-                <div className="space-y-1.5 max-h-[28rem] overflow-y-auto pr-1">
+                <div className="space-y-1.5 max-h-[60vh] lg:max-h-[28rem] overflow-y-auto pr-1">
                   {draft.characters.map(c => (
                     <button key={c.id} onClick={() => setEditingCharId(c.id)}
                       className={`w-full text-left p-2 rounded border transition-colors flex items-center gap-2
@@ -1260,7 +1289,7 @@ export function CardEditor() {
                         : <div className="w-8 h-8 rounded-full bg-surface flex items-center justify-center flex-shrink-0 text-text-muted text-xs">
                           {c.name.slice(0, 1)}
                         </div>}
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="text-xs text-text-primary truncate">{c.name}</div>
                         <div className="text-[10px] text-text-muted truncate">
                           {c.present ? '在场' : '未登场'}{c.relationship ? ` · ${c.relationship}` : ''}
@@ -1279,11 +1308,18 @@ export function CardEditor() {
               {/* 右：角色详情 */}
               <div className="min-w-0">
                 {!editingChar ? (
-                  <div className="h-full flex items-center justify-center text-xs text-text-muted italic border border-dashed border-text-muted/20 rounded min-h-[20rem]">
+                  <div className="hidden lg:flex h-full items-center justify-center text-xs text-text-muted italic border border-dashed border-text-muted/20 rounded min-h-[20rem]">
                     从左侧选择一张角色卡开始编辑
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {/* 手机专用出口：详情占满一屏，得有一条路回列表 */}
+                    <button
+                      onClick={() => setEditingCharId(null)}
+                      className="lg:hidden flex items-center gap-1.5 text-xs text-text-muted hover:text-accent-lantern transition-colors"
+                    >
+                      <ChevronLeft size={14} /> 角色列表（{draft.characters.length}）
+                    </button>
                     {/*
                       布局要点：
                       - 头像、表单、删除按钮用 flex 排；表单列加 min-w-0，
@@ -1401,7 +1437,7 @@ export function CardEditor() {
                         onChange={e => patchChar(editingChar.id, { postHistoryInstructions: e.target.value })} />
                     </Field>
 
-                    <div className="grid md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <Field label="标签" hint="用逗号分隔">
                         <input className={inputCls} value={editingChar.tags.join(', ')}
                           onChange={e => patchChar(editingChar.id, {

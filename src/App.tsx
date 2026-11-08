@@ -70,7 +70,24 @@ function App() {
   }
 
   return (
-    <>
+    /*
+      ⚠️ **根级 Suspense 是安全网，别删。**
+
+      2026-11 拆包时踩到的：下面这些页面里任何一个 lazy chunk 还没到，
+      组件就会 `throw` 一个 promise。外层没有 Suspense 边界时，
+      React 在"同步输入"里 suspend 会**把整棵树卸载**——整页变空白，
+      只剩下 index.html 那个启动屏还在闪「正在载入…」。
+
+      这一层兜住漏网的 suspend：最坏也只是整页换成一句话，
+      而不是白屏或者整个界面消失。
+    */
+    <Suspense
+      fallback={
+        <div className="min-h-screen min-h-[100dvh] w-full bg-background flex items-center justify-center">
+          <span className="text-xs font-mono text-text-muted">正在载入…</span>
+        </div>
+      }
+    >
       {!isGameStarted ? (
         <StartScreen />
       ) : (
@@ -92,7 +109,7 @@ function App() {
         于是主菜单上的提示**根本没有 DOM**，玩家看到的是"按键没反应"。
       */}
       <GlobalToast />
-    </>
+    </Suspense>
   )
 }
 

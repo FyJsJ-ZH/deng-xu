@@ -47,6 +47,10 @@ const CHECKS = [
   // 内置卡内容更新：把 IndexedDB 改成老玩家的样子再刷新，卡必须被换成新版。
   // 玩家为这件事说了三次「改了没生效」，所以它值得一套真机走查。
   { name: '内置卡刷新', file: 'builtin-refresh.mjs', port: 9868 },
+  // 世界卡编辑器在 390px 上的横向溢出（用户拍过截图：「角色卡编辑ui太宽」）。
+  // 判据是**任何 overflow-x:visible 的容器都不许超出容器宽** —— 页签栏那种
+  // 故意可横滚的、以及 truncate 那种裁长文的，都不算。
+  { name: '卡片编辑器(手机)', file: 'card-editor-mobile.mjs', port: 9869 },
 ]
 
 // ── 参数解析 ──
