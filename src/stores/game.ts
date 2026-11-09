@@ -97,6 +97,20 @@ export interface Character {
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  /**
+   * 这条回复生成时模型的思维链（2026-11 补的类型）。
+   *
+   * ## 为什么它以前"长着但不存在"
+   *
+   * `useGameEngine` 早就往 history 里塞过这个字段（用条件展开绕过类型检查），
+   * 但 `ChatMessage` 上**没有声明过它**，于是：
+   *  - 渲染层从 history 取消息时只挑了 `role` / `content`，这个字段被丢掉；
+   *  - 表现是流式时看得见思维链，**正文一写完就凭空消失**
+   *    （流式的走 `streamingReasoning`，成品的走 history，后者没带上）。
+   *
+   * 声明在这里之后，类型系统才拦得住"顺手丢字段"这种改法。
+   */
+  reasoning?: string
   timestamp?: number
 }
 
@@ -320,10 +334,24 @@ export function replayHistory(
      - 被裁过时基线为正，说明前面还有内容 —— 我们不假装那部分不存在，
        而是把它算进长度校验，重放结果照样对齐（窗口内的轮次依然可回滚）。
        少了这一步，一旦开始裁剪快照，**所有**回溯都会失败。
+
+    ⚠️ **基线那段必须真的拼回去**（2026-11 修）。
+
+    原先这里只用 baseline 做长度校验，却**没有把前面那几条放进返回值** ——
+    于是重放出来的 `history` 只有窗口内的部分，长度校验反而"因为算上了 baseline
+    的缺口"而通过。玩家看到的后果是：回退之后**翻到最上面少了一截对话**
+    （「最开始的对话消失了，翻到上面只有第二轮」）。
+
+    那一段在 `currentHistory` 的前缀里还在（任何一次回退都不会改到它们），
+    直接取过来接上就行。取不够就说明这段历史真的没了 —— 宁可回不去。
   */
   const baseline = Math.max(0, start.historyLength - (start.historyDelta?.length ?? 0))
 
   const history: ChatMessage[] = []
+  if (baseline > 0) {
+    if (currentHistory.length < baseline) return null
+    history.push(...currentHistory.slice(0, baseline))
+  }
   for (const s of chain) {
     const delta = s.historyDelta ?? []
     /*
@@ -335,12 +363,12 @@ export function replayHistory(
       而现在的历史是活的（`currentHistory`）—— 上面那条路径已经先处理了它。
       真走到这里时 newest 不在链上，所以下面校验的每一份都比它更早，可以严格。
     */
-    if (baseline + history.length !== s.historyLength - delta.length) return null
+    if (history.length !== s.historyLength - delta.length) return null
     history.push(...delta)
     if (s.turn === turnIndex) break
   }
 
-  if (baseline + history.length !== target.historyLength) return null
+  if (history.length !== target.historyLength) return null
   return history
 }
 

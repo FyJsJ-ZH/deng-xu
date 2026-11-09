@@ -133,14 +133,22 @@ export function NarrativeView({
               <div>
                 {/* ── 思维链（存档里那条回复本来怎么想的）── */}
                 {hasReasoning && (
-                  <div className="mb-3 bg-black/20 border-l-2 border-accent-moth/30 rounded-r text-sm text-text-muted font-mono overflow-hidden">
+                  /*
+                    ⚠️ 底色必须够实（2026-11，玩家报「思维链对比度不足，看不清字」）。
+
+                    原先这里是 `bg-black/20` + `text-text-muted` + 内层 `opacity-80`，
+                    三层透明叠起来，底下那张场景图（砖墙、木纹）直接透上来 ——
+                    玩家看到的是一段**浮在画上的灰字**，读不动。
+                    思维链是拿来读的，不是装饰：底要实、字要够亮。
+                  */
+                  <div className="mb-3 bg-black/80 border-l-2 border-accent-moth/40 rounded-r text-sm text-text-secondary font-mono overflow-hidden">
                     <button
                       onClick={() => toggleReasoning(index)}
-                      className="w-full flex items-center justify-between p-2 px-4 bg-black/10 hover:bg-black/20 transition-colors cursor-pointer"
+                      className="w-full flex items-center justify-between p-2 px-4 bg-black/30 hover:bg-black/50 transition-colors cursor-pointer"
                       title="这条回复生成时模型的思考过程（不占正文，也不会再发给模型）"
                     >
-                      <div className="flex items-center gap-2 text-accent-moth/60 uppercase tracking-wider text-xs font-bold">
-                        <span className="opacity-60">◇</span> 思维链
+                      <div className="flex items-center gap-2 text-accent-moth/80 uppercase tracking-wider text-xs font-bold">
+                        <span className="opacity-70">◇</span> 思维链
                       </div>
                       {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                     </button>
@@ -152,7 +160,7 @@ export function NarrativeView({
                           exit={{ height: 0, opacity: 0 }}
                           className="overflow-hidden"
                         >
-                          <div className="p-4 pt-2 whitespace-pre-wrap opacity-80 leading-relaxed border-t border-white/5">
+                          <div className="p-4 pt-2 whitespace-pre-wrap leading-relaxed border-t border-white/10">
                             {msg.reasoning}
                           </div>
                         </motion.div>
@@ -186,12 +194,13 @@ export function NarrativeView({
               className="max-w-3xl mx-auto"
           >
               {showReasoning && streamingReasoning && (
-                  <div className="mb-6 bg-black/20 border-l-2 border-accent-moth/30 rounded-r text-sm text-text-muted font-mono overflow-hidden">
+                  /* 同上面那条：底色要实，否则流式时同样看不清 */
+                  <div className="mb-6 bg-black/80 border-l-2 border-accent-moth/40 rounded-r text-sm text-text-secondary font-mono overflow-hidden">
                       <button
                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
-                        className="w-full flex items-center justify-between p-2 px-4 bg-black/10 hover:bg-black/20 transition-colors cursor-pointer"
+                        className="w-full flex items-center justify-between p-2 px-4 bg-black/30 hover:bg-black/50 transition-colors cursor-pointer"
                       >
-                        <div className="flex items-center gap-2 text-accent-moth/60 uppercase tracking-wider text-xs font-bold">
+                        <div className="flex items-center gap-2 text-accent-moth/80 uppercase tracking-wider text-xs font-bold">
                             <span className="animate-pulse">●</span> 思维链
                         </div>
                         {isThinkingExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -205,7 +214,7 @@ export function NarrativeView({
                             exit={{ height: 0, opacity: 0 }}
                             className="overflow-hidden"
                           >
-                            <div className="p-4 pt-2 whitespace-pre-wrap opacity-80 leading-relaxed border-t border-white/5">
+                            <div className="p-4 pt-2 whitespace-pre-wrap leading-relaxed border-t border-white/10">
                                 {streamingReasoning}
                             </div>
                           </motion.div>

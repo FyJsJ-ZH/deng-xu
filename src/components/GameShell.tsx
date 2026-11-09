@@ -322,9 +322,16 @@ export function GameShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history.length, isProcessing, llm.apiKey, llm.provider])
 
+  /*
+    ⚠️ 必须把 `reasoning` 一起带上（2026-11）。
+
+    原先这里只挑 `role` 与 `content`，于是思维链**只在流式过程中存在** ——
+    正文一流完，消息变成 history 里的一条记录，渲染层就拿不到它了，
+    玩家看到的是「思维链闪一下就没了」。
+  */
   const narrativeMessages = history
     .filter(h => h.role === 'assistant' || h.role === 'user' || h.role === 'system')
-    .map(h => ({ role: h.role, content: h.content }))
+    .map(h => ({ role: h.role, content: h.content, reasoning: h.reasoning }))
 
   // 主界面顶部资源速览：只取前三个资源，避免自定义资源过多时挤爆
   const quickResources = resourceDefs.slice(0, 3)

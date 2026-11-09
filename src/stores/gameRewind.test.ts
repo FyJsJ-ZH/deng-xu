@@ -533,6 +533,41 @@ describe('存档兼容 · 回滚后的状态必须能被保存与导入', () => 
   })
 })
 
+/**
+ * 快照链的起点不在历史开头（2026-11 玩家报的第二个 bug）。
+ *
+ * 原话：「回退还是载入存档后，最开始的对话消失了，翻到上面只有第二轮对话」。
+ *
+ * 病根：`replayHistory` 用 `baseline` 做了长度校验，却**没有把基线那段拼回返回值**。
+ * 于是重放出来的历史从窗口起点开始，长度校验因为算上了缺口而通过 ——
+ * 玩家回退完，最上面少了一截，而且没有任何报错。
+ */
+describe('回溯 · 快照链起点不在历史开头时', () => {
+  const cur = [
+    { role: 'assistant' as const, content: '第一幕' },
+    { role: 'assistant' as const, content: '第二幕' },
+    { role: 'assistant' as const, content: '第三幕' },
+    { role: 'assistant' as const, content: '第四幕' },
+  ]
+  /** 只覆盖第 3、4 两轮：turn 3 声称历史只有 3 条，所以前 2 条在链之外 */
+  const chain = [
+    { turn: 3, historyLength: 3, historyDelta: [cur[2]] },
+    { turn: 4, historyLength: 4, historyDelta: [cur[3]] },
+  ] as any
+
+  it('★ 回退到窗口内的轮次：前面那几条必须补回来，不能从半截开始', () => {
+    const h = replayHistory(chain, 3, cur)
+    expect(h, '这一轮应该回得去').not.toBeNull()
+    expect(h!.map(x => x.content)).toEqual(['第一幕', '第二幕', '第三幕'])
+  })
+
+  it('★ 链外的前缀在活历史里已经没了 → 如实返回 null，而不是给一段缺头的过去', () => {
+    // 只剩 2 条热历史，凑不出 baseline 的 2 条前缀之外还够 delta
+    const short = cur.slice(0, 1)
+    expect(replayHistory(chain, 3, short)).toBeNull()
+  })
+})
+
 describe('成本统计（C9）· 累加与清零', () => {
   it('recordUsage 同时累加到 lastUsage 与 sessionUsage', () => {
     S().clearLastUsage()

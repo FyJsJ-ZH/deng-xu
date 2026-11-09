@@ -29,6 +29,8 @@ const ARCHIVE_KEY = 'history-archive'
 export interface HistoryMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  /** 思维链（与 `ChatMessage.reasoning` 同源；归档时一起带走，回看才不会只剩正文） */
+  reasoning?: string
   timestamp?: number
 }
 
