@@ -103,6 +103,8 @@ async function tryContinueNarrative(
       model: config.narrativeModel,
       stream: false,
       temperature: 0.6,
+      // 续写是"接着写完"，不是重新构思：思考链在这里只会拖慢、多花钱、还可能另起炉灶
+      thinking: 'off',
     })
 
     const text: string = res?.choices?.[0]?.message?.content || ''
@@ -908,6 +910,8 @@ export function useGameEngine(): GameEngineReturn {
         temperature: 0.3,
         // 摘要返回的是三层记忆的 JSON —— 不给额度时会被服务商默认值切在半个 JSON 上
         maxTokens: Math.min(4096, config.maxTokens ?? 4096),
+        // 结构化输出不适合思考：思考链会抢额度，还把 JSON 顶出 response_format 的约束
+        thinking: 'off',
       })
       const raw = extractContent(response)
       recordUsage(response, messages, raw)
@@ -1493,6 +1497,21 @@ export function useGameEngine(): GameEngineReturn {
           jsonMode: true,
           // 结算 JSON 比摘要长（动作列表），但也不需要叙事那么多
           maxTokens: Math.min(4096, config.maxTokens ?? 4096),
+          /*
+            ⚠️ **必须关掉思考模式**（2026-11 玩家实测：报「数据结算返回的内容无法
+            解析为 JSON（已重试截断解析）」）。
+
+            两条链叠在一起就崩：
+              1. 思考模式下 `buildBody` 不往报文里放 `response_format` ——
+                 模型于是没有"必须输出纯 JSON"的硬约束；
+              2. 思维链还要从这 4096 token 里先吃掉一大截。
+
+            结果是"一段带思考痕迹的半截 JSON"，而 `parseModelJson` 那四道
+            修复策略（原样 / 剥散文 / 字符级修复 / 补括号）全都救不回来 ——
+            因为它们修的是格式，救不了"模型压根没打算只输出 JSON"。
+            玩家的思考模式是给写小说开的，不该拖累结算。
+          */
+          thinking: 'off',
         })
 
         const dataContent = extractContent(dataResponse)
@@ -1526,7 +1545,21 @@ export function useGameEngine(): GameEngineReturn {
           useGameStore.getState().setCurrentOptions(options)
         } catch (e) {
           console.error('Failed to parse Data AI response', e)
-          setLastError('数据结算返回的内容无法解析为 JSON（已重试截断解析）。可点开右下角调试面板查看原始输出。')
+          /*
+            说清三件事（2026-11 玩家截图报过这条）：
+
+             1. **叙事没丢** —— 正文已经写进历史了，这一轮的价钱没白花；
+             2. **丢的是什么** —— 数值/线索/关系这几样没结算；
+             3. **怎么办** —— 点「重试」会重跑结算，或者手动改背包。
+
+            原先只有一句"无法解析为 JSON"，玩家既不知道故事还在不在，
+            也不知道该不该重来。
+          */
+          setLastError(
+            '这一轮的正文已经写好了，但数据结算没能解析出来（数值、线索、关系这次没更新）。'
+            + '点「重试」会重跑结算；连续失败的话，在模型设置里把「结算模型」换成一个稳定的。'
+            + '（右下角调试面板可以看到模型原始输出。）',
+          )
         }
 
         /*

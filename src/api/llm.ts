@@ -39,6 +39,15 @@ export interface ChatOptions {
   maxTokens?: number;
   /** 要求返回 JSON 对象（部分服务商支持） */
   jsonMode?: boolean;
+  /**
+   * 单次调用覆盖玩家的「思考模式」设置（2026-11）。
+   *
+   * 为什么必须有这个口子：数据结算、摘要、续写这三类调用要的是**稳定结构**
+   * 或者**短而准**的输出，思考模式在这里纯属副作用 ——
+   * 它抢 `max_tokens`、让 JSON 不再被 `response_format` 约束、
+   * 每轮还多花钱。玩家在设置里开的思考是给"写小说"的，不是给"结算"的。
+   */
+  thinking?: 'auto' | 'on' | 'off';
   signal?: AbortSignal;
 }
 
@@ -303,8 +312,10 @@ function buildBody(opts: ChatOptions, stream: boolean): string {
 
     第三条来源是**玩家自己选的**（`config.thinking`）：他可以在设置里
     显式开关思考模式，那比我们的猜测更权威 —— `willThink` 统一处理这三者。
+    第四条是**单次调用自己的要求**（`opts.thinking`，2026-11）：
+    结算 / 摘要这类调用必须关掉思考，哪怕玩家在设置里开着 —— 那是给写小说开的。
   */
-  const mode: ThinkingMode = config.thinking ?? 'auto';
+  const mode: ThinkingMode = opts.thinking ?? config.thinking ?? 'auto';
   const isThinking = willThink(modelName, config.provider, mode);
 
   /*

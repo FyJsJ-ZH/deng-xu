@@ -152,6 +152,34 @@ describe('请求体 · 默认思考的模型不发 temperature', () => {
     expect(isThinkingByDefault('', 'deepseek-flash')).toBe(false)
   })
 
+  it('★ 单次调用能强制关思考，且 response_format 因此恢复发送（结算要的是稳定 JSON）', async () => {
+    /*
+      玩家实测报过：「数据结算返回的内容无法解析为 JSON」。
+      根因是思考模式下 `response_format` 不会被发出去 —— 模型于是没有
+      "只输出纯 JSON"的硬约束，再叠上思维链抢额度，吐出来的是半截带散文的东西。
+      结算/摘要/续写这三类调用一律 `thinking: 'off'`。
+    */
+    const { m, config } = await start({ provider: 'deepseek', narrativeModel: 'deepseek-flash', thinking: 'on' })
+    await llmChat({
+      messages: [{ role: 'user', content: 'hi' }],
+      config, stream: false, jsonMode: true, thinking: 'off',
+    })
+    expect(m.bodies[0].thinking).toEqual({ type: 'disabled' })
+    expect(m.bodies[0].response_format).toEqual({ type: 'json_object' })
+    // 关掉思考之后 temperature 恢复发送（思考模式下它是白传）
+    expect(m.bodies[0].temperature).toBe(0.7)
+  })
+
+  it('★ opts.thinking 优先于 config：玩家开着思考也带不偏结算', async () => {
+    const { m, config } = await start({ provider: 'deepseek', narrativeModel: 'deepseek-flash', thinking: 'auto' })
+    await llmChat({
+      messages: [{ role: 'user', content: 'hi' }],
+      config, stream: false, jsonMode: true, thinking: 'off',
+    })
+    expect(m.bodies[0].thinking).toEqual({ type: 'disabled' })
+    expect(m.bodies[0].response_format).toEqual({ type: 'json_object' })
+  })
+
   it('★ 流式回包里的 model 被解析出来（"实际是什么模型"的唯一证据）', async () => {
     const c = parseSseLine('data: {"model":"deepseek-v4.1-flash-1017","choices":[{"delta":{"content":"好"}}]}')
     expect(c?.model).toBe('deepseek-v4.1-flash-1017')
