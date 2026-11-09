@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useUIStore, applyProviderPreset } from '@/stores/ui';
 import { useGameStore } from '@/stores/game';
 import { PROVIDER_PRESETS, testConnection } from '@/api/llm';
+import { THINKING_MIN_MAX_TOKENS } from '@/utils/engineErrors';
 import type { LLMConfig } from '@/types/cards';
 
 type TestStatus = 'idle' | 'testing' | 'success' | 'error';
@@ -268,6 +269,20 @@ export function ApiKeyModal() {
             思考模式下思维链和正文抢同一份额度）。如果你的服务商把单次输出封在 4096，
             在这里填 4096；填了以后所有调用都不会超过它。
           </p>
+          {/*
+            ⚠️ 填太小 + 思考模式 = 正文一个字都写不出来（2026-11 玩家实测）。
+            思维链先把额度吃光，`content` 还没开始就没了，错误信息看着像
+            "模型名填错了"。所以在他填的那一刻就点出来，别等生成失败。
+          */}
+          {(draft.thinking ?? 'auto') !== 'off'
+            && typeof draft.maxTokens === 'number'
+            && draft.maxTokens > 0
+            && draft.maxTokens < THINKING_MIN_MAX_TOKENS && (
+              <p className="text-[10px] text-accent-grail mt-1 leading-relaxed">
+                这个值偏小：思考模式下思维链会先吃掉几千 token，正文可能一个字都写不出来。
+                建议留空让程序按篇幅推算，或填到 {THINKING_MIN_MAX_TOKENS} 以上。
+              </p>
+            )}
         </div>
 
         {/* 思考模式（2026-11） */}

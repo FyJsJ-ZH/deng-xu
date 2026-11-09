@@ -3,7 +3,7 @@ import { useGameStore, countTurns, type GameState, type TokenUsage } from '@/sto
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useMetaStore } from '@/stores/meta'
-import { llmChat, extractContent, parseSseLine, suggestMaxTokens, isReasonerModel, isThinkingByDefault, type ChatMessage } from '@/api/llm'
+import { llmChat, extractContent, parseSseLine, suggestMaxTokens, isReasonerModel, isThinkingByDefault, willThink, type ChatMessage } from '@/api/llm'
 import { parseModelJson } from '@/api/jsonRepair'
 import {
   buildNarrativeSystemPrompt,
@@ -31,6 +31,7 @@ import {
   type HistoryMessage,
 } from '@/utils/historyArchive'
 import { computeStats, startingItemsOf } from '@/utils/runRebuild'
+import { describeEmptyNarrative } from '@/utils/engineErrors'
 
 /**
  * 按需把较旧的叙事归档到 IndexedDB，让 localStorage 里的热数据保持有界。
@@ -1212,20 +1213,26 @@ export function useGameEngine(): GameEngineReturn {
         { role: 'user', content: context }
       ]
 
+      /*
+        ⚠️ 这一行是「字数不达标」的真正解（2026-11，玩家第四次报同一件事）。
+
+        在这之前从没发过 max_tokens，长度由服务商默认值决定 ——
+        中转站常见 2048，中文约 1.5 token/字，也就是 1365 字封顶，
+        恰好对上玩家说的「不到 1200 字」。提示词写着 1800 也没用，
+        模型是写到一半被 API 切断的。
+
+        提到外面存一份：下面判断"为什么正文是空的"要用到**这一次实际发了多少**。
+        玩家手填的值优先 —— 也正因为他手填得小才会撞上额度问题。
+      */
+      const narrativeMaxTokens = config.maxTokens
+        ?? suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel, config.provider, config.thinking ?? 'auto')
+
       const streamResponse = await llmChat({
         messages: narrativeMessages,
         config,
         model: config.narrativeModel,
         stream: true,
-        /*
-          ⚠️ 这一行是「字数不达标」的真正解（2026-11，玩家第四次报同一件事）。
-
-          在这之前从没发过 max_tokens，长度由服务商默认值决定 ——
-          中转站常见 2048，中文约 1.5 token/字，也就是 1365 字封顶，
-          恰好对上玩家说的「不到 1200 字」。提示词写着 1800 也没用，
-          模型是写到一半被 API 切断的。
-        */
-        maxTokens: config.maxTokens ?? suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel, config.provider, config.thinking ?? 'auto'),
+        maxTokens: narrativeMaxTokens,
       }) as Response
 
       const reader = streamResponse.body?.getReader()
@@ -1286,7 +1293,25 @@ export function useGameEngine(): GameEngineReturn {
         setStreamingContent(fullNarrative)
       }
 
-      if (!fullNarrative.trim()) throw new Error('模型返回了空内容，请检查模型名称与接口地址。')
+      /*
+        ⚠️ **别在这里一律说"检查模型名称与接口地址"**（2026-11 玩家实测）。
+
+        他在局内设置里填了「单次回复上限」，再点重新生成，屏幕上只有
+        「模型返回了空内容，请检查模型名称与接口地址」—— 而模型名和地址都没坏。
+        真正发生的是思考模式把 `max_tokens` 吃光了：思维链写到一半额度就没了，
+        `content` 一个字都没开始。那句话让他去查一个没坏的东西。
+
+        `describeEmptyNarrative` 按流里实际看到的东西（finish_reason + 有没有思维链）
+        分辨出具体是哪一种，并给出下一步该改哪个设置。
+      */
+      if (!fullNarrative.trim()) {
+        throw new Error(describeEmptyNarrative({
+          finishReason: streamFinishReason,
+          reasoning: fullReasoning,
+          maxTokens: narrativeMaxTokens,
+          thinkingLikely: willThink(config.narrativeModel, config.provider, config.thinking ?? 'auto'),
+        }))
+      }
 
       /*
         记录第一段（叙事）的用量。
