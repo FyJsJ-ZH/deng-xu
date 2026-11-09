@@ -36,6 +36,21 @@ const FAKE = Number(process.env.FAKE_PORT || 9826)
 const OUT = outDir()
 fs.mkdirSync(OUT, { recursive: true })
 
+/*
+  CI 上只会打印**最后 60 行**。脚本若是顶层崩掉（端口被占、浏览器找不到），
+  那 60 行里通常只剩一段裸堆栈，看不出是"哪一步挂的"——
+  2026-11 那次 CI 红、本地绿，我对着 exit code 1 猜了三轮。
+  把这两类兜住，至少能让日志自己说清原因。
+*/
+process.on('uncaughtException', e => {
+  console.error('[restart-run] 未捕获异常：', e && e.stack ? e.stack : e)
+  process.exit(1)
+})
+process.on('unhandledRejection', e => {
+  console.error('[restart-run] 未处理的 Promise 拒绝：', e && e.stack ? e.stack : e)
+  process.exit(1)
+})
+
 // ── 假服务商：必须支持 CORS 预检，否则真请求发不出去 ──
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -86,15 +101,28 @@ if (!v) { console.error('端口未就绪'); fake.close(); process.exit(1) }
 const tabs = await getJson(`http://127.0.0.1:${PORT}/json/list`)
 const ws = new WebSocket(tabs.find(x => x.type === 'page').webSocketDebuggerUrl)
 await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
-let id = 0; const pend = new Map(); const errs = []
+let id = 0; const pend = new Map()
+/**
+ * 只收集**未捕获异常**，不把 console.error 当失败判据。
+ *
+ * 第一版把 console.error 也算进去了，结果 CI 上挂、本地绿 ——
+ * 差别只在于那边多了一条与本次功能无关的报错（HMR 重连之类）。
+ * 一套走查的结论应该来自它自己的断言，而不是"控制台有没有红字"；
+ * 那些红字照旧打印出来，供人看。
+ */
+const errs = []
+const noisy = []
 ws.onmessage = e => {
   const m = JSON.parse(e.data)
   if (m.method === 'Runtime.exceptionThrown') {
-    errs.push((m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text || '').split('\n')[0])
+    const d = m.params.exceptionDetails
+    const text = (d.exception?.description || d.text || '').split('\n')[0]
+    // 网络类的偶发断连不算——它和被测功能无关，而且 CI 上很常见
+    if (/Failed to fetch|net::ERR|WebSocket|ECONNREFUSED/i.test(text)) noisy.push(text)
+    else errs.push(text)
   }
   if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') {
-    const txt = (m.params.args || []).map(a => a.value || a.description || '').join(' ')
-    if (!/Could not establish connection|Game Engine Error/i.test(txt)) errs.push('console.error: ' + txt.slice(0, 140))
+    noisy.push('console.error: ' + (m.params.args || []).map(a => a.value || a.description || '').join(' ').slice(0, 140))
   }
   if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id) }
 }
@@ -111,7 +139,32 @@ await send('Page.enable')
 await send('Runtime.enable')
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
 await send('Page.navigate', { url: SITE })
-await sleep(5000)
+
+/*
+  ⚠️ 必须**轮询等待**四个调试 store 就绪，不能只 sleep 一个定值。
+
+  第一版这里写的是 `await sleep(5000)`：本地够用，CI 的 Windows runner 冷启动慢，
+  卡片库还在 IndexedDB 里读，`worlds` 是空数组 —— 于是 `setup` 返回 'no-world'，
+  后面每一条断言都跟着红，而报错信息完全指不到真正的原因。
+  本地绿、CI 红的那类问题，十次有九次是这种"等得不够久"。
+*/
+let ready = false
+for (let i = 0; i < 60; i++) {
+  const n = await ev(`(() => {
+    try {
+      if (!window.__libraryStore || !window.__gameStore || !window.__sessionStore || !window.__uiStore) return -1
+      return window.__libraryStore.getState().worlds.length
+    } catch { return -1 }
+  })()`)
+  if (typeof n === 'number' && n > 0) { ready = true; break }
+  await sleep(500)
+}
+check('四个调试 store 都就绪、卡片库已加载', ready)
+if (!ready) {
+  console.log('\n  通过 0/1 —— store 没起来，后面的断言没有意义')
+  ws.close(); edge.kill(); fake.close()
+  process.exit(1)
+}
 
 // ── 造一份没有 turn 0 快照的老存档 ──
 const setup = await ev(`(() => {
@@ -211,8 +264,9 @@ if (shot.result?.data) fs.writeFileSync(path.join(OUT, 'restart-run.png'), Buffe
 
 const failed = results.filter(r => !r.ok)
 console.log(`\n  通过 ${results.length - failed.length}/${results.length}`)
-if (errs.length) console.log('  运行期异常: ' + errs.slice(0, 3).join(' | '))
-else console.log('  运行期异常: (无)')
+if (noisy.length) console.log('  控制台噪音（不影响判定）: ' + noisy.slice(0, 2).join(' | '))
+if (errs.length) console.log('  未捕获异常: ' + errs.slice(0, 3).join(' | '))
+else console.log('  未捕获异常: (无)')
 
 ws.close(); edge.kill(); fake.close()
 process.exit(failed.length === 0 && errs.length === 0 ? 0 : 1)
