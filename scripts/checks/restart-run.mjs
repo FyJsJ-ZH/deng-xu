@@ -43,11 +43,16 @@ fs.mkdirSync(OUT, { recursive: true })
   把这两类兜住，至少能让日志自己说清原因。
 */
 process.on('uncaughtException', e => {
-  console.error('[restart-run] 未捕获异常：', e && e.stack ? e.stack : e)
+  const msg = e && e.stack ? String(e.stack).split('\n').slice(0, 3).join(' | ') : String(e)
+  console.error('[restart-run] 未捕获异常：', msg)
+  // ::error:: 会被 GitHub 收成 annotation，未登录也能通过 API 读到 —— 见文件末尾的说明
+  console.log('::error::restart-run 顶层崩溃 —— ' + msg)
   process.exit(1)
 })
 process.on('unhandledRejection', e => {
-  console.error('[restart-run] 未处理的 Promise 拒绝：', e && e.stack ? e.stack : e)
+  const msg = e && e.stack ? String(e.stack).split('\n').slice(0, 3).join(' | ') : String(e)
+  console.error('[restart-run] 未处理的 Promise 拒绝：', msg)
+  console.log('::error::restart-run 顶层崩溃（Promise）—— ' + msg)
   process.exit(1)
 })
 
@@ -276,6 +281,20 @@ console.log(`\n  通过 ${results.length - failed.length}/${results.length}`)
 if (noisy.length) console.log('  控制台噪音（不影响判定）: ' + noisy.slice(0, 2).join(' | '))
 if (errs.length) console.log('  未捕获异常: ' + errs.slice(0, 3).join(' | '))
 else console.log('  未捕获异常: (无)')
+
+/*
+  失败时打一条 GitHub Actions 的 `::error::` 工作流命令。
+
+  为什么要在脚本里自己报：CI 挂掉时，job 日志需要登录才能看，
+  而 **annotations API 是匿名可读的**。这一行会被 GitHub 收成 annotation，
+  于是在本地就能拿到"到底是哪一条断言挂的"—— 不用靠猜。
+  这三次 CI 红、本地绿，我就是靠猜修东西，猜了三次都没修对。
+*/
+if (failed.length || errs.length) {
+  const first = failed[0] ? `断言未通过：${failed[0].l}` : `未捕获异常：${errs[0]}`
+  const extra = failed.slice(1, 4).map(f => f.l).join(' ／ ')
+  console.log(`::error::restart-run 失败 —— ${first}${extra ? '（其余：' + extra + '）' : ''}；通过 ${results.length - failed.length}/${results.length}`)
+}
 
 ws.close(); edge.kill(); fake.close()
 process.exit(failed.length === 0 && errs.length === 0 ? 0 : 1)
