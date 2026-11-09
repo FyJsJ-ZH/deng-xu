@@ -32,7 +32,7 @@ vi.stubGlobal('localStorage', {
   get length() { return mem.size },
 })
 
-const { useGameStore, countTurns, MAX_TURN_SNAPSHOTS, replayHistory } = await import('@/stores/game')
+const { useGameStore, countTurns, MAX_TURN_SNAPSHOTS, replayHistory, isOpeningSnapshot } = await import('@/stores/game')
 const { reconcileGameState } = await import('@/utils/saveFile')
 
 type G = ReturnType<typeof useGameStore.getState>
@@ -254,7 +254,7 @@ describe('回到开局（turn 0 锚点）', () => {
     expect(S().turnSnapshots.map(s => s.turn)).toEqual([0])
   })
 
-  it('★ 玩满上限之后 cuối 仍能回到开局（turn 0 不参与裁剪）', () => {
+  it('★ 玩满上限之后仍能回到开局（turn 0 不参与裁剪）', () => {
     for (let t = 1; t <= MAX_TURN_SNAPSHOTS + 5; t++) playTurn(t)
     expect(S().turnSnapshots.some(s => s.turn === 0)).toBe(true)
     expect(S().rewindTo(0)).toBe(true)
@@ -278,6 +278,87 @@ describe('回到开局（turn 0 锚点）', () => {
     playTurn(1)
     // 链从 0 重建：开局锚点仍在
     expect(S().turnSnapshots[0].turn).toBe(0)
+  })
+})
+
+/**
+ * 续玩存档（`resumeGame`）· 载入存档**不许动快照链**
+ *
+ * ## 玩家报的正是这里
+ *
+ * 「载入存档后只能选回到开局了，之前都能载入后重新回到前面的地方，
+ * 而回到开局也不是真回到开局，重新生成第一幕不是我想要的」
+ *
+ * 两个病根，同一个源头：从标题页点「继续」走的是 `startGame()`，而它
+ * 会把 `turnSnapshots` 整个换成 `[turn 0]`：
+ *
+ *  1. 第 1~9 轮的快照全没了 —— 回退下拉里只剩「回到开局」；
+ *  2. 那份 turn 0 还是用**中局状态**拍的（`historyLength` = 当时的条数），
+ *     于是"回到开局"还原出 30 条历史，接下来的"第一幕"接在第 9 轮后面写。
+ *
+ * 现在续玩走 `resumeGame()`（只置 `isGameStarted`），并且 turn 0 的
+ * `historyLength` 一律写死 0、过 `isOpeningSnapshot` 校验。
+ */
+describe('续玩存档（resumeGame）', () => {
+  it('★ 续玩不重拍快照：整条轮次链原样保留，中间轮次照样回得去', () => {
+    playTurn(1)
+    playTurn(2)
+    playTurn(3)
+    const before = S().turnSnapshots.map(s => s.turn)
+
+    S().returnToTitle()
+    S().resumeGame()
+
+    expect(S().turnSnapshots.map(s => s.turn)).toEqual(before)
+    // 真正要保证的是这件事：载入之后还能退到中间某一轮
+    expect(S().rewindTo(2)).toBe(true)
+    expect(countTurns(S().history)).toBe(2)
+  })
+
+  it('★ 守卫：进行中的局被误调 startGame，轮次链不许被抹掉', () => {
+    playTurn(1)
+    playTurn(2)
+    // 模拟"某个入口又把续玩写成了开局"——这道守卫必须挡住，
+    // 代价只是这次没拍锚点，而不是整条回溯链消失
+    S().startGame()
+    expect(S().turnSnapshots.map(s => s.turn)).toEqual([0, 1, 2])
+    expect(S().rewindTo(1)).toBe(true)
+    expect(countTurns(S().history)).toBe(1)
+  })
+
+  it('★ 新开局拍的锚点 historyLength 恒为 0（不跟着当时的实际长度走）', () => {
+    // 造一份"历史非空、但确实是新开局"的状态：resetGame 之后又塞进一段
+    S().resetGame()
+    S().addHistory({ role: 'assistant', content: '开局前的残留' })
+    S().startGame()
+
+    expect(S().turnSnapshots.map(s => s.turn)).toEqual([0])
+    /*
+      ⚠️ 跟着实际长度走（写成 `state.history.length`）的话，这份"开局快照"
+      还原出来是 1 条历史的状态，界面还管它叫「回到开局」——
+      那正是玩家说的"不是真回到开局，重新生成第一幕不是我想要的"。
+    */
+    expect(S().turnSnapshots[0].historyLength).toBe(0)
+    expect(isOpeningSnapshot(S().turnSnapshots[0])).toBe(true)
+    // 还原之后历史必须是空的
+    expect(S().rewindTo(0)).toBe(true)
+    expect(S().history).toHaveLength(0)
+  })
+
+  it('★ 假开局锚点被挡住：不能拿中局历史冒充"回到开局"', () => {
+    playTurn(1)
+    playTurn(2)
+    // 旧实现留下的那种快照：turn 0，但 historyLength 是当时的真实条数
+    const fake = { ...S().turnSnapshots[0], historyLength: S().history.length }
+    useGameStore.setState({
+      turnSnapshots: [fake as any, ...S().turnSnapshots.filter(s => s.turn > 0)],
+    })
+
+    expect(isOpeningSnapshot(fake as any)).toBe(false)
+    // 判失败，而不是拿一段中局历史冒充开局
+    expect(S().rewindTo(0)).toBe(false)
+    // 轮次回溯不受牵连
+    expect(S().rewindTo(2)).toBe(true)
   })
 })
 
@@ -419,6 +500,31 @@ describe('存档兼容 · 回滚后的状态必须能被保存与导入', () => 
     expect(r.memory).toEqual({ bonds: [], threads: [], timeline: [], earlierSummary: '', updatedAtTurn: 0 })
     expect(r.sessionUsage).toMatchObject({ promptTokens: 0, totalTokens: 0 })
     expect(r.history).toHaveLength(1)
+  })
+
+  it('★ 合法的开局锚点（turn 0 · historyLength 0）能穿过读档过滤', () => {
+    /*
+      原先这里一刀切 `s.turn > 0`，把每一份存档的「回到开局」都过滤掉了 ——
+      而 turn 0 的语义是"第一幕生成之前"，跟历史有几轮毫无关系。
+    */
+    const r = reconcileGameState({
+      history: [{ role: 'assistant', content: 'A' }],
+      turnSnapshots: [
+        { turn: 0, historyLength: 0, historyDelta: [] },
+        { turn: 1, historyLength: 1, historyDelta: [{ role: 'assistant', content: 'A' }] },
+      ],
+    })
+    expect(r.turnSnapshots.map((s: any) => s.turn)).toEqual([0, 1])
+  })
+
+  it('★ 假开局锚点（historyLength > 0）在读档时被丢掉', () => {
+    const r = reconcileGameState({
+      history: [{ role: 'assistant', content: 'A' }],
+      turnSnapshots: [
+        { turn: 0, historyLength: 1, historyDelta: [{ role: 'assistant', content: 'A' }] },
+      ],
+    })
+    expect(r.turnSnapshots).toEqual([])
   })
 
   it('非对象输入原样返回（存档里可能是 null 或字符串）', () => {

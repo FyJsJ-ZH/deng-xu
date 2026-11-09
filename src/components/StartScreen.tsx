@@ -74,7 +74,7 @@ import type { CardBundle, WorldCard } from '@/types/cards'
 export function StartScreen() {
   const { worlds, loaded, loadError, loadWorlds, deleteWorld, duplicateWorld, importWorlds } = useLibraryStore()
   const { isCardEditorOpen, setCardEditorOpen: setCardEditorOpenRaw, setEditingWorldId, setApiKeyModalOpen, showTutorial, setShowTutorial, llm, pendingSetup, setPendingSetup } = useUIStore()
-  const { resetGame, startGame, isGameStarted } = useGameStore()
+  const { resetGame, startGame, resumeGame, isGameStarted } = useGameStore()
   const clearSession = useSessionStore(s => s.clearSession)
 
   const [setupWorldId, setSetupWorldId] = useState<string | null>(null)
@@ -293,11 +293,20 @@ export function StartScreen() {
     return `${t.year}-${pad(t.month)}-${pad(t.day)} ${pad(t.hour)}:${pad(t.minute)}`
   }
 
-  /** 继续上次的进度：状态本来就在，只需要重新打开游戏界面 */
+  /**
+   * 继续上次的进度：状态本来就在，只需要重新打开游戏界面。
+   *
+   * ⚠️ 这里**必须**是 `resumeGame()`，不能是 `startGame()`（2026-11 修的）。
+   *
+   * 两者原先共用一个动作，而那个动作会重拍 `turnSnapshots`。于是从标题页
+   * 「继续」进游戏时，这一局的回溯链被整条换掉，只剩下一个"自称开局"的锚点 ——
+   * 玩家的回退下拉里从「第 1~9 轮」变成只剩「回到开局」，点下去还接在第 9 轮后面写。
+   * 续玩不该动任何数据：存档就在 localStorage 里，界面打开它就行。
+   */
   const handleResume = () => {
     setPendingSetup(null)
     setSetupWorldId(null)
-    startGame()
+    resumeGame()
   }
 
   /** 放弃当前存档，从头开始（真正清掉历史与数值） */

@@ -202,6 +202,18 @@ export function GameShell() {
    */
   const [pendingRewind, setPendingRewind] = useState<{ turn: number; action: string } | null>(null)
   /**
+   * 「回到开局」还原之后、第一幕还没生成之前的**中间态**（2026-11）。
+   *
+   * 为什么要有这个状态：`restartOpening()` 不再顺手调模型（理由见它的注释 ——
+   * 玩家要的是"回到开局"，不是"立刻花钱生成一版新的第一幕"）。
+   * 于是历史被清空、数值回到开局前，而界面必须给出一个明确的下一步，
+   * 否则就是一片空白、只有一个自己不会动的输入框。
+   *
+   * 这个状态下右栏的「文风与预设」正好可以调 —— 改动下一轮生效，
+   * 而"下一轮"就是即将生成的第一幕。这是这条路最大的价值。
+   */
+  const [pendingOpening, setPendingOpening] = useState(false)
+  /**
    * 错误横幅是否展开。
    * 默认收起（显示两行），因为服务商原始报错很长，全量铺开在手机上要吃掉 5 行。
    */
@@ -338,10 +350,21 @@ export function GameShell() {
           onConfirm={() => {
             const t = pendingRewind.turn
             setPendingRewind(null)
-            // turn 0 = 回到开局（还原开局快照 + 重新生成第一幕）
+            // turn 0 = 回到开局（还原开局快照，第一幕由玩家自己决定什么时候生成）
             if (t === 0) {
               void restartOpening().then((ok: boolean) => {
-                if (!ok) useUIStore.getState().setStatusMessage('这一局没有留下开局快照，回不到开局')
+                if (!ok) {
+                  useUIStore.getState().setStatusMessage('这一局没有留下可用的开局快照，回不到开局')
+                  return
+                }
+                /*
+                  拦住下面那个"history 为空就自动开演"的 effect。
+                  生成第一幕这一步交给玩家（按钮在叙事区下方），
+                  这样他有空先去右栏换文风/预设 —— 那两个改动正好"下一轮生效"，
+                  而下一轮就是即将生成的第一幕。
+                */
+                hasInitialized.current = true
+                setPendingOpening(true)
               })
               return
             }
@@ -459,7 +482,7 @@ export function GameShell() {
                 className="bg-transparent border border-text-muted/30 rounded px-1 py-[1px] text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-40 max-w-[16rem]"
                 value=""
                 disabled={isProcessing}
-                title={`回到某一轮结束时：叙事历史、三层记忆、数值（属性/资源/物品/关系/时间）都会一起回滚，之后发生的事全部作废。\n可回滚的轮次：${rewindTurns.join('、') || '（暂无）'}（更早的轮次已超出快照上限 ${MAX_TURN_SNAPSHOTS_UI}）\n下拉里显示的是**那一轮你输入的行动**。\n\n「回到开局」会按同一套配置（世界卡 / 主角 / 背景 / 属性点 / 在场角色）重新生成第一幕。`}
+                title={`回到某一轮结束时：叙事历史、三层记忆、数值（属性/资源/物品/关系/时间）都会一起回滚，之后发生的事全部作废。\n可回滚的轮次：${rewindTurns.join('、') || '（暂无）'}（更早的轮次已超出快照上限 ${MAX_TURN_SNAPSHOTS_UI}）\n下拉里显示的是**那一轮你输入的行动**。\n\n「回到开局」会把这一局清回第一幕生成之前：世界卡 / 主角 / 背景 / 属性点 / 在场角色全部保留，但**不会**立刻生成 —— 第一幕什么时候开始由你决定。`}
                 onChange={e => {
                   const raw = e.target.value
                   if (!raw) return
@@ -470,8 +493,9 @@ export function GameShell() {
                     */
                     setPendingRewind({
                       turn: 0,
-                      action: '按同一套配置重新生成第一幕：世界卡、主角、背景选择、'
-                        + '属性点、开局物品与在场角色都保持不动，只把这一局讲过的所有轮次清掉。',
+                      action: '回到第一幕生成之前：世界卡、主角、背景选择、属性点、'
+                        + '开局物品与在场角色都保持不动，只把这一局讲过的所有轮次清掉。'
+                        + '（不会立刻生成第一幕，你可以先调好文风与预设）',
                     })
                     return
                   }
@@ -493,7 +517,7 @@ export function GameShell() {
                 }}
               >
                 <option value="">回到第…轮</option>
-                {canRestartOpening && <option value="opening">↺ 回到开局（重新生成第一幕）</option>}
+                {canRestartOpening && <option value="opening">↺ 回到开局（第一幕之前）</option>}
                 {[...rewindOptions].reverse().map(o => (
                   <option key={o.turn} value={o.turn}>
                     第 {o.turn} 轮 · {o.action}
@@ -674,6 +698,41 @@ export function GameShell() {
             </Suspense>
           </ChunkErrorBoundary>
         </div>
+
+        {/*
+          「回到开局」之后的开场卡（2026-11）。
+
+          这一段只在那个中间态出现：历史已清空、数值已回到开局前、
+          但第一幕还没生成。放在这里而不是做成全屏遮罩 ——
+          玩家要能一边看这条提示、一边去右栏翻「文风与预设」。
+        */}
+        {pendingOpening && history.length === 0 && !isProcessing && (
+          <div className="flex-shrink-0 z-10 px-4 pb-2 pt-1">
+            <div className="max-w-xl mx-auto rounded-lg border border-accent-lantern/40 bg-surface/90 backdrop-blur px-4 py-3">
+              <p className="text-xs font-serif text-text-secondary leading-relaxed">
+                已回到开局。世界卡、主角档案、背景、属性点、开局物品与在场角色都还是原来那套。
+              </p>
+              <p className="mt-1 text-[11px] text-text-muted leading-relaxed">
+                想换文风或叙事预设，先去右栏「笔」里改 —— 改动下一轮生效，也就是即将开始的第一幕。
+              </p>
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    setPendingOpening(false)
+                    hasInitialized.current = true
+                    void handleAction('init', '开始故事').catch(() => {})
+                  }}
+                  className="px-4 py-1.5 text-sm font-serif border border-accent-lantern/60 text-accent-lantern rounded hover:bg-accent-lantern/10 transition-colors"
+                >
+                  ▶ 生成第一幕
+                </button>
+                <span className="text-[10px] text-text-muted font-mono">
+                  或者直接在下面输入你自己的开场方式
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Choice Area */}
         <div className="flex-shrink-0 z-10 bg-background relative">

@@ -246,6 +246,28 @@ export interface TurnSnapshot {
 export const MAX_TURN_SNAPSHOTS = 60
 
 /**
+ * 判断一份快照是不是**真正可用的开局锚点**。
+ *
+ * ## 为什么需要这个判据
+ *
+ * turn 0 的语义是"第一幕生成之前"，那一刻 `history` 必须是空的。
+ * 一个 `historyLength > 0` 的 turn 0 不是锚点，它是**用中局状态冒充开局**：
+ * `replayHistory` 的"截断当前历史"那条路径会照单全收，
+ * 于是「回到开局」还原出一段几十条的历史，接着那段历史重新生成"第一幕" ——
+ * 玩家看到的是第 9 轮接着往下写，而不是重开（2026-11 实测的第二个坑）。
+ *
+ * 这种假锚点只有一个来源：把「继续」当成了「开局」（见 `startGame` 与
+ * `resumeGame` 的区分的说明）。旧的存档里可能就躺着这么一份，
+ * 所以读档时（`reconcileGameState`）与渲染下拉时（`canRestartOpening`）
+ * 都要过一遍这道校验，而不是只看 `turn === 0`。
+ */
+export function isOpeningSnapshot(snapshot: TurnSnapshot): boolean {
+  if (!snapshot || snapshot.turn !== 0) return false
+  if (snapshot.historyLength !== 0) return false
+  return Array.isArray(snapshot.historyDelta) && snapshot.historyDelta.length === 0
+}
+
+/**
  * 从轮次升序的快照链里重放出第 `turnIndex` 轮的历史。
  *
  * @param currentHistory 当前的热历史 —— 重放**最新那一轮**时直接取它的前缀，
@@ -591,7 +613,23 @@ export interface GameState {
    * 半对的回滚比不回滚更伤（玩家会以为回滚成功了）。
    */
   rewindTo: (turnIndex: number) => boolean
+  /**
+   * 开局：切进游戏界面，并拍一份 **turn 0** 快照（第一幕生成之前的锚点）。
+   *
+   * ⚠️ 只给"真正新开一局"用。**续玩已有存档必须用 `resumeGame`** ——
+   * 这两个动作原先是一回事，而 `startGame` 会把 `turnSnapshots` 整个换掉，
+   * 于是从标题页点「继续」进游戏，这一局的轮次快照就被抹成了孤零零的 turn 0
+   * （2026-11 玩家实测：载入存档后回退栏里只剩「回到开局」）。
+   */
   startGame: () => void
+  /**
+   * 续玩：只把界面切回游戏，一个字节的数据都不动。
+   *
+   * 存档本来就一直在 localStorage 里（history / 数值 / 快照 / 摘要全在），
+   * 「继续」要做的事只有把 `isGameStarted` 置真 —— 重新初始化任何东西，
+   * 都是在拿玩家的存档冒险。
+   */
+  resumeGame: () => void
   resetGame: () => void
   returnToTitle: () => void
 
@@ -1180,11 +1218,44 @@ export const useGameStore = create<GameState>()(
 
         会话配置本身（世界卡 / 主角 / 背景选择）不在快照里 —— 它们在 session store，
         还原时压根不动，所以"同样的配置"是天然成立的。
+
+        ## 两个必须守住的点
+
+        1. **`historyLength` 写死 0，不能用 `state.history.length`。**
+           锚点的语义是"第一幕生成之前"，那时历史一定是空的。跟着实际长度走，
+           万一进来的这一刻历史还没清（异常路径、或旧实现把「继续」错当成「开局」），
+           就会拍出一份"自称开局的第 N 轮快照" —— 回到开局直接接在第 N 轮后面写。
+
+        2. **这个动作只能给新开局用。**
+           它会把 `turnSnapshots` 整个换掉。续玩已有存档走 `resumeGame`，
+           那边一个字节都不碰 —— 这里再垫一道守卫（见下），
+           让"误用"的代价从"毁掉整条回溯链"降到"什么都不会发生"。
       */
-      startGame: () => set((state) => ({
-        isGameStarted: true,
-        turnSnapshots: [snapshotOf(state, 0, [], state.history.length)],
-      })),
+      startGame: () => set((state) => {
+        /*
+          守卫：链上已经有轮次快照，说明这一局正在玩。
+          此时把链换成孤零零一个 turn 0，就是玩家 2026-11 遇到的那件事
+          （「载入存档后只能选回到开局了」）—— 而新开局走不到这里，
+          因为新开局之前一定先过 `resetGame()`，那时链是空的。
+
+          宁可让这一次"开局"什么都不拍，也不要静默毁掉几十轮的可回溯性。
+        */
+        if (state.turnSnapshots.some(s => s.turn > 0)) return { isGameStarted: true }
+        return {
+          isGameStarted: true,
+          turnSnapshots: [snapshotOf(state, 0, [], 0)],
+        }
+      }),
+      /*
+        续玩。**不碰任何数据**。
+
+        存档（history、数值、快照链、摘要、记忆）本来就一直在 localStorage 里，
+        「继续」唯一要做的事就是把界面切回游戏。原先这里调的是 `startGame()`，
+        于是每从标题页续一次，快照链就被抹成一份孤零零的 turn 0 ——
+        而那份 turn 0 还带着当时的 historyLength，连"回到开局"都是假的
+        （2026-11 玩家报：「载入存档后只能选回到开局了」）。
+      */
+      resumeGame: () => set({ isGameStarted: true }),
       resetGame: () => set({ ...INITIAL_STATE }),
       returnToTitle: () => set({ isGameStarted: false }),
 
@@ -1320,6 +1391,14 @@ export const useGameStore = create<GameState>()(
         set((state) => {
           const target = state.turnSnapshots.find(s => s.turn === turnIndex)
           if (!target) return state
+
+          /*
+            turn 0 是"第一幕生成之前"这个时刻，只有真正的开局锚点配得上它。
+            假锚点（`historyLength > 0`）在 `replayHistory` 里会被当成
+            "截断当前历史到 N 条"，还原出来是一段中局历史 —— 也就是
+            「回到开局」之后接着第 N 轮写。这里直接判失败，让调用方如实报错。
+          */
+          if (turnIndex === 0 && !isOpeningSnapshot(target)) return state
 
           const history = replayHistory(state.turnSnapshots, turnIndex, state.history)
           // 重放不出来的（快照链断了一环）宁可什么都不做，也不拿错位的历史冒充过去

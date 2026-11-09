@@ -45,7 +45,7 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  /** turn 0 = 回到开局（重新生成第一幕），不是"第 0 轮" */
+  /** turn 0 = 回到开局（第一幕生成之前），不是"第 0 轮" */
   const isOpening = turn === 0
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
@@ -72,7 +72,7 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
-      aria-label={isOpening ? '回到开局并重新生成第一幕' : `回到第 ${turn} 轮结束时`}
+      aria-label={isOpening ? '回到开局（第一幕生成之前）' : `回到第 ${turn} 轮结束时`}
     >
       <div
         className="w-full max-w-md bg-background border border-text-muted/25 rounded-lg overflow-hidden shadow-2xl"
@@ -82,7 +82,7 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
         <div className="flex items-center gap-2 px-4 py-3 border-b border-text-muted/20">
           <RotateCcw size={13} className="text-accent-lantern shrink-0" />
           <div className="text-sm font-serif text-text-primary">
-            {isOpening ? '回到开局，重新生成第一幕？' : `回到第 ${turn} 轮结束时？`}
+            {isOpening ? '回到开局，第一幕之前？' : `回到第 ${turn} 轮结束时？`}
           </div>
         </div>
 
@@ -109,7 +109,8 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
             <p className="text-[11px] text-text-secondary leading-relaxed">
               {isOpening
                 ? <>这一局的<strong className="text-accent-grail">所有轮次</strong>都会作废，
-                    按同一套配置（世界卡 / 主角 / 背景 / 属性点 / 在场角色）重新生成第一幕。</>
+                    配置（世界卡 / 主角 / 背景 / 属性点 / 在场角色）全部保留。
+                    之后你可以先调好文风与预设，再自己决定什么时候开始第一幕。</>
                 : <>这一轮之后发生的事会<span className="text-accent-grail">全部作废</span>
                     （叙事、数值、关系、记忆一起回滚）。</>}
             </p>

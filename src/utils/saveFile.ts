@@ -17,6 +17,7 @@
 
 import { downloadFile, safeFilename, timestampSuffix } from '@/utils/files'
 import { loadArchive, saveArchive, clearArchive, type ArchiveState } from '@/utils/historyArchive'
+import { isOpeningSnapshot } from '@/stores/game'
 
 /** 存档文件格式版本。将来结构变化时靠它做迁移。 */
 export const SAVE_FORMAT = 'deng-xu-save'
@@ -62,9 +63,21 @@ export function reconcileGameState(state: any): any {
   const next: any = { ...state }
 
   if (Array.isArray(state.turnSnapshots)) {
-    next.turnSnapshots = state.turnSnapshots.filter(
-      (s: any) => s && typeof s.turn === 'number' && s.turn > 0 && s.turn <= turns,
-    )
+    /*
+      turn 0（开局锚点）**不能按轮次上限过滤**：它描述的是"第一幕生成之前"，
+      和 `turns` 没有关系。原先这里一刀切 `s.turn > 0`，把所有存档的
+      「回到开局」都过滤掉了 —— 老存档本来就没有它，新存档又被这一刀砍掉，
+      于是这个功能对**每一份导入的存档**都是失效的。
+
+      但也不能无条件收下：`isOpeningSnapshot` 会挡掉"用中局状态冒充开局"的
+      假锚点（`historyLength > 0`）。这种快照一旦被还原，玩家会看到
+      「回到开局」之后接着第 N 轮往下写。
+    */
+    next.turnSnapshots = state.turnSnapshots.filter((s: any) => {
+      if (!s || typeof s.turn !== 'number') return false
+      if (s.turn === 0) return isOpeningSnapshot(s)
+      return s.turn > 0 && s.turn <= turns
+    })
   } else {
     /*
       旧存档（A1/B8 之前的版本）里没有这个字段。

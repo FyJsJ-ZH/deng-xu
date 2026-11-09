@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useGameStore, countTurns, type GameState, type TokenUsage } from '@/stores/game'
+import { useGameStore, countTurns, isOpeningSnapshot, type GameState, type TokenUsage } from '@/stores/game'
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useMetaStore } from '@/stores/meta'
@@ -1633,7 +1633,7 @@ export function useGameEngine(): GameEngineReturn {
   }
 
   /**
-   * **回到开局，重新生成第一幕**（2026-11）。
+   * **回到开局**（2026-11）。
    *
    * ## 它和 `rewindToTurn` 的区别
    *
@@ -1649,6 +1649,18 @@ export function useGameEngine(): GameEngineReturn {
    *    快照压根不碰），所以"用同样的配置"是天然成立的；
    *  · 历史 / 摘要 / 记忆 / 快照链 —— 清空，只留 turn 0 这个锚点；
    *  · `sessionUsage` —— **不清**。那是真花掉的钱，和剧情无关。
+   *
+   * ## 为什么**不在这里**顺手生成第一幕（2026-11 改）
+   *
+   * 原先这里结尾直接 `await handleAction('init', '开始故事')` —— 玩家的原话是
+   * 「重新生成第一幕不是我想要的」。他说得对：`handleAction` 一进流程就是
+   * 一次真金白银的调用，而玩家点「回到开局」的那个念头往往只是
+   * **"我想换个文风／换个预设再开"** —— 那两样恰恰是"下一轮生效"的，
+   * 于是自动生成吃掉了他唯一一次可以调整的机会，还替他决定了第一幕长什么样。
+   *
+   * 现在这里只还原状态并返回 true，由界面给出一个明确的「▶ 生成第一幕」。
+   * 代价是调用方必须处理"还原成功但还没开演"这个中间态（见 GameShell 的
+   * `pendingOpening`），收益是这一步不再擅自花钱。
    */
   const restartOpening = async (): Promise<boolean> => {
     const ok = useGameStore.getState().rewindTo(0)
@@ -1662,19 +1674,8 @@ export function useGameEngine(): GameEngineReturn {
     // 归档里可能收着"被作废的未来"，不清会被 loadArchive 读回历史里
     void clearArchive()
 
-    useUIStore.getState().setStatusMessage('已回到开局，正在重新生成第一幕…')
-    setTimeout(() => useUIStore.getState().setStatusMessage(null), 2500)
-
-    /*
-      直接发起生成，不走 App 那个"history 为空就自动开演"的 effect ——
-      那条路依赖 `hasInitialized` 这个组件内的 ref，重开时必须由这里显式触发，
-      否则玩家会停在"开局空白、什么都不会发生"上。
-    */
-    try {
-      await handleAction('init', '开始故事')
-    } catch {
-      // handleAction 内部已经把错误写进 lastError，这里不重复报
-    }
+    useUIStore.getState().setStatusMessage('已回到开局：配置都还在，随时可以开始第一幕')
+    setTimeout(() => useUIStore.getState().setStatusMessage(null), 3000)
     return true
   }
 
@@ -1705,8 +1706,15 @@ export function useGameEngine(): GameEngineReturn {
         const full = String(s.playerAction || '').trim()
         return { turn: s.turn, action: summarizeAction(full), full }
       }),
-    /** 有没有开局快照可回（老存档、或手动清过快照的局可能没有） */
-    canRestartOpening: store.turnSnapshots.some(s => s.turn === 0),
+    /**
+     * 有没有**真正可用**的开局锚点。
+     *
+     * 不能只看 `turn === 0`：旧实现把「继续」当成「开局」，拍了那种
+     * `historyLength > 0` 的假锚点，还原出来是"接着第 N 轮往下写"。
+     * 判据见 `isOpeningSnapshot` —— 假锚点宁可不显示这一项，
+     * 也不要让玩家点了之后看到一段错位的"重开"。
+     */
+    canRestartOpening: store.turnSnapshots.some(isOpeningSnapshot),
     rewindToTurn,
     restartOpening,
   }
