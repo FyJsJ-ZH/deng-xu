@@ -3389,7 +3389,57 @@ set((state) => ({ isGameStarted: true, turnSnapshots: [snapshotOf(state, 0, [], 
 
 ---
 
-## 5. 测试体系（**12 套走查** + **987** 单元测试 + 5 个独立工具）
+## 4.11 我们一直在发一个官方已经停用的模型名（2026-11 第三十七轮）
+
+用户问：「现在官方不是已经下架了 R1 和 V3 模型了吗，我们调用的到底是什么模型」
+
+### 官方时间线（`api-docs.deepseek.com/zh-cn/updates`）
+
+| 时间 | 发生了什么 |
+|---|---|
+| 2025-01-20 | `deepseek-reasoner` = DeepSeek-R1 |
+| 2025-03-24 | `deepseek-chat` = V3-0324 |
+| 2025-08～12 | 两个别名一路被 V3.1 / V3.1-Terminus / V3.2 / V3.2-Exp 覆盖 |
+| **2026-04-24** | V4 上线，公告：`deepseek-chat` / `deepseek-reasoner` **2026-07-24 停止使用**；过渡期内分别指向 V4-Flash 的非思考 / 思考模式 |
+| 2026-07-31 | `deepseek-v4-flash` 正式版 |
+| 2026-08-13 | `deepseek-v4-pro` |
+| **2026-09-10** | V4.1 Flash 上线，正名改为 **`deepseek-flash`**；`deepseek-v4-flash` 仍可调用但被路由过去 |
+
+所以现在（2026-11）价目表上只剩两行：**`deepseek-flash`（V4.1-Flash-1017）** 与
+**`deepseek-v4-pro`（V4-Pro-0813）**。而项目默认发的一直是 `deepseek-chat`。
+顺带一提：**API 从来没有过叫 `deepseek-r1` 或 `deepseek-v3` 的模型名**，那一直是
+`deepseek-reasoner` / `deepseek-chat` 两个别名背后的东西。
+
+### 三处修
+
+1. **名字换掉**。`PROVIDER_PRESETS.deepseek.models` 与 `DEFAULT_LLM_CONFIG`
+   改成 `deepseek-flash` / `deepseek-v4-pro`。
+2. **老配置迁移**（`stores/ui.ts` persist `version: 4`）。
+   `migrateDeepSeekModelName()` 把 `deepseek-chat` / `deepseek-reasoner` /
+   `deepseek-r1` / `deepseek-v3(.1/.2)` / `deepseek-v4-flash` 映射到 `deepseek-flash`。
+   **只迁 `provider === 'deepseek'`** —— 自定义端点与中转站完全可能自己起一个叫
+   `deepseek-chat` 的映射，替它改名会直接打坏人家。
+3. **"默认思考"要单独判**。新模型名字里一个 `reasoner` 都没有，但官方文档写着
+   「思考模式默认打开，effort 默认 high」。原先只有 `isReasonerModel()` 一条判据，
+   后果很具体：`max_tokens` 少给一半（思维链和正文抢同一份额度 → 正文在 1200 字
+   被截断），还多发一个思考模式下不生效的 `temperature`。
+   新增 `isThinkingByDefault(provider, model)`，`suggestMaxTokens()` 与
+   `buildBody()` 两条判据**取或**。
+
+### 新增：让界面能回答"到底在跑什么模型"
+
+配置里填的是别名，`deepseek-flash` 背后今天可能是 V4.1-Flash-1017、明天可能是别的版本，
+中转站还能悄悄改路由。所以从 SSE chunk 与非流式响应里捞 `model` 字段，
+存进 `gameStore.lastResponseModel`，在模型设置弹窗里显示
+「上次请求服务端回报的模型」—— 与所填不一致时会点出来。
+
+这是唯一可信的答案来源。玩家再问这个问题，点开设置就能自己看。
+
+---
+
+## 5. 测试体系（**12 套走查** + **994** 单元测试 + 5 个独立工具）
+
+
 
 ```
 scripts/

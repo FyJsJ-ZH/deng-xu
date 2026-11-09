@@ -58,7 +58,19 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: 'deepseek',
     label: 'DeepSeek 官方',
     baseUrl: 'https://api.deepseek.com/v1',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
+    /*
+      ⚠️ 这两个名字换了（2026-11）。
+
+      原先候选与默认值都是 `deepseek-chat` / `deepseek-reasoner` —— 而它们
+      在官方更新日志里是**2026-07-24 停止使用**的旧名（2026-04-24 起进入三个月
+      过渡期，期间分别指向 V4 Flash 的非思考/思考模式）。旧的 R1、V3 更是
+      早在 2025 年就被 V3.1/V3.2 覆盖掉了，从未有过叫 `deepseek-r1` 的 API 模型名。
+
+      现在官方价目表上只有两个：`deepseek-flash`（V4.1-Flash-1017）与
+      `deepseek-v4-pro`（V4-Pro-0813）。发旧名字的后果是 400 model not found，
+      或者吃到一次随时可能撤掉的兜底路由 —— 两种都不该由玩家承担。
+    */
+    models: ['deepseek-flash', 'deepseek-v4-pro'],
     needsKey: true,
     keyUrl: 'https://platform.deepseek.com/api_keys',
   },
@@ -116,8 +128,8 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
   provider: 'deepseek',
   baseUrl: 'https://api.deepseek.com/v1',
   apiKey: '',
-  narrativeModel: 'deepseek-chat',
-  analysisModel: 'deepseek-chat',
+  narrativeModel: 'deepseek-flash',
+  analysisModel: 'deepseek-flash',
   temperature: 0.8,
   /*
     **默认开**（2026-11 改）。
@@ -152,6 +164,58 @@ export function isReasonerModel(name: string): boolean {
 }
 
 /**
+ * 旧模型名 → 现行名字。键是**已经停止使用**的名字（小写）。
+ *
+ * 为什么要一张表而不是一句正则：这些名字背后是**具体的历史版本**
+ * （`deepseek-chat` 在 2026-04 指的是 V4 Flash 的非思考模式，再往前是 V3.2），
+ * 而正则只能判断"像不像"，判断不了"还活着没有"。
+ *
+ * 迁移时机在 `stores/ui.ts` 的 persist migrate —— 见那里的说明。
+ */
+const LEGACY_DEEPSEEK_MODELS: Record<string, string> = {
+  'deepseek-chat': 'deepseek-flash',
+  'deepseek-reasoner': 'deepseek-flash',
+  'deepseek-r1': 'deepseek-flash',
+  'deepseek-v3': 'deepseek-flash',
+  'deepseek-v3.1': 'deepseek-flash',
+  'deepseek-v3.2': 'deepseek-flash',
+  // 官方说这个名仍可调用，但对应模型已下线、被路由到 V4.1 Flash —— 直接换正名
+  'deepseek-v4-flash': 'deepseek-flash',
+};
+
+/**
+ * 把已停用的 DeepSeek 模型名换成现行名字；认不出来的原样返回。
+ *
+ * 只在 `provider === 'deepseek'` 时用：自定义端点 / 中转站完全可能
+ * 自己起一个叫 `deepseek-chat` 的映射，替它改名会直接把人家打坏。
+ */
+export function migrateDeepSeekModelName(model: string): string {
+  const key = String(model || '').trim().toLowerCase();
+  return LEGACY_DEEPSEEK_MODELS[key] ?? model;
+}
+
+/**
+ * DeepSeek 2026 系列（V4 / V4.1）**默认开启思考模式**。
+ *
+ * 官方文档：「思考模式默认打开，且 effort 默认为 high」，要关得显式传
+ * `{"thinking": {"type": "disabled"}}`。
+ *
+ * 这件事对两个地方有直接影响：
+ *
+ *  1. `max_tokens` —— 思维链和正文抢同一份额度，必须按 3 倍给；
+ *  2. `temperature` / `response_format` —— 思考模式下 temperature 不生效
+ *     （传了不报错，只是白传）。
+ *
+ * 所以判定要和 `isReasonerModel` 分开：那个是"名字长得像推理模型"，
+ * 这个是"这个服务商的这个模型默认就在思考"。混在一起会让
+ * `deepseek-flash` 永远不发 temperature，将来真想关思考模式时就没法调了。
+ */
+export function isThinkingByDefault(provider: string, model: string): boolean {
+  if (provider !== 'deepseek') return false;
+  return /^deepseek-(flash|v4-flash|v4-pro)$/.test(String(model || '').trim().toLowerCase());
+}
+
+/**
  * 按「目标回复字数」推算该发多大的 `max_tokens`。
  *
  * ## 换算依据
@@ -164,12 +228,18 @@ export function isReasonerModel(name: string): boolean {
  * - 推理模型：`replyLength × 3` —— 思维链会和正文抢同一份额度，
  *   而它抢走的量不可预测，只能给宽一些
  *
+ * 「是不是推理模型」现在有两条来源：名字像（`isReasonerModel`），
+ * 或者这个服务商的这个模型**默认就在思考**（`isThinkingByDefault`，
+ * 2026 的 DeepSeek V4 系列属于后者 —— 名字里一个 reasoner 都没有）。
+ * 漏掉第二条的后果很具体：思考模式吃掉一半额度，正文在 1200 字上下被截断。
+ *
  * 下限 1024，上限 16384（多数服务商的单次输出上限，超了会被直接拒）。
  * 玩家在设置里填了 `maxTokens` 时以他填的为准。
  */
-export function suggestMaxTokens(replyLength: number, model = ''): number {
+export function suggestMaxTokens(replyLength: number, model = '', provider = ''): number {
   const chars = Number.isFinite(replyLength) && replyLength > 0 ? replyLength : 1800;
-  const per = isReasonerModel(model) ? 3 : 2;
+  const thinking = isReasonerModel(model) || isThinkingByDefault(provider, model);
+  const per = thinking ? 3 : 2;
   return Math.min(16384, Math.max(1024, Math.ceil(chars * per)));
 }
 
@@ -190,7 +260,16 @@ function buildBody(opts: ChatOptions, stream: boolean): string {
 
   // 推理模型通常拒绝 temperature / response_format，只在明确安全时附带
   const modelName = String(body.model).toLowerCase();
+  /*
+    **两条都要判**（2026-11）。
+
+    名字像推理模型（reasoner / r1 / o1 …）是一种；
+    2026 的 DeepSeek V4 系列是另一种 —— 名字里没有任何推理标记，
+    但官方"思考模式默认打开"。思考模式下 temperature 不生效
+    （传了不报错，只是白传），所以照样不该发。
+  */
   const isReasoner = isReasonerModel(modelName);
+  const isThinking = isReasoner || isThinkingByDefault(config.provider, modelName);
 
   /*
     ── max_tokens：**必须显式发**（2026-11）──
@@ -204,10 +283,10 @@ function buildBody(opts: ChatOptions, stream: boolean): string {
     body.max_tokens = Math.floor(maxTokens);
   }
 
-  if (!isReasoner && typeof (temperature ?? config.temperature) === 'number') {
+  if (!isThinking && typeof (temperature ?? config.temperature) === 'number') {
     body.temperature = temperature ?? config.temperature;
   }
-  if (jsonMode && !isReasoner) {
+  if (jsonMode && !isThinking) {
     body.response_format = { type: 'json_object' };
   }
   return JSON.stringify(body);
@@ -316,6 +395,15 @@ export interface ParsedChunk {
    * 因为模型撞上限时常常刚好把话说圆。
    */
   finishReason?: string;
+  /**
+   * 服务端回报的**实际模型名**。
+   *
+   * 为什么要捞这个：`model` 参数发出去的是一个**别名**
+   * （`deepseek-flash` 背后可能是 V4.1-Flash-1017，也可能是更新的版本），
+   * 而中转站甚至可以悄悄改路由。玩家问「我们到底在调什么模型」时，
+   * 唯一可信的答案是**回包里的这个字段**，不是我们配置里那个字符串。
+   */
+  model?: string;
 }
 
 /** 解析一行 SSE data，返回其中的增量文本 */
@@ -332,9 +420,10 @@ export function parseSseLine(line: string): ParsedChunk | null {
     if (typeof reasoning === 'string' && reasoning) chunk.reasoning = reasoning;
     const finish = json.choices?.[0]?.finish_reason;
     if (typeof finish === 'string' && finish) chunk.finishReason = finish;
+    if (typeof json.model === 'string' && json.model) chunk.model = json.model;
     // ⚠️ finishReason 也要算"有效的 chunk"：只有它在、内容为空的那一段
     // （每个流最后几乎都有一帧这样的）如果被丢掉，截断就永远判不出来。
-    return chunk.content || chunk.reasoning || chunk.finishReason ? chunk : null;
+    return chunk.content || chunk.reasoning || chunk.finishReason || chunk.model ? chunk : null;
   } catch {
     return null;
   }

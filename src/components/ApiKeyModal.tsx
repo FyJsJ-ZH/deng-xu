@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useUIStore, applyProviderPreset } from '@/stores/ui';
+import { useGameStore } from '@/stores/game';
 import { PROVIDER_PRESETS, testConnection } from '@/api/llm';
 import type { LLMConfig } from '@/types/cards';
 
@@ -34,6 +35,9 @@ export function ApiKeyModal() {
   }, [shouldShow]);
 
   const patch = (updates: Partial<LLMConfig>) => setDraft(prev => ({ ...prev, ...updates }));
+
+  // 服务端回包里那个 model（实际提供服务的模型名），可能为空（还没调过）
+  const lastResponseModel = useGameStore(s => s.lastResponseModel);
 
   const preset = PROVIDER_PRESETS.find(p => p.id === draft.provider);
   const needsKey = preset?.needsKey !== false;
@@ -260,7 +264,8 @@ export function ApiKeyModal() {
           />
           <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
             这一项决定模型<b>一次最多能写多少字</b>。留空时按目标字数自动推算
-            （1800 字 ≈ 3600 token，推理模型 ×3）。如果你的服务商把单次输出封在 4096，
+            （1800 字 ≈ 3600 token；默认在思考的模型 ×3 —— DeepSeek 的
+            deepseek-flash / deepseek-v4-pro 都属于这一档）。如果你的服务商把单次输出封在 4096，
             在这里填 4096；填了以后所有调用都不会超过它。
           </p>
         </div>
@@ -279,6 +284,21 @@ export function ApiKeyModal() {
         {/* 状态与操作 */}
         {status === 'success' && (
           <p className="text-xs text-accent-edge">连接成功，配置可用。</p>
+        )}
+        {/*
+          「上次请求实际用的模型」（2026-11）。
+          玩家问过「官方不是下架 R1 和 V3 了吗，我们调用的到底是什么」——
+          配置里填的是**别名**（deepseek-flash 背后是 V4.1-Flash-1017，
+          明天可能是别的版本），所以这里显示的是**服务端回包里那个 model 字段**，
+          不是我们发出去的那个字符串。
+        */}
+        {lastResponseModel && (
+          <p className="text-[10px] font-mono text-text-muted leading-relaxed">
+            上次请求服务端回报的模型：<span className="text-text-secondary">{lastResponseModel}</span>
+            {lastResponseModel !== draft.narrativeModel && (
+              <span className="text-accent-lantern">（与你填的 {draft.narrativeModel} 不同 —— 这是服务商的映射或中转）</span>
+            )}
+          </p>
         )}
         {status === 'error' && (
           <div className="space-y-2 border border-accent-grail/30 bg-accent-grail/5 p-2 rounded">

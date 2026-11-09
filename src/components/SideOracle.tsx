@@ -89,7 +89,7 @@ export function SideOracle({ open, onClose }: { open: boolean; onClose: () => vo
         stream: false,
         temperature: mode === 'polish' ? llm.temperature : 0.3,
         maxTokens: mode === 'polish'
-          ? suggestMaxTokens(world.narrative.replyLength, llm.narrativeModel)
+          ? suggestMaxTokens(world.narrative.replyLength, llm.narrativeModel, llm.provider)
           : 2048,
       })
 

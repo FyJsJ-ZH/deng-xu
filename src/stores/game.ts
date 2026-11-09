@@ -511,6 +511,16 @@ export interface GameState {
   clearLastUsage: () => void
   /** 清零累计（玩家开始新一局或想重新观察时用） */
   resetSessionUsage: () => void
+  /**
+   * 服务端回包里那个 `model` 字段（**实际**提供服务的模型名）。
+   *
+   * 为什么要单独存它：我们在配置里写的是别名 —— `deepseek-flash` 背后是
+   * V4.1-Flash-1017，明天可能是另一个版本；中转站还可能悄悄换路由。
+   * 玩家问「到底在调什么模型」时，配置里那个字符串回答不了，
+   * 只有回包里的这个字段能。界面上把它摆在模型设置里。
+   */
+  lastResponseModel: string
+  recordResponseModel: (model: string) => void
 
   // Player Profile
   playerName: string
@@ -914,6 +924,7 @@ const INITIAL_STATE = {
   turnSnapshots: [],
   lastUsage: null,
   sessionUsage: EMPTY_USAGE,
+  lastResponseModel: '',
   story: {
     currentChapter: 1,
     completedEvents: [],
@@ -1316,6 +1327,7 @@ export const useGameStore = create<GameState>()(
         sessionUsage: addUsage(state.sessionUsage || EMPTY_USAGE, usage),
       })),
       clearLastUsage: () => set({ lastUsage: null }),
+      recordResponseModel: (model) => set({ lastResponseModel: String(model || '') }),
       // 复制一份而不是直接写 EMPTY_USAGE：共享同一个对象引用时，
       // 任何一处误改都会污染"零值"这个全局常量
       resetSessionUsage: () => set({ sessionUsage: { ...EMPTY_USAGE }, lastUsage: null }),

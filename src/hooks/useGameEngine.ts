@@ -3,7 +3,7 @@ import { useGameStore, countTurns, isOpeningSnapshot, type GameState, type Token
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useMetaStore } from '@/stores/meta'
-import { llmChat, extractContent, parseSseLine, suggestMaxTokens, type ChatMessage } from '@/api/llm'
+import { llmChat, extractContent, parseSseLine, suggestMaxTokens, isReasonerModel, isThinkingByDefault, type ChatMessage } from '@/api/llm'
 import { parseModelJson } from '@/api/jsonRepair'
 import {
   buildNarrativeSystemPrompt,
@@ -854,6 +854,8 @@ export function useGameEngine(): GameEngineReturn {
     output: string,
     override?: TokenUsage | null,
   ) => {
+    // 回包里的 model = 实际提供服务的模型名（我们发出去的是别名，见 llm.ts）
+    if (response?.model) useGameStore.getState().recordResponseModel(response.model)
     // 估算需要**真实的输入消息**：只按输出估会严重低估（提示词里有世界设定、
     // 角色档案、记忆三层，往往比输出还长）
     useGameStore.getState().recordUsage(
@@ -1217,7 +1219,7 @@ export function useGameEngine(): GameEngineReturn {
           恰好对上玩家说的「不到 1200 字」。提示词写着 1800 也没用，
           模型是写到一半被 API 切断的。
         */
-        maxTokens: config.maxTokens ?? suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel),
+        maxTokens: config.maxTokens ?? suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel, config.provider),
       }) as Response
 
       const reader = streamResponse.body?.getReader()
@@ -1231,6 +1233,8 @@ export function useGameEngine(): GameEngineReturn {
       let streamUsage: TokenUsage | null = null
       /** 流最后一个 chunk 的 finish_reason —— `length` 表示撞到 token 上限 */
       let streamFinishReason = ''
+      /** 回包里的 model 只记一次（每个 chunk 都带同一个值，没必要反复写 store） */
+      let responseModelSeen = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -1246,6 +1250,14 @@ export function useGameEngine(): GameEngineReturn {
           if (usage) streamUsage = usage
           const chunk = parseSseLine(line.trim())
           if (!chunk) continue
+          /*
+            服务端回包里的 model 是**唯一可信**的"到底在跑什么模型"的证据
+            （我们发出去的是别名，中转站还可能改路由）。只记第一次拿到的那个。
+          */
+          if (chunk.model && !responseModelSeen) {
+            responseModelSeen = true
+            useGameStore.getState().recordResponseModel(chunk.model)
+          }
           if (chunk.finishReason) streamFinishReason = chunk.finishReason
           if (chunk.reasoning) {
             fullReasoning += chunk.reasoning
@@ -1349,9 +1361,17 @@ export function useGameEngine(): GameEngineReturn {
       */
       if (useUIStore.getState().llm.showReasoning && !reasoningToKeep && !reasoningHintShown) {
         reasoningHintShown = true
-        const hint = /reasoner|(^|[-_/])r1($|[-_/])|o1|o3|thinking/i.test(config.narrativeModel)
-          ? '服务商没有返回思维链（模型是推理模型，可能被接口省略了）'
-          : `当前模型「${config.narrativeModel}」不是推理模型，不会返回思维链 —— 换成 deepseek-reasoner 这类才有`
+        /*
+          「该不该有思维链」有两条来源（2026-11）：
+          名字像推理模型，或者这个服务商的这个模型默认就在思考。
+          DeepSeek V4 系列属于后者 —— 名字里一个 reasoner 都没有，
+          但对它说"你不是推理模型"是错的。
+        */
+        const nameSaysReasoner = isReasonerModel(config.narrativeModel)
+        const providerSaysThinking = isThinkingByDefault(config.provider, config.narrativeModel)
+        const hint = nameSaysReasoner || providerSaysThinking
+          ? '服务商没有返回思维链（这个模型该有，可能被接口省略或中转裁掉了）'
+          : `当前模型「${config.narrativeModel}」不默认思考，不会返回思维链 —— DeepSeek 官方换成 deepseek-flash 或 deepseek-v4-pro 才有`
         useUIStore.getState().setStatusMessage(hint)
         setTimeout(() => useUIStore.getState().setStatusMessage(null), 7000)
       }

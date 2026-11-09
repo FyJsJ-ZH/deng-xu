@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { llmChat, suggestMaxTokens, isReasonerModel } from '@/api/llm'
+import { llmChat, suggestMaxTokens, isReasonerModel, isThinkingByDefault, migrateDeepSeekModelName, parseSseLine, PROVIDER_PRESETS } from '@/api/llm'
 import type { LLMConfig } from '@/types/cards'
 
 /**
@@ -89,6 +89,78 @@ describe('max_tokens · 按目标字数推算额度', () => {
     for (const n of ['deepseek-chat', 'gpt-4o', 'claude-3.5-sonnet', 'qwen2.5:14b']) {
       expect(isReasonerModel(n), n).toBe(false)
     }
+  })
+
+  /*
+    ⚠️ 这一组是 2026-11 加的，起因是玩家问「官方不是已经下架 R1 和 V3 了吗，
+    我们调用的到底是什么模型」。
+
+    查下来：`deepseek-chat` / `deepseek-reasoner` 是官方日志里
+    **2026-07-24 停止使用**的旧名，现行名字只有 `deepseek-flash` 与
+    `deepseek-v4-pro`。而这两个新名字里**一个 reasoner 都没有**，
+    可它们默认就开着思考模式 —— 只靠 `isReasonerModel` 判断的话，
+    会漏掉 3 倍额度、还会白白发一个不生效的 temperature。
+  */
+  it('★ DeepSeek 2026 系列默认思考 → 三倍额度（名字里没有 reasoner）', () => {
+    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek')).toBe(5400)
+    expect(suggestMaxTokens(1800, 'deepseek-v4-pro', 'deepseek')).toBe(5400)
+    // 同名挂在别的服务商上不算 —— 中转站很可能给的是非思考版
+    expect(suggestMaxTokens(1800, 'deepseek-flash', 'siliconflow')).toBe(3600)
+    expect(suggestMaxTokens(1800, 'deepseek-flash')).toBe(3600)
+  })
+
+  it('★ 已停用的模型名被迁到现行名字；现行名字与不认识的都原样返回', () => {
+    for (const old of ['deepseek-chat', 'deepseek-reasoner', 'deepseek-r1', 'deepseek-v3', 'deepseek-v4-flash']) {
+      expect(migrateDeepSeekModelName(old), old).toBe('deepseek-flash')
+    }
+    // 大小写与空白都要认
+    expect(migrateDeepSeekModelName(' DeepSeek-Chat ')).toBe('deepseek-flash')
+    // 现行的不动
+    expect(migrateDeepSeekModelName('deepseek-flash')).toBe('deepseek-flash')
+    expect(migrateDeepSeekModelName('deepseek-v4-pro')).toBe('deepseek-v4-pro')
+    // 别人的模型名不碰 —— 自定义端点 / 中转站完全可能自己叫 deepseek-chat
+    expect(migrateDeepSeekModelName('gpt-4o')).toBe('gpt-4o')
+    expect(migrateDeepSeekModelName('deepseek/deepseek-chat')).toBe('deepseek/deepseek-chat')
+  })
+
+  it('★ 官方候选模型只列现行名字（不再给玩家一个已停用的选项）', () => {
+    const preset = PROVIDER_PRESETS.find(p => p.id === 'deepseek')!
+    expect(preset.models).toEqual(['deepseek-flash', 'deepseek-v4-pro'])
+    expect(preset.models.join(',')).not.toContain('deepseek-chat')
+  })
+})
+
+describe('请求体 · 默认思考的模型不发 temperature', () => {
+  it('★ deepseek-flash 走 deepseek 服务商时，temperature 不发（思考模式下不生效）', async () => {
+    const { m, config } = await start({ provider: 'deepseek', narrativeModel: 'deepseek-flash' })
+    await llmChat({ messages: [{ role: 'user', content: 'hi' }], config, stream: false })
+    expect(m.bodies[0].temperature).toBeUndefined()
+  })
+
+  it('同样的模型名挂在 custom 服务商上 → 照常发 temperature', async () => {
+    const { m, config } = await start({ provider: 'custom', narrativeModel: 'deepseek-flash' })
+    await llmChat({ messages: [{ role: 'user', content: 'hi' }], config, stream: false })
+    expect(m.bodies[0].temperature).toBe(0.7)
+  })
+
+  it('isThinkingByDefault 只对 deepseek 官方生效', () => {
+    expect(isThinkingByDefault('deepseek', 'deepseek-flash')).toBe(true)
+    expect(isThinkingByDefault('deepseek', 'deepseek-v4-pro')).toBe(true)
+    expect(isThinkingByDefault('deepseek', 'deepseek-v4-flash')).toBe(true)
+    expect(isThinkingByDefault('deepseek', 'deepseek-chat')).toBe(false)
+    expect(isThinkingByDefault('openrouter', 'deepseek-flash')).toBe(false)
+    expect(isThinkingByDefault('', 'deepseek-flash')).toBe(false)
+  })
+
+  it('★ 流式回包里的 model 被解析出来（"实际是什么模型"的唯一证据）', async () => {
+    const c = parseSseLine('data: {"model":"deepseek-v4.1-flash-1017","choices":[{"delta":{"content":"好"}}]}')
+    expect(c?.model).toBe('deepseek-v4.1-flash-1017')
+    expect(c?.content).toBe('好')
+    // 只有 model 没有内容的那一帧也要算有效 chunk，否则首帧就把它丢了
+    const only = parseSseLine('data: {"model":"deepseek-flash","choices":[{"delta":{}}]}')
+    expect(only?.model).toBe('deepseek-flash')
+    // 没有 model 的老服务商 → 不能凭空造一个
+    expect(parseSseLine('data: {"choices":[{"delta":{"content":"x"}}]}')?.model).toBeUndefined()
   })
 })
 

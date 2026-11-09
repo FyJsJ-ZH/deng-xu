@@ -85,7 +85,18 @@ const DEEPSEEK_PRO: PriceBook = {
  */
 export function priceBookFor(provider: string, model: string): PriceBook | null {
   if (provider !== 'deepseek') return null
-  // 官方说明：旧模型名 deepseek-chat / deepseek-v4-flash 仍可调用，按 Flash 计费
+  /*
+    ⚠️ 这一段原先写的是「旧模型名 deepseek-chat / deepseek-v4-flash 仍可调用，
+    按 Flash 计费」—— 那半句是错的（2026-11 核对官方更新日志）。
+
+    `deepseek-chat` / `deepseek-reasoner` 在官方日志里是**2026-07-24 停止使用**
+    的旧名；`deepseek-v4-flash` 只是暂时路由到 V4.1 Flash。现行价目表上
+    只有 `deepseek-flash` 与 `deepseek-v4-pro` 两行，迁移在 `api/llm.ts`
+    的 `migrateDeepSeekModelName` 里做，这里只负责按名字挑表。
+
+    按名字而不是按表里有没有来判：DeepSeek 一侧能确定 "pro 贵、其余按 Flash"，
+    这个口径和官方价目表一致，多一个 if 反而会漏。
+  */
   return /pro/i.test(model) ? DEEPSEEK_PRO : DEEPSEEK_FLASH
 }
 

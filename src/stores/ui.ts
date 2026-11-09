@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { LLMConfig, SetupSeed } from '@/types/cards'
-import { DEFAULT_LLM_CONFIG, getPreset } from '@/api/llm'
+import { DEFAULT_LLM_CONFIG, getPreset, migrateDeepSeekModelName } from '@/api/llm'
 
 interface UIState {
   /** 模型服务配置（服务商 / 地址 / 密钥 / 模型） */
@@ -131,16 +131,39 @@ export const useUIStore = create<UIState>()(
         所以升级时统一放开成 `true`，让老用户也能看到思维链。
         从现在起拨它才有意义（新的默认值也是 true）。
       */
-      version: 3,
+      /*
+        v4（2026-11）：把已停用的 DeepSeek 模型名换成现行名字。
+
+        `deepseek-chat` / `deepseek-reasoner` 在官方更新日志里是
+        **2026-07-24 停止使用**的旧名，而现在（2026-11）价目表上只剩
+        `deepseek-flash` 与 `deepseek-v4-pro`。老存档里存着旧名字，
+        不迁就会一直发一个官方已不再提供的模型名 —— 表现是 400，
+        或者吃到一次明天就可能撤掉的兜底路由，两种情况玩家都看不懂原因。
+
+        ⚠️ 只迁 `provider === 'deepseek'` 的：自定义端点 / 中转站
+        完全可能自己起一个叫 `deepseek-chat` 的映射，替它改名会打坏人家。
+      */
+      version: 4,
       migrate: (persisted: any, from: number) => {
         // 兼容旧版本存的裸 apiKey 字段
         if (persisted && typeof persisted.apiKey === 'string' && !persisted.llm) {
           return { llm: { ...DEFAULT_LLM_CONFIG, apiKey: persisted.apiKey } };
         }
-        if (from < 3 && persisted?.llm && typeof persisted.llm === 'object') {
-          return { ...persisted, llm: { ...persisted.llm, showReasoning: true } };
+        let next = persisted;
+        if (from < 3 && next?.llm && typeof next.llm === 'object') {
+          next = { ...next, llm: { ...next.llm, showReasoning: true } };
         }
-        return persisted;
+        if (from < 4 && next?.llm && typeof next.llm === 'object' && next.llm.provider === 'deepseek') {
+          next = {
+            ...next,
+            llm: {
+              ...next.llm,
+              narrativeModel: migrateDeepSeekModelName(next.llm.narrativeModel),
+              analysisModel: migrateDeepSeekModelName(next.llm.analysisModel),
+            },
+          };
+        }
+        return next;
       }
     }
   )
