@@ -216,7 +216,16 @@ check('下拉里有「重开本局」', await ev(`(() => {
 await ev(`(() => {
   const sel = [...document.querySelectorAll('select')].find(s => /回到第/.test(s.textContent || ''))
   const opt = [...sel.options].find(o => /重开本局/.test(o.textContent))
-  sel.value = opt.value
+  /*
+    ⚠️ 不能直接给 sel.value 赋值（2026-11，CI 上就栽在这里）。
+
+    这是一个**受控** select。React 给 DOM 的 value 装了一个 tracker：
+    直接赋值会被它记成"值没变的内部更新"，紧接着派发的 change 事件
+    就会被 React 忽略 —— 本地有时能过、CI 上稳定挂，最难查的那一类。
+    走原生 setter 绕开 tracker，再派发 change，React 才会真的收到。
+  */
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+  setter.call(sel, opt.value)
   sel.dispatchEvent(new Event('change', { bubbles: true }))
   return 'ok'
 })()`)
