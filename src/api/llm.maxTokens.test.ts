@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { llmChat, suggestMaxTokens, isReasonerModel, isThinkingByDefault, migrateDeepSeekModelName, parseSseLine, PROVIDER_PRESETS } from '@/api/llm'
+import { llmChat, suggestMaxTokens, isReasonerModel, isThinkingByDefault, willThink, migrateDeepSeekModelName, parseSseLine, PROVIDER_PRESETS } from '@/api/llm'
 import type { LLMConfig } from '@/types/cards'
 
 /**
@@ -161,6 +161,51 @@ describe('请求体 · 默认思考的模型不发 temperature', () => {
     expect(only?.model).toBe('deepseek-flash')
     // 没有 model 的老服务商 → 不能凭空造一个
     expect(parseSseLine('data: {"choices":[{"delta":{"content":"x"}}]}')?.model).toBeUndefined()
+  })
+})
+
+/**
+ * 思考模式开关（2026-11，玩家要求「把带不带思考做成配置里的选项」）。
+ *
+ * 三种取值对应三种报文，而 `'auto'` 必须是**一个字节都不多**的那一种 ——
+ * 老玩家的每一轮都和这个功能存在之前完全一样。
+ */
+describe('思考模式 · 请求体里到底发不发 thinking', () => {
+  it('★ auto（默认）：不发这个字段，报文与旧版一致', async () => {
+    const { m, config } = await start({ provider: 'deepseek', narrativeModel: 'deepseek-flash' })
+    await llmChat({ messages: [{ role: 'user', content: 'hi' }], config, stream: false })
+    expect('thinking' in m.bodies[0]).toBe(false)
+    // 但它默认是思考的模型，所以 temperature 照旧不发
+    expect(m.bodies[0].temperature).toBeUndefined()
+  })
+
+  it('★ on：发 enabled', async () => {
+    const { m, config } = await start({ provider: 'custom', narrativeModel: 'm', thinking: 'on' })
+    await llmChat({ messages: [{ role: 'user', content: 'hi' }], config, stream: false })
+    expect(m.bodies[0].thinking).toEqual({ type: 'enabled' })
+    expect(m.bodies[0].temperature).toBeUndefined()
+  })
+
+  it('★ off：发 disabled，并且 temperature 恢复正常发送', async () => {
+    const { m, config } = await start({ provider: 'custom', narrativeModel: 'm', thinking: 'off' })
+    await llmChat({ messages: [{ role: 'user', content: 'hi' }], config, stream: false })
+    expect(m.bodies[0].thinking).toEqual({ type: 'disabled' })
+    expect(m.bodies[0].temperature).toBe(0.7)
+  })
+
+  it('off 压得住"名字像推理模型"：llm 不再按 3 倍给额度', () => {
+    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek', 'off')).toBe(3600)
+    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek', 'on')).toBe(5400)
+    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek', 'auto')).toBe(5400)
+    // 普通模型开着思考也要 3 倍 —— 玩家选的就是"想"
+    expect(suggestMaxTokens(1800, 'gpt-4o', 'openai', 'on')).toBe(5400)
+  })
+
+  it('willThink：三档语义（auto 才去看名字）', () => {
+    expect(willThink('deepseek-flash', 'deepseek', 'auto')).toBe(true)
+    expect(willThink('gpt-4o', 'openai', 'auto')).toBe(false)
+    expect(willThink('gpt-4o', 'openai', 'on')).toBe(true)
+    expect(willThink('deepseek-flash', 'deepseek', 'off')).toBe(false)
   })
 })
 

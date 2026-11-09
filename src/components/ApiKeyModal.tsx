@@ -264,9 +264,48 @@ export function ApiKeyModal() {
           />
           <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
             这一项决定模型<b>一次最多能写多少字</b>。留空时按目标字数自动推算
-            （1800 字 ≈ 3600 token；默认在思考的模型 ×3 —— DeepSeek 的
-            deepseek-flash / deepseek-v4-pro 都属于这一档）。如果你的服务商把单次输出封在 4096，
+            （1800 字 ≈ 3600 token；会思考的情况按 3 倍给，不思考按 2 倍 ——
+            思考模式下思维链和正文抢同一份额度）。如果你的服务商把单次输出封在 4096，
             在这里填 4096；填了以后所有调用都不会超过它。
+          </p>
+        </div>
+
+        {/* 思考模式（2026-11） */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className={labelClass}>思考模式</span>
+            <span className="text-[10px] font-mono text-text-muted">决定模型想不想</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {([
+              { v: 'auto', label: '跟随服务商', hint: '不发这个参数。报文与以前完全一样，由服务商按自己的默认来 —— 不确定就选这个。' },
+              { v: 'on', label: '开启', hint: '先思考再写：叙事更稳，但首字更慢、token 更贵（思考量也算输出）。' },
+              { v: 'off', label: '关闭', hint: '直接写：更快更省，没有思维链。正文额度也按非思考给（2 倍而不是 3 倍）。' },
+            ] as const).map(o => {
+              const active = (draft.thinking ?? 'auto') === o.v
+              return (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => patch({ thinking: o.v })}
+                  title={o.hint}
+                  className={`px-2 py-1.5 text-[11px] rounded border transition-colors ${
+                    active
+                      ? 'border-accent-lantern/60 text-accent-lantern bg-accent-lantern/10'
+                      : 'border-text-muted/30 text-text-muted hover:text-text-primary hover:border-text-muted/60'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-[10px] text-text-muted leading-relaxed">
+            {(draft.thinking ?? 'auto') === 'auto'
+              ? '不发送 thinking 字段，各家按自己的默认走。DeepSeek 的 V4 系列默认是开着的。'
+              : (draft.thinking ?? 'auto') === 'on'
+                ? '发送 {"thinking": {"type": "enabled"}}。认这个字段的主要是 DeepSeek 官方端点，别家可能不认。'
+                : '发送 {"thinking": {"type": "disabled"}}。认这个字段的主要是 DeepSeek 官方端点，别家可能不认。'}
           </p>
         </div>
 
@@ -278,7 +317,7 @@ export function ApiKeyModal() {
             onChange={(e) => patch({ showReasoning: e.target.checked })}
             className="accent-accent-lantern"
           />
-          <span>显示思维链（仅对支持思维链的模型有效）</span>
+          <span>显示思维链 <span className="text-text-muted text-xs">（只管显示，不管模型想不想）</span></span>
         </label>
 
         {/* 状态与操作 */}
@@ -306,6 +345,17 @@ export function ApiKeyModal() {
             <p className="text-[10px] font-mono text-text-muted break-all">
               {lastError?.message || String(lastError)}
             </p>
+            {/*
+              玩家自己开了 / 关了思考模式，然后在别的端点上测连接失败时，
+              最可能的错因恰恰不是 Key 也不是模型名，而是那个参数不被认。
+              不说这一句，他会去反复改模型名。
+            */}
+            {(draft.thinking ?? 'auto') !== 'auto' && (
+              <p className="text-[10px] text-text-muted leading-relaxed">
+                也可能是这个端点不认 <span className="font-mono">thinking</span> 参数 ——
+                把「思考模式」改回「跟随服务商」再测一次（那一档不发这个字段）。
+              </p>
+            )}
             <button
               onClick={exportErrorLog}
               className="text-xs text-text-muted underline hover:text-text-primary"

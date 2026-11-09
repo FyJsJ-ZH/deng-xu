@@ -3437,7 +3437,46 @@ set((state) => ({ isGameStarted: true, turnSnapshots: [snapshotOf(state, 0, [], 
 
 ---
 
-## 5. 测试体系（**12 套走查** + **994** 单元测试 + 5 个独立工具）
+## 4.12 思考模式做成可选（2026-11 第三十八轮）
+
+用户：「把带不带思考做成模型配置里可选选项吧」。
+
+`LLMConfig.thinking: 'auto' | 'on' | 'off'`，默认 `'auto'`。
+
+| 值 | 报文 | 用途 |
+|---|---|---|
+| `auto` | **什么都不发**，与这个功能存在之前完全一致 | 默认。零风险 |
+| `on` | `{"thinking":{"type":"enabled"}}` | 要质量 |
+| `off` | `{"thinking":{"type":"disabled"}}` | 要快、要省 |
+
+### 三处必须共用一个答案
+
+`willThink(model, provider, mode)`：
+
+- `buildBody` 用它决定发不发 `thinking`、要不要压掉 `temperature` / `response_format`；
+- `suggestMaxTokens` 用它决定 2 倍还是 3 倍额度；
+- 引擎用它决定"没收到思维链"时该不该提示换模型 ——
+  **关掉思考的人不该被劝去换模型**，那是他刚自己关的。
+
+分开写就会出这种自相矛盾。
+
+### 和 `showReasoning` 分工
+
+`showReasoning` 管「想的过程给不给你看」，`thinking` 管「模型到底想不想」。
+界面上把两句文案分开写了，否则老玩家会以为拨一个就够了。
+
+### 默认为什么是 auto 而不是 off
+
+默认 `off` 会改变所有老玩家的报文（包括正在用 `deepseek-reasoner` 的那些）；
+默认 `on` 则可能让不认识这个字段的端点直接 400。`auto` 是唯一一个
+"对谁都不动手"的选项。
+
+顺带：测试连接失败时，如果 thinking 不是 auto，会多一句
+「也可能是这个端点不认 thinking 参数」—— 不然玩家会去反复改模型名。
+
+---
+
+## 5. 测试体系（**12 套走查** + **999** 单元测试 + 5 个独立工具）
 
 
 

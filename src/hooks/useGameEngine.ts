@@ -1219,7 +1219,7 @@ export function useGameEngine(): GameEngineReturn {
           恰好对上玩家说的「不到 1200 字」。提示词写着 1800 也没用，
           模型是写到一半被 API 切断的。
         */
-        maxTokens: config.maxTokens ?? suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel, config.provider),
+        maxTokens: config.maxTokens ?? suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel, config.provider, config.thinking ?? 'auto'),
       }) as Response
 
       const reader = streamResponse.body?.getReader()
@@ -1369,9 +1369,12 @@ export function useGameEngine(): GameEngineReturn {
         */
         const nameSaysReasoner = isReasonerModel(config.narrativeModel)
         const providerSaysThinking = isThinkingByDefault(config.provider, config.narrativeModel)
-        const hint = nameSaysReasoner || providerSaysThinking
-          ? '服务商没有返回思维链（这个模型该有，可能被接口省略或中转裁掉了）'
-          : `当前模型「${config.narrativeModel}」不默认思考，不会返回思维链 —— DeepSeek 官方换成 deepseek-flash 或 deepseek-v4-pro 才有`
+        const playerTurnedItOff = (config.thinking ?? 'auto') === 'off'
+        const hint = playerTurnedItOff
+          ? '你在设置里关掉了思考模式，所以这一轮没有思维链（想看得打开它）'
+          : nameSaysReasoner || providerSaysThinking
+            ? '服务商没有返回思维链（这个模型该有，可能被接口省略或中转裁掉了）'
+            : `当前模型「${config.narrativeModel}」不默认思考，不会返回思维链 —— DeepSeek 官方换成 deepseek-flash 或 deepseek-v4-pro 才有`
         useUIStore.getState().setStatusMessage(hint)
         setTimeout(() => useUIStore.getState().setStatusMessage(null), 7000)
       }

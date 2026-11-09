@@ -132,6 +132,14 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
   analysisModel: 'deepseek-flash',
   temperature: 0.8,
   /*
+    思考模式默认「跟随服务商」—— 也就是**不发这个字段**。
+
+    不默认 `'off'` 的理由：老玩家的每一轮报文都和以前一模一样，
+    这次改动对他们等于零（包括那些正在用 `deepseek-reasoner` 的人）。
+    不默认 `'on'` 的理由：对不认识这个字段的端点发它，可能直接 400。
+  */
+  thinking: 'auto',
+  /*
     **默认开**（2026-11 改）。
 
     ⚠️ 这个字段以前的处境很荒唐：它在类型里躺了好几轮、设置页也可以拨，
@@ -215,6 +223,27 @@ export function isThinkingByDefault(provider: string, model: string): boolean {
   return /^deepseek-(flash|v4-flash|v4-pro)$/.test(String(model || '').trim().toLowerCase());
 }
 
+/** 玩家在设置里对「思考模式」的选择（见 `LLMConfig.thinking`） */
+export type ThinkingMode = 'auto' | 'on' | 'off';
+
+/**
+ * **这一次调用到底会不会思考**。
+ *
+ * 三处要用同一个答案，所以合成一个函数：
+ *  - `buildBody` 决定发不发 `thinking`、要不要压掉 `temperature`；
+ *  - `suggestMaxTokens` 决定给 2 倍还是 3 倍额度；
+ *  - 引擎决定"没收到思维链"时该不该提示玩家换模型。
+ *
+ * 分开写的话，最典型的翻车是：玩家选了「关掉思考」，界面却还在提示
+ * 「你的模型不返回思维链，换 deepseek-flash 才有」—— 他明明是自己关的。
+ */
+export function willThink(model: string, provider: string, mode: ThinkingMode = 'auto'): boolean {
+  if (mode === 'off') return false;
+  if (mode === 'on') return true;
+  // auto：让服务商按它自己的默认来 —— 我们只能按已知的信息猜
+  return isReasonerModel(model) || isThinkingByDefault(provider, model);
+}
+
 /**
  * 按「目标回复字数」推算该发多大的 `max_tokens`。
  *
@@ -236,10 +265,14 @@ export function isThinkingByDefault(provider: string, model: string): boolean {
  * 下限 1024，上限 16384（多数服务商的单次输出上限，超了会被直接拒）。
  * 玩家在设置里填了 `maxTokens` 时以他填的为准。
  */
-export function suggestMaxTokens(replyLength: number, model = '', provider = ''): number {
+export function suggestMaxTokens(
+  replyLength: number,
+  model = '',
+  provider = '',
+  thinking: ThinkingMode = 'auto',
+): number {
   const chars = Number.isFinite(replyLength) && replyLength > 0 ? replyLength : 1800;
-  const thinking = isReasonerModel(model) || isThinkingByDefault(provider, model);
-  const per = thinking ? 3 : 2;
+  const per = willThink(model, provider, thinking) ? 3 : 2;
   return Math.min(16384, Math.max(1024, Math.ceil(chars * per)));
 }
 
@@ -267,9 +300,23 @@ function buildBody(opts: ChatOptions, stream: boolean): string {
     2026 的 DeepSeek V4 系列是另一种 —— 名字里没有任何推理标记，
     但官方"思考模式默认打开"。思考模式下 temperature 不生效
     （传了不报错，只是白传），所以照样不该发。
+
+    第三条来源是**玩家自己选的**（`config.thinking`）：他可以在设置里
+    显式开关思考模式，那比我们的猜测更权威 —— `willThink` 统一处理这三者。
   */
-  const isReasoner = isReasonerModel(modelName);
-  const isThinking = isReasoner || isThinkingByDefault(config.provider, modelName);
+  const mode: ThinkingMode = config.thinking ?? 'auto';
+  const isThinking = willThink(modelName, config.provider, mode);
+
+  /*
+    ── thinking：只在玩家**明确表态**时才发（2026-11）──
+
+    `'auto'` 意味着"照旧"：报文与没有这个功能时完全一致，零风险。
+    只有选了开 / 关才把字段放进请求体 —— 并且这时最好让玩家知道，
+    认这个字段的主要是 DeepSeek 官方那一套，别家可能直接 400。
+  */
+  if (mode !== 'auto') {
+    body.thinking = { type: mode === 'on' ? 'enabled' : 'disabled' };
+  }
 
   /*
     ── max_tokens：**必须显式发**（2026-11）──
