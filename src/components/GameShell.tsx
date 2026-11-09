@@ -303,16 +303,32 @@ export function GameShell() {
     })
   }, [world, playerName, history.length, location])
 
-  // 换了 API key 之后允许重试首轮
+  /*
+    换了 API key 之后允许重试首轮。
+
+    ⚠️ **必须躲开「重开本局」的中间态**（2026-11 实测踩到，而且很难看）。
+
+    这个 effect 会在 `history` 变成 0 的那一刻把 `hasInitialized` 放回 false ——
+    那是为了"配好 key 后重试一次"。但"重开本局"恰恰也会把历史清成 0，
+    于是两个 effect 在**同一轮渲染**里先后跑：这个先把闸门打开，
+    下面那个立刻自动生成第一幕。
+
+    现象：玩家点了「重开本局」，还没来得及去右栏换文风，第一幕已经自己开演了，
+    钱也花了 —— 而设计上这一步应该由他按「▶ 生成第一幕」来决定。
+
+    `pendingOpening` 就是"正等着玩家自己点"的那个状态，看到它就什么都不做。
+  */
   useEffect(() => {
+    if (pendingOpening) return
     if (llm.apiKey && history.length === 0) {
       hasInitialized.current = false
     }
-  }, [llm.apiKey, history.length])
+  }, [llm.apiKey, history.length, pendingOpening])
 
   // 开始游戏后如果还没有历史，触发生成第一幕
   useEffect(() => {
     const ready = llm.apiKey || llm.provider === 'ollama'
+    if (pendingOpening) return
     if (history.length === 0 && !isProcessing && !hasInitialized.current && ready) {
       hasInitialized.current = true
       handleAction('init', '开始故事').catch(() => {
@@ -320,7 +336,7 @@ export function GameShell() {
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [history.length, isProcessing, llm.apiKey, llm.provider])
+  }, [history.length, isProcessing, llm.apiKey, llm.provider, pendingOpening])
 
   /*
     ⚠️ 必须把 `reasoning` 一起带上（2026-11）。
@@ -357,21 +373,29 @@ export function GameShell() {
           onConfirm={() => {
             const t = pendingRewind.turn
             setPendingRewind(null)
-            // turn 0 = 回到开局（还原开局快照，第一幕由玩家自己决定什么时候生成）
+            // turn 0 = 重开本局（还原/重建开局，第一幕由玩家自己决定什么时候生成）
             if (t === 0) {
+              /*
+                ⚠️ 这两行必须在**调用之前**（2026-11 实测踩到）。
+
+                `restartOpening()` 内是同步改 store 的：历史被清成 0 条那一刻，
+                下面那个「history 为空就自动开演」的 effect 会立刻命中 ——
+                而这个 effect 只认 `hasInitialized` 这个 ref。
+                它原本写在 `.then()` 里，可 `.then` 是微任务，effect 已经跑完了。
+                结果：玩家点了「重开本局」，还没来得及去调文风，第一幕自己开演了，
+                钱也花了。
+
+                先设 ref 就等于先把闸门拉下来，之后无论渲染多少次都不会自动生成。
+                失败时再把它放回去。
+              */
+              hasInitialized.current = true
+              setPendingOpening(true)
               void restartOpening().then((ok: boolean) => {
                 if (!ok) {
-                  useUIStore.getState().setStatusMessage('这一局没有留下可用的开局快照，回不到开局')
-                  return
+                  hasInitialized.current = false
+                  setPendingOpening(false)
+                  useUIStore.getState().setStatusMessage('这一局没有可重建的会话配置，回不到开局')
                 }
-                /*
-                  拦住下面那个"history 为空就自动开演"的 effect。
-                  生成第一幕这一步交给玩家（按钮在叙事区下方），
-                  这样他有空先去右栏换文风/预设 —— 那两个改动正好"下一轮生效"，
-                  而下一轮就是即将生成的第一幕。
-                */
-                hasInitialized.current = true
-                setPendingOpening(true)
               })
               return
             }

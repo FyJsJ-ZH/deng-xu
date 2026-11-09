@@ -704,7 +704,20 @@ export interface GameState {
    * 都是在拿玩家的存档冒险。
    */
   resumeGame: () => void
-  resetGame: () => void
+  /**
+   * 清空一局（数值、历史、记忆、快照全归零）。
+   *
+   * @param opts.keepStarted 保持 `isGameStarted` 为 true。
+   *
+   *   ⚠️ 这个选项是为「重开本局」加的（2026-11）。`resetGame()` 默认会把它设成
+   *   false，而 `App` 是按这个字段决定渲染 `GameShell` 还是 `StartScreen` ——
+   *   于是重开的那一瞬间游戏界面被卸载又挂载，`GameShell` 里那个
+   *   「history 为空就自动开演」的 effect 拿到新的 ref，**立刻自动生成第一幕**。
+   *   玩家还没来得及按设计去调文风与预设，钱已经花了。
+   *
+   *   一次 set 就把状态落到最终值，中间没有 false，界面就不会抖。
+   */
+  resetGame: (opts?: { keepStarted?: boolean }) => void
   returnToTitle: () => void
 
   // Story Actions
@@ -1331,7 +1344,7 @@ export const useGameStore = create<GameState>()(
         （2026-11 玩家报：「载入存档后只能选回到开局了」）。
       */
       resumeGame: () => set({ isGameStarted: true }),
-      resetGame: () => set({ ...INITIAL_STATE }),
+      resetGame: (opts) => set({ ...INITIAL_STATE, isGameStarted: opts?.keepStarted === true }),
       returnToTitle: () => set({ isGameStarted: false }),
 
       setStoryState: (storyUpdate) => set((state) => ({ story: { ...state.story, ...storyUpdate } })),

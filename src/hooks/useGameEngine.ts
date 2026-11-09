@@ -1720,8 +1720,16 @@ export function useGameEngine(): GameEngineReturn {
     const activeIds = s.activeCharacterIds || []
     const player = s.player
 
-    // 全清：历史、摘要、记忆、数值、物品、角色、快照链
-    g().resetGame()
+    /*
+      全清：历史、摘要、记忆、数值、物品、角色、快照链。
+
+      ⚠️ `keepStarted: true` 不是可选的（2026-11 实测踩到）。
+      默认的 `resetGame()` 会把 `isGameStarted` 设成 false → App 那一刻渲染
+      `StartScreen` → GameShell 卸载 → 重新挂载后 `hasInitialized` 是新的 ref
+      → 「history 为空就自动开演」的 effect 立刻生成第一幕。
+      结果就是：玩家点了「重开本局」，还没来得及调文风，第一幕已经自己开始写了。
+    */
+    g().resetGame({ keepStarted: true })
 
     g().initFromWorld(world)
     g().setPlayerProfile(

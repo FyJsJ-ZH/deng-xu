@@ -3630,7 +3630,57 @@ if (baseline + history.length !== s.historyLength - delta.length) return null
 
 ---
 
-## 5. 测试体系（**12 套走查** + **1007** 单元测试 + 5 个独立工具）
+## 4.16 自测找出来的两个 bug（2026-11 第四十二轮）
+
+用户要求「做完之后再自己测试找找 bug 修了，跑完 CI 叫我」。把自己改的东西当真机跑了一遍，
+抓到两个，都是单元测试看不见的**组件时序**。
+
+### 一、「重开本局」会自己开演，替玩家花掉一次生成
+
+走查脚本：造一份没有 turn 0 的老存档 → 点「重开本局」→ 确认 → 观察。
+
+结果是：清空后 **不到 400ms**，第一幕已经生成完了。而设计上这一步该由玩家按
+「▶ 生成第一幕」决定（他还要趁这个空档去调文风与预设）。
+
+两个闸门接连被打开：
+
+1. `restartOpening()` 里调的是 `resetGame()`，它把 `isGameStarted` 设成 false →
+   `App` 那一刻渲染 `StartScreen` → `GameShell` 卸载重挂 →
+   **`hasInitialized` 这个 ref 是新的（false）**。
+2. 修好第 1 条（`resetGame({ keepStarted: true })`）之后仍然自动生成 ——
+   因为「换了 API key 后允许重试首轮」那个 effect 也在盯 `history.length === 0`，
+   它先把 `hasInitialized` 放回 false，紧接着下面那个"history 为空就自动开演"的 effect 命中。
+
+两处都修：`resetGame` 加 `keepStarted` 选项；两个 effect 都加 `pendingOpening` 守卫。
+另外把 `hasInitialized.current = true` 从 `.then()` 挪到**调用之前** ——
+`.then` 是微任务，effect 早就跑完了。
+
+### 二、缺一栏的卡会让第一轮直接抛英文报错
+
+走查脚本造的假 `PlayerCard` 没有 `appearance` 字段，屏幕上出现：
+
+```
+Cannot read properties of undefined (reading 'trim')
+```
+
+`formatPlayer` / `formatCharacter` 里全是一串裸的 `.trim()`。类型上这些字段必填，
+但**卡是外部输入**（导入的旧存档、手改的 JSON、少写一栏的世界包）——
+类型保证不了运行时。
+
+改成 `const s = (v) => typeof v === 'string' ? v : ''` 逐字段兜底；
+`world.narrative.customStyle` 同样处理。新增 `prompts.robust.test.ts` 钉住
+"缺字段也要能拼出一段提示词"。
+
+### 新增第 13 套走查：`restart-run.mjs`
+
+把这次的脚本固化了（假服务商 + 真机）。判据里最关键的一条是
+**「清空后 3 秒内 history 必须还是 0」** —— 它专门盯"偷偷自动开演"这种事。
+
+---
+
+## 5. 测试体系（**13 套走查** + **1011** 单元测试 + 5 个独立工具）
+
+
 
 
 

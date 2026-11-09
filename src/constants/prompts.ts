@@ -60,24 +60,45 @@ export function formatCharacter(card: CharacterCard): string {
   if (card.playable) head.push('（由玩家扮演的角色）');
   blocks.push(head.join(' | '));
 
-  if (card.description.trim()) blocks.push(`**设定**：${card.description.trim()}`);
-  if (card.personality.trim()) blocks.push(`**性格**：${card.personality.trim()}`);
-  if (card.scenario.trim()) blocks.push(`**相关情境**：${card.scenario.trim()}`);
-  if (card.messageExamples.trim()) blocks.push(`**对话示例**（模仿其语气与用词）：\n${card.messageExamples.trim()}`);
-  if (card.systemPrompt.trim()) blocks.push(`**该角色的专属指令**：${card.systemPrompt.trim()}`);
-  if (card.postHistoryInstructions.trim()) blocks.push(`**附加要求**：${card.postHistoryInstructions.trim()}`);
+  /*
+    ⚠️ 和 `formatPlayer` 一样，每个字段都要兜底（2026-11）。
+
+    这批字段在类型上是必填，但**卡是外部输入** —— 导入的 SillyTavern 卡、
+    手改过的 JSON、第三方打包的世界包都可能少写一栏。直接 `.trim()`
+    会让整轮生成在第一个角色身上炸掉，而错误信息是
+    `Cannot read properties of undefined (reading 'trim')`，玩家完全无从下手。
+  */
+  const s = (v: unknown) => (typeof v === 'string' ? v : '')
+  if (s(card.description).trim()) blocks.push(`**设定**：${card.description.trim()}`);
+  if (s(card.personality).trim()) blocks.push(`**性格**：${card.personality.trim()}`);
+  if (s(card.scenario).trim()) blocks.push(`**相关情境**：${card.scenario.trim()}`);
+  if (s(card.messageExamples).trim()) blocks.push(`**对话示例**（模仿其语气与用词）：\n${card.messageExamples.trim()}`);
+  if (s(card.systemPrompt).trim()) blocks.push(`**该角色的专属指令**：${card.systemPrompt.trim()}`);
+  if (s(card.postHistoryInstructions).trim()) blocks.push(`**附加要求**：${card.postHistoryInstructions.trim()}`);
 
   return blocks.join('\n');
 }
 
 export function formatPlayer(player: PlayerCard): string {
+  /*
+    ⚠️ 每个字段都要 `|| ''` 兜底（2026-11）。
+
+    这里直接 `.trim()` 过一个可能不存在的值，会在**第一轮生成时**抛出
+    `Cannot read properties of undefined (reading 'trim')` —— 一个玩家
+    完全看不懂的错误，而且是在他点了「开始故事」之后才炸。
+
+    什么时候会遇上：导入的旧存档、手改过的 JSON、卡里少写一栏的玩家卡。
+    `PlayerCard` 的字段在类型上是必填，但**存档是外部输入**，
+    类型保证不了运行时。提示词这一层必须是最后一道防线。
+  */
+  const s = (v: unknown) => (typeof v === 'string' ? v : '')
   const lines: string[] = [`- 姓名：${player.name || EMPTY}`];
-  if (player.gender.trim()) lines.push(`- 性别：${player.gender}`);
-  if (player.age.trim()) lines.push(`- 年龄：${player.age}`);
-  if (player.appearance.trim()) lines.push(`- 外貌：${player.appearance}`);
-  if (player.personality.trim()) lines.push(`- 性格：${player.personality}`);
-  if (player.background.trim()) lines.push(`- 背景：${player.background}`);
-  if (player.extra.trim()) lines.push(`- 其他：${player.extra}`);
+  if (s(player.gender).trim()) lines.push(`- 性别：${player.gender}`);
+  if (s(player.age).trim()) lines.push(`- 年龄：${player.age}`);
+  if (s(player.appearance).trim()) lines.push(`- 外貌：${player.appearance}`);
+  if (s(player.personality).trim()) lines.push(`- 性格：${player.personality}`);
+  if (s(player.background).trim()) lines.push(`- 背景：${player.background}`);
+  if (s(player.extra).trim()) lines.push(`- 其他：${player.extra}`);
   return lines.join('\n');
 }
 
@@ -448,7 +469,7 @@ ${povInstruction(world)}
 
 - **感官细节**：至少调动两种感官（气味、声音、触感、光线、温度），让场景可触可感。
 - **物理事实优先**：先交代清楚**谁、在哪里、在做什么**，再谈感受与隐喻。不要让抽象描写取代具体行动。
-- **节奏**：不要在一句话里完成复杂动作。玩家的边界（能写什么、不能写什么）只认下面「写作协议」第 5 条，这里不重复。${world.narrative.customStyle.trim() ? `\n- **额外文风要求**：${world.narrative.customStyle.trim()}` : ''}`);
+- **节奏**：不要在一句话里完成复杂动作。玩家的边界（能写什么、不能写什么）只认下面「写作协议」第 5 条，这里不重复。${(world.narrative.customStyle || '').trim() ? `\n- **额外文风要求**：${world.narrative.customStyle.trim()}` : ''}`);
 
   /*
     篇幅与信息投放紧跟在文风之后、写作协议之前。

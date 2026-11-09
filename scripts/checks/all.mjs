@@ -51,6 +51,9 @@ const CHECKS = [
   // 判据是**任何 overflow-x:visible 的容器都不许超出容器宽** —— 页签栏那种
   // 故意可横滚的、以及 truncate 那种裁长文的，都不算。
   { name: '卡片编辑器(手机)', file: 'card-editor-mobile.mjs', port: 9869 },
+  // 「重开本局」全流程：老存档没有 turn 0 快照时入口还在吗、清空后会不会自己开演、
+  // 点了才生成吗。玩家为这件事报过三次，三次的病因都是组件时序，只有真机能看见。
+  { name: '重开本局', file: 'restart-run.mjs', port: 9816 },
 ]
 
 // ── 参数解析 ──
