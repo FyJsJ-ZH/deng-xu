@@ -408,38 +408,72 @@ describe('快照 · 深度隔离与上限', () => {  it('★ 快照不是引用�
     expect(S().turnSnapshots).toHaveLength(0)
   })
 
-  it('★ 快照链断了就拒绝回滚，而不是拿错位的历史冒充过去', () => {
+  /**
+   * 长度元数据不可靠时怎么办（2026-11 改的行为）。
+   *
+   * 原先是「链断了就一律拒绝」。但玩家报的是「重新载入存档后显示快照不存在」——
+   * 长度错位的成因太多了（归档裁短历史、导入另一份存档、重新生成退档），
+   * 一律拒绝等于**把最常见的回溯场景也一起废掉**，而那一轮的正文明明还在屏幕上。
+   *
+   * 现在：长度对不上时按**正文内容**定位（`locateByContent`）。
+   *  - 正文还在 → 精确切到那一轮结束的位置（不是"错位的过去"，是同一段文本）；
+   *  - 正文真的没了 → 仍然返回 null，如实回不去。
+   */
+  it('★ 快照长度元数据脏了，但那一轮的正文还在 → 按内容定位救回来', () => {
     playTurn(1)
     playTurn(2)
     playTurn(3)
     /*
-      人为制造"断链"：让第 2 轮那份快照声称的长度比实际多一条
-      （模拟失败的一轮没拍快照、历史被外部改动过等）。
-      它之后就再也拼不出对齐的历史了 —— 宁可回不去，
-      也不能让玩家退回一个**别人的**时刻。
-
-      ⚠️ 这里**必须**用 map 建新对象再改，不能写成
-      `broken[1] = { ...broken[1], historyLength: broken[1].historyLength + 1 }` ——
-      JS 先求值右侧的 `broken[1]` 再赋值，拿到的是同一个对象，
-      "加一"写回去的正是它自己原来的值（这个写法我踩过一次，测试反而绿了）。
+      人为制造"断链"：让第 2 轮那份快照声称的长度比实际多一条。
+      ⚠️ 必须用 map 建新对象再改（直接改 `broken[1].historyLength += 1`
+      会在同一个对象上自增，测试反而变绿）。
     */
     const broken = S().turnSnapshots.map(s =>
       s.turn === 2 ? { ...s, historyLength: s.historyLength + 1 } : { ...s },
     )
     useGameStore.setState({ turnSnapshots: broken as any })
 
-    // 第 2 轮要走链式重放（它不是最新那一轮），元数据脏了就必须拒绝
+    const h = replayHistory(S().turnSnapshots, 2, S().history)
+    expect(h, '正文都在，不该回不去').not.toBeNull()
+    // 定位必须**精确**：正好停在第 2 轮的叙事末尾，不多一条也不少一条
+    // （测试的 playTurn 会同时写 user 与 assistant 两条，真实流程里 user 不进历史）
+    expect(h!.map(m => m.content)).toEqual([
+      '第1轮的行动', '第1轮的叙事', '第2轮的行动', '第2轮的叙事',
+    ])
+
+    expect(S().rewindTo(2)).toBe(true)
+    expect(countTurns(S().history)).toBe(2)
+  })
+
+  it('★ 正文真的不在历史里了 → 仍然拒绝，不拿别的轮次冒充', () => {
+    playTurn(1)
+    playTurn(2)
+    playTurn(3)
+    const broken = S().turnSnapshots.map(s =>
+      s.turn === 2 ? { ...s, historyLength: s.historyLength + 1 } : { ...s },
+    )
+    useGameStore.setState({
+      turnSnapshots: broken as any,
+      // 把第 2 轮的正文换掉：快照里记的那段文字现在哪儿都找不到
+      history: S().history.map(m =>
+        m.content === '第2轮的叙事' ? { ...m, content: '这段被改过了' } : m,
+      ),
+    })
+
     expect(replayHistory(S().turnSnapshots, 2, S().history)).toBeNull()
     expect(S().rewindTo(2)).toBe(false)
-    // 状态一丝不动
     expect(countTurns(S().history)).toBe(3)
+  })
 
-    /*
-      而**最新一轮**仍然回得去 —— 它走的是"截断当前历史"那条路径，
-      读的是此刻真实的历史，不依赖快照记录的元数据。
-      这正好是玩家最常用的那次回溯（"刚刚那轮不算，重来"），
-      不该因为一份更早的快照被弄脏而失效。
-    */
+  it('最新一轮始终回得去（走"截断当前历史"，不依赖快照元数据）', () => {
+    playTurn(1)
+    playTurn(2)
+    playTurn(3)
+    const broken = S().turnSnapshots.map(s =>
+      s.turn === 2 ? { ...s, historyLength: s.historyLength + 1 } : { ...s },
+    )
+    useGameStore.setState({ turnSnapshots: broken as any })
+
     expect(S().rewindTo(3)).toBe(true)
     expect(countTurns(S().history)).toBe(3)
   })

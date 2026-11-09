@@ -120,6 +120,33 @@ export async function archiveOldMessages(
 }
 
 /**
+ * 把归档拼回热历史前面，**去掉两者可能重叠的那一段**。
+ *
+ * 为什么会有重叠：归档是定时发生的，同一批消息可能在归档之后又被写进
+ * 热历史（导入存档、回溯后重玩）。直接相加会出现同一段正文连着两遍。
+ *
+ * 去重方式：找"归档的后缀 == 热历史的前缀"的最长公共段，从热历史里切掉。
+ * 只按 `content` 比 —— 时间戳在归档往返里可能被 JSON 规整过。
+ */
+export function mergeArchivedHistory(
+  archived: HistoryMessage[],
+  hot: HistoryMessage[],
+): HistoryMessage[] {
+  if (!archived.length) return hot
+  if (!hot.length) return archived
+
+  const max = Math.min(archived.length, hot.length)
+  for (let k = max; k > 0; k--) {
+    let same = true
+    for (let i = 0; i < k; i++) {
+      if (archived[archived.length - k + i]?.content !== hot[i]?.content) { same = false; break }
+    }
+    if (same) return [...archived, ...hot.slice(k)]
+  }
+  return [...archived, ...hot]
+}
+
+/**
  * 估算把历史写进 localStorage 的体积（UTF-16，约等于字符数 × 2）。
  * 用于在真正触发配额错误之前就先动手归档。
  */

@@ -349,27 +349,63 @@ export function replayHistory(
 
   const history: ChatMessage[] = []
   if (baseline > 0) {
-    if (currentHistory.length < baseline) return null
-    history.push(...currentHistory.slice(0, baseline))
+    if (currentHistory.length >= baseline) history.push(...currentHistory.slice(0, baseline))
+    // 取不够 prefix 也**不要在这里放弃** —— 掉到下面的内容定位再试一次
   }
-  for (const s of chain) {
-    const delta = s.historyDelta ?? []
-    /*
-      链必须首尾相接：拼到这里应该正好是 `historyLength` 条。
-      对不上说明快照链中间缺了一环（失败的一轮没拍快照、手动清过历史等）——
-      重放出来的是**错位的过去**，比"回不去"危险得多，直接放弃。
-
-      ⚠️ 这里对**最新**那份快照网开一面：它描述的是"现在"，
-      而现在的历史是活的（`currentHistory`）—— 上面那条路径已经先处理了它。
-      真走到这里时 newest 不在链上，所以下面校验的每一份都比它更早，可以严格。
-    */
-    if (history.length !== s.historyLength - delta.length) return null
-    history.push(...delta)
-    if (s.turn === turnIndex) break
+  if (history.length === baseline || baseline === 0) {
+    for (const s of chain) {
+      const delta = s.historyDelta ?? []
+      /*
+        链必须首尾相接：拼到这里应该正好是 `historyLength` 条。
+        对不上说明快照链中间缺了一环（失败的一轮没拍快照、手动清过历史、归档裁过等）——
+        长度对不上就**别硬拼**，交回给上面的调用方走内容定位。
+      */
+      if (history.length !== s.historyLength - delta.length) break
+      history.push(...delta)
+      if (s.turn === turnIndex) break
+    }
+    if (history.length === target.historyLength) return history
   }
 
-  if (history.length !== target.historyLength) return null
-  return history
+  // —— 路径三：长度对不上，但那一轮的正文还在 → 按内容定位（2026-11 加） ——
+  return locateByContent(target, currentHistory)
+}
+
+/**
+ * 按**正文内容**在活历史里找回"这一轮结束时"的位置。
+ *
+ * ## 为什么必须有这么一条
+ *
+ * 前两条路径全都依赖 `historyLength` 这个**绝对条数**。而历史会被
+ * 归档（`historyArchive`）裁短、会被导入的存档换成另一份、
+ * 会在「重新生成」里被退回 —— 任何一次长度变化都会让所有快照的
+ * `historyLength` 集体错位，于是**每一轮回溯都失败**：
+ * 玩家看到的是「第 N 轮的快照已经不在」，而那一轮的正文明明还在屏幕上。
+ *
+ * 长度是不可靠的元数据，**内容才是**。这里拿这一轮的 `historyDelta`
+ * 去活历史里做一次连续的整段匹配：
+ *
+ *  - 命中 → 截到匹配段的末尾，就是那一轮结束时的历史；
+ *  - 没命中（正文真的被归档走了 / 被覆盖了）→ 返回 null，如实回不去。
+ *
+ * 用**整段**而不是只看第一条：叙事里有大量重复句（「他点了点头」），
+ * 单条匹配会撞到别的轮次上；整段连续命中几乎不可能误配。
+ */
+function locateByContent(target: TurnSnapshot, currentHistory: ChatMessage[]): ChatMessage[] | null {
+  const delta = target.historyDelta ?? []
+  if (!delta.length) return null
+  const key = delta[0]?.content
+  if (!key) return null
+
+  for (let i = currentHistory.length - delta.length; i >= 0; i--) {
+    if (currentHistory[i]?.content !== key) continue
+    let matched = true
+    for (let j = 1; j < delta.length; j++) {
+      if (currentHistory[i + j]?.content !== delta[j].content) { matched = false; break }
+    }
+    if (matched) return currentHistory.slice(0, i + delta.length)
+  }
+  return null
 }
 
 /**

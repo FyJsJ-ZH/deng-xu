@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useGameStore, countTurns, isOpeningSnapshot, type GameState, type TokenUsage } from '@/stores/game'
+import { useGameStore, countTurns, type GameState, type TokenUsage } from '@/stores/game'
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useMetaStore } from '@/stores/meta'
@@ -26,8 +26,11 @@ import {
   isHistoryPressureHigh,
   archiveOldMessages,
   clearArchive,
+  loadArchive,
+  mergeArchivedHistory,
   type HistoryMessage,
 } from '@/utils/historyArchive'
+import { computeStats, startingItemsOf } from '@/utils/runRebuild'
 
 /**
  * 按需把较旧的叙事归档到 IndexedDB，让 localStorage 里的热数据保持有界。
@@ -355,10 +358,13 @@ interface GameEngineReturn {
   /**
    * 回到第 N 轮结束时（B8）。
    *
-   * 返回是否真的回滚了：快照不存在（例如超过 MAX_TURN_SNAPSHOTS）时返回 false，
+   * 返回是否真的回滚了：快照不存在、或那一轮的正文已经不在历史里时返回 false，
    * 由 UI 明确告诉玩家"这一轮回不去了"，而不是假装成功。
+   *
+   * **是异步的**：第一次失败时会去 IndexedDB 把归档的旧叙事读回来再试一次
+   * （历史被归档裁短是回溯失败的头号原因，见函数体的说明）。
    */
-  rewindToTurn: (turnIndex: number) => boolean
+  rewindToTurn: (turnIndex: number) => Promise<boolean>
   /**
    * **回到开局并重新生成第一幕**（2026-11）。
    *
@@ -1630,9 +1636,46 @@ export function useGameEngine(): GameEngineReturn {
    * 轮次本身**不需要**在这复位：它由 `countTurns(history)` 算出来，
    * 而 history 已经被 store 真的截短了（见上一节关于本地计数器的说明）。
    */
-  const rewindToTurn = (turnIndex: number): boolean => {
-    const ok = useGameStore.getState().rewindTo(turnIndex)
-    if (!ok) return false
+  const rewindToTurn = async (turnIndex: number): Promise<boolean> => {
+    let ok = useGameStore.getState().rewindTo(turnIndex)
+
+    /*
+      第一次失败，很可能是**历史被归档裁短了**（2026-11，玩家第二次报
+      「重新载入存档后显示快照不存在」）。
+
+      归档（`maybeArchiveHistory`）会把旧消息从 `history` 里搬进 IndexedDB，
+      但快照里的 `historyLength` 是按**归档前的全量**记的 —— 于是每个快照
+      都带着一个比现在历史更长的数，长度校验全线失败。
+      改快照的元数据也能修，但那是把账算在别人头上：真正少掉的是**正文**。
+
+      所以这里把归档读回来拼到历史前面，再试一次。拼上之后长度天然对上，
+      而且玩家真能看到那段古早叙事（这正是他要回的地方）。
+    */
+    if (!ok) {
+      try {
+        const archived = await loadArchive()
+        if (archived.messages.length) {
+          const hot = useGameStore.getState().history as HistoryMessage[]
+          useGameStore.setState({ history: mergeArchivedHistory(archived.messages, hot) })
+          ok = useGameStore.getState().rewindTo(turnIndex)
+        }
+      } catch { /* 归档读不到就按失败处理 */ }
+    }
+
+    if (!ok) {
+      /*
+        失败要说清是**哪一种**失败。原先不管什么原因都报「第 N 轮的快照已经不在」——
+        而玩家明明能在下拉里看到那一轮，也还记得那段正文，这句话只会让他觉得坏了。
+      */
+      const hasSnapshot = useGameStore.getState().turnSnapshots.some(s => s.turn === turnIndex)
+      useUIStore.getState().setStatusMessage(
+        hasSnapshot
+          ? `第 ${turnIndex} 轮的正文已经不在当前历史里了（被归档或截断过），这一段找不回来`
+          : `第 ${turnIndex} 轮没有留下快照，回不去`,
+      )
+      setTimeout(() => useUIStore.getState().setStatusMessage(null), 4000)
+      return false
+    }
 
     setLastAction(null)
     setStreamingContent(null)
@@ -1652,6 +1695,77 @@ export function useGameEngine(): GameEngineReturn {
 
     useUIStore.getState().setStatusMessage(`已回到第 ${turnIndex} 轮`)
     setTimeout(() => useUIStore.getState().setStatusMessage(null), 2500)
+    return true
+  }
+
+  /**
+   * 没有开局快照时，按 session 里那套配置**重建**一局的开局状态。
+   *
+   * 与 `SessionSetup.handleLaunch` 的 8 个步骤一一对应，数据来源换成 session store：
+   * 世界卡 / 主角 / 背景选择 / 属性分配 / 在场角色 id 都在那里存着。
+   *
+   * 数值用 `computeStats`（utils/runRebuild.ts）重算 —— 和选角页用的是同一个函数，
+   * 所以重开出来的属性、资源、开局物品与第一次开局完全一致。
+   *
+   * @returns 有没有会话可重建（没有世界卡就返回 false）
+   */
+  const rebuildRunFromSession = (): boolean => {
+    const s = useSessionStore.getState()
+    const world = s.world
+    if (!world) return false
+
+    const g = () => useGameStore.getState()
+    const choices = s.backgroundChoices || {}
+    const custom = s.backgroundCustom || {}
+    const activeIds = s.activeCharacterIds || []
+    const player = s.player
+
+    // 全清：历史、摘要、记忆、数值、物品、角色、快照链
+    g().resetGame()
+
+    g().initFromWorld(world)
+    g().setPlayerProfile(
+      (player?.name || '').trim() || '无名者',
+      player?.gender || '',
+      player?.appearance || '',
+      player?.avatar,
+    )
+
+    const { attributes, resources } = computeStats(world, s.attributeAllocation || {}, choices, custom)
+    g().setAspects(attributes)
+    g().setResources(resources)
+
+    const [firstSlot, ...restSlots] = world.backgrounds
+    g().setStoryState({
+      origin: firstSlot ? (choices[firstSlot.label] ?? null) : null,
+      childhood: restSlots[0] ? (choices[restSlots[0].label] ?? null) : null,
+      uniqueTrait: restSlots[1] ? (choices[restSlots[1].label] ?? null) : null,
+    })
+
+    for (const item of startingItemsOf(world, choices, custom)) {
+      g().addItem({ ...item, tags: [...(item.tags || [])] })
+    }
+
+    const present = world.characters.filter(c => activeIds.includes(c.id))
+    for (const card of present) {
+      g().addCharacter({
+        id: card.id,
+        name: card.name,
+        description: card.description,
+        relationship: card.relationship || '未知',
+        status: card.status || '正常',
+        location: card.location,
+        avatar: card.avatar,
+        look: card.look,
+        prompt: [card.personality, card.scenario, card.messageExamples].filter(Boolean).join('\n'),
+      })
+    }
+
+    g().setTime({ year: 1, month: 1, day: 1, hour: 9, minute: 0 })
+    g().setLocation(present.find(c => c.location)?.location || world.title)
+
+    // 拍一份干净的开局快照 —— 之后「回到开局」就能精确还原（走 Fast path，不用再重建）
+    g().startGame()
     return true
   }
 
@@ -1686,7 +1800,21 @@ export function useGameEngine(): GameEngineReturn {
    * `pendingOpening`），收益是这一步不再擅自花钱。
    */
   const restartOpening = async (): Promise<boolean> => {
-    const ok = useGameStore.getState().rewindTo(0)
+    let ok = useGameStore.getState().rewindTo(0)
+
+    /*
+      没有可用的开局快照 → **按会话配置重建**（2026-11）。
+
+      这是玩家第三次数落同一件事：「重开一局的选项怎么没了」。
+      它消失的原因很简单：入口挂在 `isOpeningSnapshot(turn 0)` 上，
+      而老存档里根本没有那种快照（旧版本没拍过，或读档时被校验剔掉了）。
+      但"重开一局"其实不需要快照 —— 世界卡、主角、背景、属性点、
+      在场角色全在 session store 里，缺的只是把它们重新写成开局状态。
+
+      `computeStats` / `startingItemsOf` 与 `SessionSetup.handleLaunch`
+      用的是同一套算法（见 utils/runRebuild.ts），重开出来的数值与第一次开局一致。
+    */
+    if (!ok) ok = rebuildRunFromSession()
     if (!ok) return false
 
     setLastAction(null)
@@ -1697,7 +1825,7 @@ export function useGameEngine(): GameEngineReturn {
     // 归档里可能收着"被作废的未来"，不清会被 loadArchive 读回历史里
     void clearArchive()
 
-    useUIStore.getState().setStatusMessage('已回到开局：配置都还在，随时可以开始第一幕')
+    useUIStore.getState().setStatusMessage('已重置到开局前：配置都还在，随时可以开始第一幕')
     setTimeout(() => useUIStore.getState().setStatusMessage(null), 3000)
     return true
   }
@@ -1730,14 +1858,16 @@ export function useGameEngine(): GameEngineReturn {
         return { turn: s.turn, action: summarizeAction(full), full }
       }),
     /**
-     * 有没有**真正可用**的开局锚点。
+     * 「重开本局」这一项要不要显示。
      *
-     * 不能只看 `turn === 0`：旧实现把「继续」当成「开局」，拍了那种
-     * `historyLength > 0` 的假锚点，还原出来是"接着第 N 轮往下写"。
-     * 判据见 `isOpeningSnapshot` —— 假锚点宁可不显示这一项，
-     * 也不要让玩家点了之后看到一段错位的"重开"。
+     * 以前挂在 `isOpeningSnapshot(turn 0)` 上 —— 而老存档里根本没有那种快照，
+     * 于是玩家报「重开一局的选项怎么没了」（第三次）。现在判据换成
+     * **有没有会话配置**：有世界卡就能重建，有没有那份快照都不影响。
+     *
+     * 有快照时走精确还原（数值回到开局那一刻）；没有就按 session 重算
+     * （见 `rebuildRunFromSession`），结果一致。
      */
-    canRestartOpening: store.turnSnapshots.some(isOpeningSnapshot),
+    canRestartOpening: !!world,
     rewindToTurn,
     restartOpening,
   }

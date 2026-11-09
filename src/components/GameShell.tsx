@@ -375,9 +375,13 @@ export function GameShell() {
               })
               return
             }
-            const done = rewindToTurn(t)
-            // 失败要说出来：快照可能已经超出上限，静默什么都不发生会让人以为按钮坏了
-            if (!done) useUIStore.getState().setStatusMessage(`第 ${t} 轮的快照已经不在了，回不去`)
+            /*
+              失败提示交给引擎：它能分清"没有快照"和"正文已不在历史里"，
+              而这里只知道失败。原先这里硬写一句「快照已经不在了」，
+              在"快照其实在、只是历史被归档裁过"的情况下就是错的 ——
+              玩家会以为功能坏了（他确实这么报了）。
+            */
+            void rewindToTurn(t)
           }}
         />
       )}
@@ -489,7 +493,7 @@ export function GameShell() {
                 className="bg-transparent border border-text-muted/30 rounded px-1 py-[1px] text-[10px] font-mono text-text-muted hover:text-text-primary disabled:opacity-40 max-w-[16rem]"
                 value=""
                 disabled={isProcessing}
-                title={`回到某一轮结束时：叙事历史、三层记忆、数值（属性/资源/物品/关系/时间）都会一起回滚，之后发生的事全部作废。\n可回滚的轮次：${rewindTurns.join('、') || '（暂无）'}（更早的轮次已超出快照上限 ${MAX_TURN_SNAPSHOTS_UI}）\n下拉里显示的是**那一轮你输入的行动**。\n\n「回到开局」会把这一局清回第一幕生成之前：世界卡 / 主角 / 背景 / 属性点 / 在场角色全部保留，但**不会**立刻生成 —— 第一幕什么时候开始由你决定。`}
+                title={`回到某一轮结束时：叙事历史、三层记忆、数值（属性/资源/物品/关系/时间）都会一起回滚，之后发生的事全部作废。\n可回滚的轮次：${rewindTurns.join('、') || '（暂无）'}（更早的轮次已超出快照上限 ${MAX_TURN_SNAPSHOTS_UI}）\n下拉里显示的是**那一轮你输入的行动**。\n\n「重开本局」会按同一套配置（世界卡 / 主角 / 背景 / 属性点 / 在场角色）清空这一局，回到第一幕之前 —— 不会立刻生成，什么时候开始由你决定。`}
                 onChange={e => {
                   const raw = e.target.value
                   if (!raw) return
@@ -500,8 +504,9 @@ export function GameShell() {
                     */
                     setPendingRewind({
                       turn: 0,
-                      action: '回到第一幕生成之前：世界卡、主角、背景选择、属性点、'
-                        + '开局物品与在场角色都保持不动，只把这一局讲过的所有轮次清掉。'
+                      action: '重开本局：世界卡、主角档案、背景选择、属性点、'
+                        + '开局物品与在场角色都保持不动，只把这一局讲过的所有轮次、'
+                        + '数值变化与关系记忆一起清掉，回到第一幕生成之前。'
                         + '（不会立刻生成第一幕，你可以先调好文风与预设）',
                     })
                     return
@@ -524,7 +529,7 @@ export function GameShell() {
                 }}
               >
                 <option value="">回到第…轮</option>
-                {canRestartOpening && <option value="opening">↺ 回到开局（第一幕之前）</option>}
+                {canRestartOpening && <option value="opening">↺ 重开本局（配置不动，重新生成第一幕）</option>}
                 {[...rewindOptions].reverse().map(o => (
                   <option key={o.turn} value={o.turn}>
                     第 {o.turn} 轮 · {o.action}

@@ -45,7 +45,7 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
   const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  /** turn 0 = 回到开局（第一幕生成之前），不是"第 0 轮" */
+  /** turn 0 = 重开本局（第一幕生成之前），不是"第 0 轮" */
   const isOpening = turn === 0
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
@@ -72,7 +72,7 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
-      aria-label={isOpening ? '回到开局（第一幕生成之前）' : `回到第 ${turn} 轮结束时`}
+      aria-label={isOpening ? '重开本局（第一幕生成之前）' : `回到第 ${turn} 轮结束时`}
     >
       <div
         className="w-full max-w-md bg-background border border-text-muted/25 rounded-lg overflow-hidden shadow-2xl"
@@ -82,7 +82,7 @@ export function RewindConfirm({ turn, action, onCancel, onConfirm }: RewindConfi
         <div className="flex items-center gap-2 px-4 py-3 border-b border-text-muted/20">
           <RotateCcw size={13} className="text-accent-lantern shrink-0" />
           <div className="text-sm font-serif text-text-primary">
-            {isOpening ? '回到开局，第一幕之前？' : `回到第 ${turn} 轮结束时？`}
+            {isOpening ? '重开本局，第一幕之前？' : `回到第 ${turn} 轮结束时？`}
           </div>
         </div>
 
