@@ -1,6 +1,7 @@
 import { useLibraryStore } from '@/stores/library'
+import { useSessionStore } from '@/stores/session'
 import { StyleChooser } from '@/components/StyleChooser'
-import { Sparkles, ScrollText, Info } from 'lucide-react'
+import { Sparkles, ScrollText, Info, Type } from 'lucide-react'
 
 /**
  * **局内**的叙事预设与文风切换（2026-11）。
@@ -34,6 +35,17 @@ export function NarrativeControls() {
   const activeId = useLibraryStore(s => s.activeNarrativePresetId)
   const setActive = useLibraryStore(s => s.setActiveNarrativePreset)
   const loaded = useLibraryStore(s => s.loaded)
+
+  /*
+    「每章字数」直接改 **session 里的世界卡快照**，不改卡片库里的原卡。
+
+    为什么不改原卡：那是这张卡的"出厂设置"，别人（或者下个月的他）
+    开一张新局时不该继承这一次的临时口味。只改这一局，改完下一轮就生效，
+    因为 `useGameEngine` 每轮现读 `session.world`。
+  */
+  const world = useSessionStore(s => s.world)
+  const patchWorld = useSessionStore(s => s.patchWorld)
+  const replyLength = world?.narrative?.replyLength ?? 1800
 
   const active = presets.find(p => p.id === activeId)
 
@@ -82,6 +94,34 @@ export function NarrativeControls() {
             星号会被原样渲染出来。玩家看到的就是一行"改动\*\*下一轮\*\*生效"。
           */}
           <span>改动<b className="font-bold">下一轮</b>生效 —— 提示词每轮现拼，不用重开一局。</span>
+        </p>
+      </section>
+
+      {/* ── 每章字数 ── */}
+      <section className="rounded border border-text-muted/20 bg-surface/20 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <Type size={13} className="text-accent-lantern shrink-0" />
+          <h2 className="text-xs font-serif font-bold text-text-primary">每章字数</h2>
+          <span className="ml-auto text-[11px] font-mono text-accent-lantern">{replyLength} 字</span>
+        </div>
+
+        <input
+          type="range"
+          min={600}
+          max={2400}
+          step={100}
+          value={Math.min(2400, Math.max(600, replyLength))}
+          onChange={e => {
+            if (!world) return
+            patchWorld({ narrative: { ...world.narrative, replyLength: Number(e.target.value) } })
+          }}
+          className="w-full accent-accent-lantern"
+        />
+
+        <p className="text-[10px] text-text-muted leading-relaxed">
+          这是<b className="text-text-secondary">目标值</b>，下限卡在七成 ——
+          也就是说实际每轮不会少于 {Math.round(replyLength * 0.7)} 字。
+          只影响<b className="text-text-secondary">这一局</b>，不改卡片库里的原卡；下一轮生效。
         </p>
       </section>
 

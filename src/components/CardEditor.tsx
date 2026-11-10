@@ -1153,8 +1153,14 @@ export function CardEditor() {
                 </Field>
               </div>
 
+              {/*
+                ⚠️ 上限曾是 1500，而内置卡有 1800（大延侠客行）。
+                滑块够不到当前值时，浏览器会把滑块头停在 max 上 ——
+                玩家一动它，1800 就被悄悄改成了 1500，而他只是想看看。
+                上限必须盖住所有内置卡能取的值。
+              */}
               <Field label={`单次回复目标字数：${draft.narrative.replyLength}`} hint="太短会显得敷衍，太长会拖慢节奏并更贵">
-                <input type="range" min={150} max={1500} step={50} value={draft.narrative.replyLength}
+                <input type="range" min={150} max={3000} step={50} value={draft.narrative.replyLength}
                   onChange={e => patchNarrative({ replyLength: Number(e.target.value) })}
                   className="w-full accent-yellow-500" />
               </Field>
