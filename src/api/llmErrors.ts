@@ -32,6 +32,19 @@ export type LlmErrorKind =
    * 抓到那个数，把额度压下去重发，这一轮就活了 —— 玩家什么都不用改。
    */
   | 'max_tokens'
+  /**
+   * Gemini 系（含中转）拒了 OpenAI 的 JSON 模式 —— **能自动降级**。
+   *
+   * 报错原文是 Vertex 的：
+   * `Forced function calling (mode = ANY) is not supported when
+   *  'response_mime_type' is not set to 'text/plain'`
+   *
+   * 起因是 `response_format: {type:'json_object'}` 被翻成
+   * `response_mime_type: 'application/json'`，与 Vertex 默认的强制
+   * function calling 冲突。`llmChat` 会把 `response_format` 摘掉重发一次，
+   * 详见 `isGeminiLike` 的说明与实测表。
+   */
+  | 'function_calling'
   /** 用户在生成过程中主动取消 —— 不算错误 */
   | 'aborted'
   | 'unknown'
@@ -224,6 +237,26 @@ export function classifyLlmError(
   }
 
   if (status === 400 || status === 422) {
+    /*
+      ── Gemini 系拒了 JSON 模式（2026-11）──
+
+      必须排在下面所有分支的**最前面**：这条报错里同时出现
+      `function`、`text/plain`、`not supported` 这些词，
+      而它们每一项都可能被下面某条正则误吃（例如被当成"参数不被支持"的通用 400）。
+      判错的后果是玩家拿到一句「请求被服务商拒绝（400）」，
+      完全不知道该怎么办 —— 而这其实是**我们能自己修**的一种。
+
+      判据只认 Vertex 的原句，收得窄一点：宁可漏判（走通用 400），
+      也不要把别家的普通报错误认成它、白白多花一次请求。
+    */
+    if (/function[_ ]calling|response_mime_type|tool_config/i.test(body)) {
+      return {
+        kind: 'function_calling', retryable: false, status,
+        message: '这个模型不接受 JSON 模式（Gemini 中转的 function calling 限制）',
+        hint: '已自动改用纯文本模式重发。若反复出现，把「结算模型」换成非 Gemini 的模型即可。',
+        raw,
+      }
+    }
     /*
       ── 输出上限超范围：唯一一种「报错里带着解法」的 400 ──
 

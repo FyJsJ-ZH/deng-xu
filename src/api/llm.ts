@@ -191,6 +191,50 @@ export function isReasonerModel(name: string): boolean {
 }
 
 /**
+ * 这个模型是不是 **Gemini 系**（含经第三方中转的）。
+ *
+ * ## 为什么需要这条判断（2026-11，玩家在手机上撞的）
+ *
+ * 玩家用 `vtx-抗截断-gemini-3.8-flash-high` 走一家 OpenAI 兼容中转，
+ * 每一轮都红：
+ *
+ * > Forced function calling (mode = ANY) is not supported when
+ * > 'response_mime_type' is not set to 'text/plain'. Please set
+ * > 'tool_config.function_calling_config.mode=AUTO' or set
+ * > 'response_mime_type' to 'text/plain'.
+ *
+ * 根因不在我们、也不在模型，在**两套语义的错位**：
+ *
+ * - OpenAI 那边的 `response_format: {type:'json_object'}` 表示"请输出 JSON"；
+ * - 中转把它翻译成 Gemini 的 `response_mime_type: 'application/json'`；
+ * - 而 Vertex 在 mime 不是 `text/plain` 时，默认的 function calling 模式是
+ *   `ANY`（强制必须调用工具）—— 我们没给工具，于是直接被打回。
+ *
+ * 实测（同一个中转、同一个模型，只改这一个字段）：
+ *
+ * | 请求体 | 结果 |
+ * |---|---|
+ * | `response_format: json_object` + thinking + max_tokens + temperature | **400** |
+ * | 去掉 `response_format` | 200，返回干净 JSON |
+ * | 保留 json_object、去掉 thinking | **400**（与 thinking 无关） |
+ * | `response_format: {type:'text'}` | 200 |
+ *
+ * 所以对 Gemini 系改成 `{type:'text'}`：既避开 mime 冲突，
+ * 又明确告诉它"别用 JSON mime"。JSON 的约束退回提示词层 ——
+ * 数据引擎那份 prompt 本来就把 schema 写死了，而
+ * `utils/jsonRepair.ts` 的容错解析连代码围栏都能剥。
+ *
+ * ⚠️ 认不出模型名时（玩家自填奇怪名字）还有第二道保险：
+ * `llmChat` 抓到这条 400 会把 `response_format` 整个去掉重发一次。
+ */
+export function isGeminiLike(model: string, baseUrl = ''): boolean {
+  const m = String(model || '').toLowerCase();
+  if (/gemini|gemma|palm|bison|vertex/.test(m)) return true;
+  const u = String(baseUrl || '').toLowerCase();
+  return /generativelanguage\.googleapis\.com|aiplatform\.googleapis\.com|vertex/.test(u);
+}
+
+/**
  * 旧模型名 → 现行名字。键是**已经停止使用**的名字（小写）。
  *
  * 为什么要一张表而不是一句正则：这些名字背后是**具体的历史版本**
@@ -259,8 +303,15 @@ export type ThinkingMode = 'auto' | 'on' | 'off';
 export function willThink(model: string, provider: string, mode: ThinkingMode = 'auto'): boolean {
   if (mode === 'off') return false;
   if (mode === 'on') return true;
-  // auto：让服务商按它自己的默认来 —— 我们只能按已知的信息猜
-  return isReasonerModel(model) || isThinkingByDefault(provider, model);
+  /*
+    auto：让服务商按它自己的默认来 —— 我们只能按已知的信息猜。
+
+    Gemini 那一族（含中转）**默认就在思考**：实测 `gemini-3.8-flash`
+    哪怕请求里一个字都没提 thinking，返回里也带着整屏的
+    `reasoning_content`。所以它属于「默认思考」，得按 3 倍给额度，
+    否则思维链会和正文抢同一份 `max_tokens`，正文在 1200 字上下被截断。
+  */
+  return isReasonerModel(model) || isThinkingByDefault(provider, model) || isGeminiLike(model);
 }
 
 /**
@@ -307,7 +358,16 @@ export function suggestMaxTokens(
   return Math.min(16384, Math.max(1024, Math.ceil(chars * per)));
 }
 
-function buildBody(opts: ChatOptions, stream: boolean): string {
+/**
+ * 组装请求体。
+ *
+ * @param over 内部降级开关，调用方不该传
+ */
+function buildBody(
+  opts: ChatOptions,
+  stream: boolean,
+  over: { noResponseFormat?: boolean } = {},
+): string {
   const { messages, config, model, temperature, jsonMode } = opts;
   const body: Record<string, unknown> = {
     model: model || config.narrativeModel,
@@ -364,8 +424,13 @@ function buildBody(opts: ChatOptions, stream: boolean): string {
     `'auto'` 意味着"照旧"：报文与没有这个功能时完全一致，零风险。
     只有选了开 / 关才把字段放进请求体 —— 并且这时最好让玩家知道，
     认这个字段的主要是 DeepSeek 官方那一套，别家可能直接 400。
+
+    ⚠️ **Gemini 系跳过**（2026-11）：那是 DeepSeek 的私有字段，
+    Gemini 的 OpenAI 兼容层不认它 —— 实测带上不报错，但也**一点用没有**：
+    该吐的思维链照吐。既然不起作用，就别发一个会让人误以为"已经关掉了"的字段。
+    这个事实得让玩家知道，所以界面上的开关文案会另外说明（见设置页）。
   */
-  if (mode !== 'auto') {
+  if (mode !== 'auto' && !isGeminiLike(modelName, config.baseUrl)) {
     body.thinking = { type: mode === 'on' ? 'enabled' : 'disabled' };
   }
 
@@ -397,7 +462,26 @@ function buildBody(opts: ChatOptions, stream: boolean): string {
     body.temperature = temperature ?? config.temperature;
   }
   if (jsonMode && !isThinking) {
-    body.response_format = { type: 'json_object' };
+    /*
+      ── 这里分两种服务商（2026-11，见 `isGeminiLike` 的说明）──
+
+      OpenAI / DeepSeek 这一套认 `json_object`，能真的把模型的输出锁成 JSON；
+      Gemini 系（含中转）拿到它会被翻成 `response_mime_type: application/json`，
+      然后撞上 Vertex 默认的「强制 function calling」，整轮 400。
+
+      所以 Gemini 系发 `{type:'text'}`：语义上等于"就是纯文本，别加 mime"。
+      实测这条路能过，而 JSON 的约束由提示词与 `parseModelJson` 的容错兜着。
+
+      认不出模型时（玩家自填的名字）先按 OpenAI 那套发 —— 那是最常见的；
+      真撞上了，`llmChat` 会把 `response_format` 整个摘掉重发一次。
+    */
+    body.response_format = over.noResponseFormat
+      ? undefined
+      : isGeminiLike(modelName, config.baseUrl)
+        ? { type: 'text' }
+        : { type: 'json_object' };
+    // `undefined` 会被 JSON.stringify 丢掉，但显式的 undefined 键不如直接删干净
+    if (body.response_format === undefined) delete body.response_format;
   }
   return JSON.stringify(body);
 }
@@ -433,6 +517,18 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
   /** 降级重发只做一次：压到上限还被拒，那就是别的问题了 */
   let limitRetryLeft = 1;
 
+  /**
+   * 把 `response_format` 摘掉重发的机会（2026-11）。
+   *
+   * 只有一种错误会用到它：Gemini 系中转把 `json_object` 翻成了
+   * `response_mime_type: application/json`，撞上 Vertex 的强制 function calling。
+   * 详见 `isGeminiLike` 的说明。它和 `max_tokens` 降级是两个正交的开关，
+   * 各留一次机会 —— 同时撞上时最多多花两次请求，比让玩家看到红框划算。
+   */
+  let jsonModeRetryLeft = 1;
+  /** 本次请求要不要禁用 `response_format` */
+  let noResponseFormat = false;
+
   const maxAttempts = stream ? 1 : RETRY_MAX_ATTEMPTS;
 
   let lastErr: LlmError | null = null;
@@ -441,7 +537,7 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
     // 用户已取消就别再发请求了
     if (signal?.aborted) throw new LlmError(classifyLlmError(undefined, '', { name: 'AbortError' }));
 
-    const body = buildBody({ ...opts, maxTokens: effectiveMaxTokens }, stream);
+    const body = buildBody({ ...opts, maxTokens: effectiveMaxTokens }, stream, { noResponseFormat });
 
     try {
       const response = await fetch(url, { method: 'POST', headers, body, signal });
@@ -478,6 +574,24 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
       ) {
         limitRetryLeft -= 1;
         effectiveMaxTokens = info.outputLimit;
+        attempt -= 1;
+        continue;
+      }
+
+      /*
+        ── Gemini 系拒了 JSON 模式：摘掉 `response_format` 原地重发（2026-11）──
+
+        正常情况下 `isGeminiLike` 已经提前把它改成 `{type:'text'}` 了，
+        走不到这里。能走到的都是"没认出来"的：玩家自定义了模型名、
+        或者换了一家中转、或者模型名里根本没有 gemini 字样。
+
+        这类错误的原文是 Vertex 的 function calling 抱怨（见 `isGeminiLike`），
+        与我们的业务无关，玩家看不懂也改不了。**摘掉重发**是最好的处理 ——
+        JSON 的约束本来就有两重兜底：提示词里的 schema，和 `parseModelJson`。
+      */
+      if (jsonModeRetryLeft > 0 && info.kind === 'function_calling' && !noResponseFormat) {
+        jsonModeRetryLeft -= 1;
+        noResponseFormat = true;
         attempt -= 1;
         continue;
       }

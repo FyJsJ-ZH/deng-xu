@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useUIStore, applyProviderPreset } from '@/stores/ui';
 import { useGameStore } from '@/stores/game';
-import { PROVIDER_PRESETS, testConnection } from '@/api/llm';
+import { PROVIDER_PRESETS, testConnection, isGeminiLike } from '@/api/llm';
 import { THINKING_MIN_MAX_TOKENS } from '@/utils/engineErrors';
 import type { LLMConfig } from '@/types/cards';
 
@@ -295,7 +295,7 @@ export function ApiKeyModal() {
             {([
               { v: 'auto', label: '跟随服务商', hint: '不发这个参数。报文与以前完全一样，由服务商按自己的默认来 —— 不确定就选这个。' },
               { v: 'on', label: '开启', hint: '先思考再写：叙事更稳，但首字更慢、token 更贵（思考量也算输出）。' },
-              { v: 'off', label: '关闭', hint: '直接写：更快更省，没有思维链。正文额度也按非思考给（2 倍而不是 3 倍）。' },
+              { v: 'off', label: '关闭', hint: '直接写：更快更省，没有思维链。正文额度也按非思考给（2 倍而不是 3 倍）。Gemini 系关不掉，见下面那行。' },
             ] as const).map(o => {
               const active = (draft.thinking ?? 'auto') === o.v
               return (
@@ -316,7 +316,14 @@ export function ApiKeyModal() {
             })}
           </div>
           <p className="text-[10px] text-text-muted leading-relaxed">
-            {(draft.thinking ?? 'auto') === 'auto'
+            {isGeminiLike(draft.narrativeModel || '', draft.baseUrl || '') ? (
+              <>
+                当前模型是 <span className="font-mono">Gemini</span> 系的：它 <b>默认就思考</b>，
+                而且不认 <span className="font-mono">thinking</span> 字段 —— 实测关不掉，
+                该吐的思维链照吐。所以这个开关对它会<b>失效</b>（报文里干脆不发，免得让你以为已经关上了）。
+                代价是首字更慢、额度按 3 倍给；不想等就换一个非 Gemini 的模型。
+              </>
+            ) : (draft.thinking ?? 'auto') === 'auto'
               ? '不发送 thinking 字段，各家按自己的默认走。DeepSeek 的 V4 系列默认是开着的。'
               : (draft.thinking ?? 'auto') === 'on'
                 ? '发送 {"thinking": {"type": "enabled"}}。认这个字段的主要是 DeepSeek 官方端点，别家可能不认。'
