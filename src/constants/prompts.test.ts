@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import {
-  attributeTier,
   buildAttributeBriefing,
   buildBackgroundBriefing,
   buildNarrativeSystemPrompt,
@@ -206,8 +205,6 @@ describe('每轮注入 · 他的来路与立场', () => {
     expect(out).toContain('一枚印')
     expect(out).toContain('官场立场')
     expect(out).toContain('更化派')
-    // 它必须自称"每一轮都要用上"，而不是一份开场表单
-    expect(out).toContain('每一轮')
   })
 
   it('没选任何背景 ⇒ 返回空串（不注入一个空区块）', () => {
@@ -215,9 +212,9 @@ describe('每轮注入 · 他的来路与立场', () => {
     expect(buildBackgroundBriefing(mkWorld(), undefined)).toBe('')
   })
 
-  it('★ 明确要求写出"不会的地方"，防止 AI 把主角写成全能', () => {
-    const out = buildBackgroundBriefing(mkWorld(), { 开局处境: 'court' })
-    expect(out).toContain('外行')
+  it('★ 是**一行** —— 它要塞进「人物设定」的缩进列表，不能带换行', () => {
+    const out = buildBackgroundBriefing(mkWorld(), { 开局处境: 'court', 官场立场: 'genghua' })
+    expect(out).not.toContain('\n')
   })
 })
 
@@ -230,26 +227,16 @@ describe('每轮注入 · 他的能力面板', () => {
     ...over,
   })
 
-  it('attributeTier 按 0~1 不会 / 2~3 够用 / 4+ 内行 分档', () => {
-    expect(attributeTier(0)).toBe('none')
-    expect(attributeTier(1)).toBe('none')
-    expect(attributeTier(2)).toBe('ok')
-    expect(attributeTier(3)).toBe('ok')
-    expect(attributeTier(4)).toBe('expert')
-    expect(attributeTier(9)).toBe('expert')
-    // 脏数据不能把档位算崩（存档里出现过字符串与 NaN）
-    expect(attributeTier(NaN)).toBe('none')
-    expect(attributeTier(-3)).toBe('none')
-  })
-
-  it('带当前值、档位与属性说明，且明说"不要凭空给他"', () => {
+  it('带当前值与最高的一相，且明说性相不是技能', () => {
     const out = buildAttributeBriefing(attrWorld(), { wu: 0, cha: 5 })
-    expect(out).toContain('武艺')
-    expect(out).toContain('不会')
-    expect(out).toContain('洞察')
-    expect(out).toContain('内行')
-    expect(out).toContain('刀剑弓马')
-    expect(out).toContain('一个字都不要提属性名与数字')
+    expect(out).toContain('武艺 0')
+    expect(out).toContain('洞察 5')
+    expect(out).toContain('最高的是「洞察」')
+    // 「按它的『人物反应』与『典型行为』…」那句只在「动态指令优先级」里说一次，
+    // 这里再说一遍就是同一句话讲两遍 —— 提示词里每一句重复都在稀释别的句子。
+    expect(out).not.toContain('按它的「人物反应」')
+    // 性相不是技能 —— 这条是它和「内行/够用/不会」那套能力面板的分界线
+    expect(out).toContain('性相不是技能，不做能力检定')
   })
 
   it('全为 0（还没分配点数）⇒ 不注入', () => {
@@ -267,11 +254,12 @@ describe('每轮注入 · 他的能力面板', () => {
       backgroundChoices: { 开局处境: 'court' },
       aspects: { wu: 4, cha: 1 },
     })
+    // 出身（选角页挑的）
     expect(sys).toContain('在朝中当权')
-    expect(sys).toContain('武艺')
-    expect(sys).toContain('内行')
-    expect(sys).toContain('洞察')
-    expect(sys).toContain('不会')
+    // 性相当前值（分配的点数）
+    expect(sys).toContain('武艺 4')
+    expect(sys).toContain('洞察 1')
+    expect(sys).toContain('最高的是「武艺」')
   })
 
   it('不传 briefing 时行为不变（兼容尚未改到的调用点）', () => {

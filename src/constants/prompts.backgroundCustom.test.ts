@@ -147,32 +147,28 @@ describe('describeBackgroundChoices · 自填项', () => {
 })
 
 describe('buildBackgroundBriefing · 自填项每轮都要进提示词', () => {
-  it('★ 玩家写的原话出现在简报里，并标明是他自己写的', () => {
+  it('★ 玩家写的原话出现在简报里（原样，不降级成"备注"）', () => {
     const out = buildBackgroundBriefing(
       bgWorld(),
       { 来路: 'bg_self' },
       { 来路: '在四号线沿线卖热食，丈夫三年前死在轧机上' },
     )
     expect(out).toContain('在四号线沿线卖热食，丈夫三年前死在轧机上')
-    expect(out).toContain('他自己写的')
     expect(out).toContain('来路')
   })
 
-  it('★ 它同时带着"边界"那一节 —— 背景是起点不是枷锁', () => {
-    /*
-      这一节是这一轮针对"限制住了剧情的开展"直接加的：
-      光让玩家写得自由没用，还得让 AI 知道**不许拿它当笼子**。
-    */
-    const out = buildBackgroundBriefing(bgWorld(), { 来路: 'bg_a' })
-    expect(out).toContain('它的边界必须说清楚')
-    expect(out).toContain('它不规定他能做什么')
-    expect(out).toContain('它是起点，不是主题')
+  it('★ 自填项同样是**一行** —— 它要塞进「人物设定」的缩进列表', () => {
+    const out = buildBackgroundBriefing(
+      bgWorld(),
+      { 来路: 'bg_self' },
+      { 来路: '在四号线沿线卖热食，丈夫三年前死在轧机上' },
+    )
+    expect(out).not.toContain('\n')
   })
 
-  it('预设项不带"他自己写的"字样', () => {
+  it('预设项照常输出', () => {
     const out = buildBackgroundBriefing(bgWorld(), { 来路: 'bg_a' })
     expect(out).toContain('在粉尘与高炉边长大')
-    expect(out).not.toContain('他自己写的')
   })
 
   it('一个都没选 ⇒ 不注入（空区块只浪费 token）', () => {

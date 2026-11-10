@@ -58,6 +58,7 @@ export const BUILTIN_TIMESTAMP = 1735689600000   // 2025-01-01T00:00:00Z
  *
  *   · `description` —— 本质（四到六个字，比如灯是「理智，光明，残酷的真理」）
  *   · `traits` —— 这个相的人会怎么**反应**（冷静分析、闻到就分心、对伤口亲切…）
+ *   · `reactions` —— 这个相的人遇到事会**怎么想**（冷静分析、不愿静止、时刻评估威胁…）
  *   · `behaviors` —— 这个相的人下意识会**做什么**（注视光源、冷笑、抚摸伤口…）
  *
  * 选一个相，不是选一个加成的方向，是选**你想成为哪种人**。
@@ -76,6 +77,7 @@ export const PHASES: AttributeDef[] = [
     description: '理智，光明，残酷的真理',
     color: '#facc15',
     traits: ['理性', '残酷', '揭示', '执着', '无情'],
+    reactions: ['倾向于冷静分析而非情感流露', '面对恐怖时会试图寻找逻辑而非惊慌', '眼神犀利，喜欢注视光源或镜子'],
     behaviors: ['用冷漠的目光审视', '强迫自己直视恐惧', '在混乱中寻找规律'],
   },
   {
@@ -84,6 +86,7 @@ export const PHASES: AttributeDef[] = [
     description: '力量，改变，火焰',
     color: '#f97316',
     traits: ['变革', '火焰', '锤炼', '重塑', '力量'],
+    reactions: ['充满动感，难以忍受静止', '面对障碍倾向于破坏或改造', '体温似乎比常人更高'],
     behaviors: ['紧握双拳', '感受到血液中的燥热', '试图强行改变现状'],
   },
   {
@@ -92,6 +95,7 @@ export const PHASES: AttributeDef[] = [
     description: '斗争，征服，痛苦',
     color: '#4ade80',
     traits: ['斗争', '痛苦', '征服', '界限', '狡诈'],
+    reactions: ['时刻保持警惕，评估威胁', '习惯忍受痛苦', '对话简练且带有攻击性或防御性'],
     behaviors: ['下意识地寻找武器', '冷笑', '评估对方的弱点'],
   },
   {
@@ -100,6 +104,7 @@ export const PHASES: AttributeDef[] = [
     description: '寂静，终结，寒冷',
     color: '#bfdbfe',
     traits: ['寂静', '终结', '寒冷', '遗忘', '苍白'],
+    reactions: ['反应迟缓或淡漠', '情绪波动极小', '如同尸体般安静，对死亡和结束感到安适'],
     behaviors: ['保持沉默', '眼神空洞', '对恐怖景象无动于衷'],
   },
   {
@@ -108,6 +113,7 @@ export const PHASES: AttributeDef[] = [
     description: '生命，保存，永恒的跳动',
     color: '#f87171',
     traits: ['延续', '保护', '脉动', '舞蹈', '坚持'],
+    reactions: ['充满活力，不屈不挠', '倾向于保护他人或自我', '在压力下通过某种节奏（如心跳、敲击）来维持理智'],
     behaviors: ['深呼吸平复心跳', '顽强地站立', '拒绝放弃'],
   },
   {
@@ -116,6 +122,7 @@ export const PHASES: AttributeDef[] = [
     description: '欲望，诱惑，感官',
     color: '#dc2626',
     traits: ['渴望', '诱惑', '感官', '饥饿', '血液'],
+    reactions: ['感官极度敏锐', '容易被气味、触感或味道分心', '表现出某种生理上的饥渴或迷醉'],
     behaviors: ['舔舐嘴唇', '被异香吸引', '感到一阵战栗'],
   },
   {
@@ -124,6 +131,7 @@ export const PHASES: AttributeDef[] = [
     description: '混乱，自然，难以捉摸',
     color: '#fde68a',
     traits: ['混乱', '蜕变', '疯狂', '森林', '不可预测'],
+    reactions: ['行为跳跃，难以捉摸', '容易被光或声音吸引', '在压力下表现出非理性的冲动或想要逃离'],
     behaviors: ['神经质地颤抖', '发出毫无意义的笑声', '想要撕掉什么'],
   },
   {
@@ -132,6 +140,7 @@ export const PHASES: AttributeDef[] = [
     description: '开启，秘密，界限',
     color: '#c084fc',
     traits: ['门扉', '伤口', '开启', '召唤', '连接'],
+    reactions: ['直觉敏锐，能察觉看不见的连接', '对伤口或缝隙感到亲切', '倾向于通过“打开”什么来解决问题'],
     behaviors: ['抚摸伤口', '凝视紧闭的门', '听到不存在的敲击声'],
   },
   {
@@ -140,6 +149,8 @@ export const PHASES: AttributeDef[] = [
     description: '悖论，多重历史，模糊，记录，选择',
     color: '#a16207',
     traits: ['悖论', '多重历史', '模糊', '记录', '选择'],
+    reactions: ['记忆模糊，似乎经历过不同的过去', '对矛盾的事物感到习以为常', '倾向于记录或回忆'],
     behaviors: ['记下这一刻', '感到强烈的既视感', '不确定这是哪一段历史'],
   },
 ]
+
