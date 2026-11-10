@@ -126,12 +126,20 @@ const seenColors = JSON.parse(await ev(`(()=>{
 check('状态栏把九相的色都画出来了', seenColors.length >= 8, `${seenColors.length}/9 种色出现在页面上`)
 
 console.log('\n=== 3) 选项按相上色，尾标显示相名 ===')
+/*
+  ⚠️ **这一段必须在手机宽度下跑。**
+  长选项被截断是玩家在手机上截图发现的，1280 宽怎么测都是一行放得下 ——
+  第一版就在桌面宽度下测，报"1 行"，看起来像没修好，其实只是屏幕够宽。
+*/
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
+await sleep(800)
 await ev(`(()=>{
   __gameStore.getState().setCurrentOptions([
     { id:'t_lantern', text:'把灯挪近，看清楚那道刻痕', style:'lantern' },
     { id:'t_edge',    text:'一脚踹开那扇门', style:'edge' },
     { id:'t_grail',   text:'先喝一口，再问话', style:'grail' },
     { id:'t_neutral', text:'等天亮', style:'neutral' },
+    { id:'t_long',    text:'不答话，先看清他筐里装的是什么东西，再决定要不要开口', style:'lantern' },
   ]);
   return 'ok';
 })()`)
@@ -157,6 +165,40 @@ check('「刃」选项是绿色（原作 Edge 就是绿的）', byText('一脚�
 check('「杯」选项是深红', byText('先喝一口').color === EXPECT.grail[1], byText('先喝一口').color)
 check('neutral 选项不上相色', !/rgb\(250, 204, 21\)|rgb\(74, 222, 128\)/.test(byText('等天亮').color || ''), byText('等天亮').color)
 check('选项尾标显示相名', ['灯', '刃', '杯'].every(n => String(byText(n === '灯' ? '把灯挪近' : n === '刃' ? '一脚踹开' : '先喝一口').raw).includes(n)))
+
+/*
+  ── 长选项不能被截断（2026-11，玩家手机截图反馈）──
+
+  「不答话，先看清他筐里装的…」「手按上黑布裹着的刀柄，慢…」
+  为了给右侧相名标让位，文字上加了 `truncate`，手机上直接吃掉后半句。
+
+  三个判据一起看，缺一个都可能是"看起来好了其实还截着"：
+    · text-overflow 不是 ellipsis（不是那种"截了加省略号"的做法）
+    · white-space 不是 nowrap（允许换行）
+    · 长文本真的换行了（高度超过一行）
+*/
+const longOpt = JSON.parse(await ev(`(()=>{
+  const b = [...document.querySelectorAll('button')].find(x => (x.textContent||'').includes('先看清他筐里装的是'));
+  if (!b) return JSON.stringify({ found: false });
+  const spans = [...b.querySelectorAll('span')];
+  const texts = spans.filter(s => (s.textContent||'').trim().startsWith('不答话'));
+  const el = texts[0] || b;
+  const cs = getComputedStyle(el);
+  const lh = parseFloat(cs.lineHeight) || 24;
+  return JSON.stringify({
+    found: true,
+    textOverflow: cs.textOverflow,
+    whiteSpace: cs.whiteSpace,
+    height: el.getBoundingClientRect().height,
+    lineHeight: lh,
+    lines: Math.round(el.getBoundingClientRect().height / lh),
+    full: (b.textContent||'').includes('再决定要不要开口'),
+  });
+})()`))
+check('长选项文字没被 ellipsis 截断', longOpt.found && longOpt.textOverflow !== 'ellipsis', longOpt.textOverflow)
+check('长选项允许换行（不是 nowrap）', longOpt.found && longOpt.whiteSpace !== 'nowrap', longOpt.whiteSpace)
+check('★ 长选项真的换行了（整句都在）', longOpt.found && longOpt.lines >= 2 && longOpt.full,
+  `${longOpt.lines} 行，整句${longOpt.full ? '在' : '缺'}`)
 
 console.log('\n=== 4) 选中 → 那个相 +1（且只加一次）===')
 const before = JSON.parse(await ev(`JSON.stringify(__gameStore.getState().aspects)`))

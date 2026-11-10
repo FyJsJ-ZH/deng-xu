@@ -133,25 +133,38 @@ export function ChoicePanel({
                       ${isDisabled ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:shadow-lg hover:-translate-y-0.5'}
                     `}
                   >
-                    <span className="relative z-10 flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-3 min-w-0">
+                    {/*
+                      ⚠️ 选项文字**必须能完整显示**（2026-11，玩家在手机上截图反馈：
+                      「不答话，先看清他筐里装的…」「手按上黑布裹着的刀柄，慢…」——
+                      两条都被截成了省略号）。
+
+                      原因是我为了给右侧的相名标让位置，给文字加了 `truncate`
+                      （= overflow:hidden + text-overflow:ellipsis + white-space:nowrap）。
+                      桌面宽屏看着没事，手机上一行放不下就直接吃掉后半句，
+                      而选项恰恰是玩家最需要读全的东西。
+
+                      现在：文字允许多行（不 truncate），相名标 shrink-0 只占它需要的宽度。
+                      `items-start` 让「◇」和相名标对齐第一行，而不是垂直居中。
+                    */}
+                    <span className="relative z-10 flex items-start justify-between gap-2">
+                      <span className="flex items-start gap-2 sm:gap-3 min-w-0">
                         <span
-                          className="opacity-60 text-xs shrink-0"
+                          className="opacity-60 text-xs shrink-0 mt-1"
                           style={color ? { color } : undefined}
                         >◇</span>
-                        <span className="truncate">{opt.text}</span>
+                        <span className="min-w-0 break-words">{opt.text}</span>
                       </span>
-                      <span className="flex items-center gap-2 shrink-0">
+                      <span className="flex items-center gap-2 shrink-0 mt-0.5">
                         {attr && (
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded-sm font-mono border"
+                            className="text-[10px] px-1.5 py-0.5 rounded-sm font-mono border whitespace-nowrap"
                             style={{ color, borderColor: `${color}55` }}
                             title={`选它偏向「${attr.name}」——${attr.description || ''}`}
                           >
                             {attr.name}
                           </span>
                         )}
-                        {!isDisabled && <span className="opacity-0 group-hover:opacity-100 transition-opacity text-sm font-mono">→</span>}
+                        {!isDisabled && <span className="hidden sm:inline opacity-0 group-hover:opacity-100 transition-opacity text-sm font-mono">→</span>}
                       </span>
                     </span>
                     {!isDisabled && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />}
