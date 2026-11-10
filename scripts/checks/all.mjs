@@ -143,17 +143,46 @@ for (const c of todo) {
   console.log(`▶ ${c.name}（${c.file}）`)
   console.log('─'.repeat(60))
   const t0 = Date.now()
+  /*
+    子进程输出**既原样转发、又留尾巴**（2026-11）。
+
+    原来用 `stdio: 'inherit'`，输出直接进日志 —— 但 CI 只看最后 60 行，
+    而最后 60 行永远是总览表。于是"哪一套挂了、挂在哪条断言"根本看不到，
+    只能靠本地复现猜（本地 12/12，猜了两轮都没猜对）。
+
+    改成 pipe + 转发：终端里照旧实时可见，同时把每套最后 40 行留下 ——
+    失败时用它拼一条 `::error::`，GitHub 会收成 annotation，
+    **未登录也能通过 API 读到**。
+  */
+  let tail = []
   const ok = await new Promise(res => {
     const p = spawn(process.execPath, [path.join(HERE, c.file)], {
-      stdio: 'inherit',
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, SITE, AUDIT_OUT: OUT, CDP_PORT: String(c.port) },
     })
+    const keep = (d) => {
+      process.stdout.write(d)
+      const lines = String(d).split('\n').filter(l => l.trim())
+      tail = [...tail, ...lines].slice(-40)
+    }
+    p.stdout.on('data', keep)
+    p.stderr.on('data', d => { process.stderr.write(d); const lines = String(d).split('\n').filter(l => l.trim()); tail = [...tail, ...lines].slice(-40) })
     p.on('exit', code => res(code === 0))
   })
   const secs = ((Date.now() - t0) / 1000).toFixed(1)
   results.push({ ...c, ok, secs })
-  if (!ok) console.log(`✗ ${c.name} 未通过（${secs}s）`)
-  else console.log(`✓ ${c.name} 通过（${secs}s）`)
+  if (!ok) {
+    console.log(`✗ ${c.name} 未通过（${secs}s）`)
+    /*
+      在 CI 里把失败现场抬成 annotation。取尾巴里最像"结论"的几行：
+      断言失败行（✗ 开头）优先，没有就取最后三行。
+    */
+    const bad = tail.filter(l => l.includes('✗')).slice(0, 3)
+    const detail = (bad.length ? bad : tail.slice(-3)).join(' ／ ').replace(/::/g, ':')
+    console.log(`::error::${c.name} 未通过 —— ${detail}`)
+  } else {
+    console.log(`✓ ${c.name} 通过（${secs}s）`)
+  }
   console.log('')
 }
 
