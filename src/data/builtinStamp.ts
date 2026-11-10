@@ -11,4 +11,4 @@
  *
  * 重新生成：`node scripts/stamp-builtins.mjs`（`dev` / `build` 会自动跑）。
  */
-export const BUILTIN_STAMP = 'a211d64d2fce'
+export const BUILTIN_STAMP = '37b202ae5517'

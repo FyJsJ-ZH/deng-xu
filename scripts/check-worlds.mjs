@@ -289,7 +289,13 @@ const GATE = {
     真正的篇幅要求由 `constants/prompts.ts` 的「篇幅与信息投放」一节下发，
     并有一组单测盯着（`prompts.length.test.ts`）。
   */
-  minReplyLength: 1100,
+  /*
+    **单次回复的目标字数下限**（2026-11 第三轮：1100 → 1000）。
+    冰山三卡定的是 1000 —— 奇观密集的西幻、刀刀到肉的武侠、黏稠压抑的伦敦，
+    一轮 1000 字读完正好，再多就开始滑手机。深度卡仍是 1100 / 1800 不等。
+    这条只挡"被人改回短得没内容"，不是推荐值。
+  */
+  minReplyLength: 1000,
   /*
     角色数门槛从 6 提到 8。
     实测三个世界各有 9 / 10 / 13 张，6 这个门槛等于没约束；
@@ -407,18 +413,18 @@ const GATE = {
  * · `sandboxRuleCjk 100` —— 沙盒条款照样要有，但不必写成长篇。
  */
 const LEAN_GATE = {
-  worldCjk: 2100,
+  worldCjk: 1900,
   worldLoreCjk: 300,
   rulesCjk: 300,
   customStyleCjk: 300,
   openingCjk: 60,
-  mainQuestCjk: 80,
+  mainQuestCjk: 60,
   sandboxRuleCjk: 40,
   geoCjk: 0,
   factionCjk: 0,
   lifeCjk: 0,
   minChars: 5,
-  charDescCjk: 55,
+  charDescCjk: 45,
   minItems: 0,
   minLores: 0,
   minBackgroundSlots: 0,
@@ -660,7 +666,15 @@ for (const exp of EXPECTED) {
       .split(/\n(?=\s*(?:\d+[.、]|[一二三四五六七八九十]+[、.]))/)
       .map(s => s.trim())
     const sandboxClause = ruleBlocks.find(b =>
-      /沙盒|不是任务|可选/.test(b) && /不要催|没有必须|不必|不要强行|自由/.test(b) && cjk(b) >= L.sandboxRuleCjk
+      /沙盒|不是任务|可选/.test(b)
+      /*
+        ⚠️ 后半句的词表比作者的写法窄，就会把**写对了的**判成没写
+        （2026-11 第三轮：冰山三卡写的「由你决定」「没有人强迫你」
+        与这里的「不要催 / 没有必须」是一个意思，却全被判成缺失）。
+        判据比内容更窄时，错的是判据 —— 所以这里补上同一语义的常见说法。
+      */
+      && /不要催|没有必须|不必|不要强行|自由|由你决定|没有人强迫|没(有)?人.*催|随你|你自己决定/.test(b)
+      && cjk(b) >= L.sandboxRuleCjk
     )
     if (!sandboxClause) {
       fail(exp.label, 'rules 缺少沙盒条款',
