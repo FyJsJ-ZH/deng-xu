@@ -79,6 +79,11 @@ export const albion: WorldCard = {
   lores: [],
 
   story: {
+    /*
+      定调。学原作那句「迷茫、恐惧、被迫的选择、冰冷的秩序」的写法：
+      不堆形容词，写**两样互相拧着的东西** —— 拧着才有张力。
+    */
+    coreMood: '热闹与代价拧在一起：街市越吵，地底下越不干净',
     atmosphere: `灰港镇的清晨。阳光透过木窗照进来，空气中漂浮着细小的、泛着微光的魔法尘埃。
 你听到的不是鸡叫，而是楼下有人在用通用语、精灵语和矮人语混合着骂街。
 “一银币？你疯了！这不过是几块普通的幽光苔藓！”
@@ -97,7 +102,7 @@ export const albion: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'past',
-    replyLength: 1000,
+    replyLength: 700,
     customStyle: `中魔西幻 · 奇观白描 · 八条
 
 一 先给奇观，再给日常

@@ -70,6 +70,7 @@ export const jianghu: WorldCard = {
   lores: [],
 
   story: {
+    coreMood: '狠劲与不肯认命：雨下得越大，刀越拔得快',
     atmosphere: `客栈。暴雨。
 
 雨砸在瓦上，像有人在上头撒豆子。屋里没点灯，只有灶房那边漏过来一线黄。血腥味压过了霉味——不是新鲜的，是渗进木头缝里、好几年都没散干净的那种。
@@ -95,7 +96,7 @@ export const jianghu: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'past',
-    replyLength: 1000,
+    replyLength: 700,
     customStyle: `硬派武侠 · 八条
 
 一 先给重量，再给场面

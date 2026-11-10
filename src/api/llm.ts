@@ -139,7 +139,17 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
   apiKey: '',
   narrativeModel: 'deepseek-flash',
   analysisModel: 'deepseek-flash',
-  temperature: 0.8,
+  /*
+    ⚠️ 0.8 → 0.7（2026-11）。
+
+    玩家问「氛围为什么不如原作」。除了素材不足，温度也是一个真实原因：
+    我们要的那种写法（冷、克制、具体、靠细节而不是靠形容词）在 0.8 下容易滑向
+    "华丽但空"——形容词开始自己繁殖，动作反而少了。0.7 明显更稳，
+    而 0.7 也不会让文字变得死板（0.5 以下才会开始重复）。
+
+    玩家仍然可以在设置里自己调，这只是默认值。
+  */
+  temperature: 0.7,
   /*
     思考模式默认「跟随服务商」—— 也就是**不发这个字段**。
 

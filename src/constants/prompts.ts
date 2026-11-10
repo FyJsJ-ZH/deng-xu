@@ -313,6 +313,33 @@ export function buildNarrativeSystemPrompt(
 你的唯一职责是写出沉浸式的小说片段。你**不是**游戏系统，不需要关心数值、状态或任何规则判定——那些由另一个引擎处理。`);
 
   /*
+    ── 先给定调，再给设定（2026-11）──
+
+    玩家问：「怎么原作的提示词效果用起来，氛围也没有原作好？」
+
+    量下来第一因在这里：我们每轮真正喂进去的**氛围素材**几乎是零。
+    原作每章顶上都有一行「核心氛围：迷茫、恐惧、被迫的选择、冰冷的秩序」，
+    每张场景卡都有「[ATMOSPHERE] 疯狂、毁灭、不可理解的恐怖」——
+    模型读完才知道该往哪个方向用力。没有这一行，它就用自己的默认审美写，
+    而默认审美就是"AI 味"。
+
+    位置刻意放在**世界观之前**：长提示词里开头与结尾的注意力最高，
+    开头定调，比把定调埋在中段管用得多。
+    两个来源：`coreMood`（一行咒）与 `atmosphere`（这个地方摸上去什么样）。
+  */
+  const mood = String(world.story?.coreMood || '').trim();
+  const tone = String(world.story?.atmosphere || world.story?.opening || '').trim();
+  if (mood || tone) {
+    sections.push(`## 这个世界的味道（**每一次落笔都要带着它**）
+
+${mood ? `**定调**：${mood}\n` : ''}${tone ? tone : ''}
+
+这一节是**质感**，不是剧情。它不告诉你这一轮会发生什么，
+它只告诉你：同一件事在这个世界里，闻起来、听起来、硌在手心里是什么样。
+写任何一段之前先回到这里 —— 如果一段文字换到别的世界也成立，它就是没写进去。`);
+  }
+
+  /*
     ── 世界观设定：**按需注入**，不再整段塞 ──
 
     改之前这里是一行 `world.worldLore.trim()` —— 把三到七万汉字整份发出去，
@@ -327,19 +354,37 @@ export function buildNarrativeSystemPrompt(
   */
   const loreText = String(world.worldLore || '').trim();
   if (loreText) {
-    const digest = digestLore(loreText, {
-      context: briefing.context || '',
-      /*
-        ⚠️ 专名清单放宽到 160 个（默认 48）。它在这里的用途不是"给开场提示词列名字"，
-        而是**当检索键**：清单越全，越多章节能被正确命中。
-        漏掉一个地名，讲那一带的章节就永远挑不出来。
-      */
-      nouns: collectWorldProperNouns(world, 160),
-      ...(briefing.loreBudget ? { budget: briefing.loreBudget } : {}),
-    });
-    sections.push(`## 世界观设定
+    /*
+      ⚠️ **短世界书不要过摘要器**（2026-11，玩家问"氛围为什么不如原作"）。
+
+      冰山三卡的 worldLore 只有三四百字 —— 那本身就是一份浓缩的氛围，
+      而摘要器会把它切成"三节正文 + 一行提要 + 一段元说明"，
+      最有味道的那一节（「冰山一角：那些漂浮的遗迹是为了镇压地底深处的某种东西」）
+      正好被降级成带省略号的提要。
+
+      **451 字还摘要，等于把仅有的氛围也筛掉一半。**
+      摘要器是为五万字世界书写的，短文本直接全文给。
+    */
+    const loreCjk = (loreText.match(/[\u4e00-\u9fff]/g) || []).length
+    if (loreCjk < 1500) {
+      sections.push(`## 世界观设定
+
+${loreText}`);
+    } else {
+      const digest = digestLore(loreText, {
+        context: briefing.context || '',
+        /*
+          ⚠️ 专名清单放宽到 160 个（默认 48）。它在这里的用途不是"给开场提示词列名字"，
+          而是**当检索键**：清单越全，越多章节能被正确命中。
+          漏掉一个地名，讲那一带的章节就永远挑不出来。
+        */
+        nouns: collectWorldProperNouns(world, 160),
+        ...(briefing.loreBudget ? { budget: briefing.loreBudget } : {}),
+      });
+      sections.push(`## 世界观设定
 
 ${renderLoreDigest(digest, world.title)}`);
+    }
   } else {
     sections.push(`## 世界观设定
 

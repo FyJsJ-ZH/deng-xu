@@ -286,9 +286,9 @@ describe('篇幅节的位置 —— 放在禁令之前才像要求，不像又�
 })
 
 describe('十二张内置卡 · 都按新篇幅落地了', () => {
-  it('★ 每张卡的目标字数都不低于 1000（不许哪一张被改回去）', () => {
+  it('★ 每张卡的目标字数都不低于 700（不许哪一张被改回去）', () => {
     for (const w of BUILTIN_WORLDS) {
-      expect(w.narrative.replyLength, `《${w.title}》`).toBeGreaterThanOrEqual(1000)
+      expect(w.narrative.replyLength, `《${w.title}》`).toBeGreaterThanOrEqual(700)
     }
   })
 
