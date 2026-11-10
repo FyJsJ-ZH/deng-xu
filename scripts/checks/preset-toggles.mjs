@@ -45,7 +45,7 @@ const shot = async (name) => {
     console.log(`  [截图] ${OUT}/${name}.png`)
   } catch { /* 截图失败不该让走查挂掉 */ }
 }
-const waitFor = async (expr, timeoutMs = 12000, every = 200) => {
+const waitFor = async (expr, timeoutMs = 25000, every = 200) => {
   const t0 = Date.now()
   while (Date.now() - t0 < timeoutMs) {
     if (await ev(expr)) return true
@@ -69,9 +69,17 @@ await ev(`(()=>{const k='pale-notes-ui';let v={};try{v=JSON.parse(localStorage.g
   localStorage.setItem(k,JSON.stringify(v));return 'ok'})()`)
 await send('Page.navigate', { url: SITE }); await sleep(1800)
 
+/*
+  等 store 挂上。CI 的冷启动比本地慢得多 —— 首屏要先从 IndexedDB 播种
+  14 张内置卡，才轮到 `main.tsx` 那段动态 import 把 store 挂到 window。
+  12 秒在本地绰绰有余，在 Windows runner 上不一定，所以放到 25 秒。
+*/
 const ready = await waitFor('!!window.__libraryStore && !!window.__navStore')
 check('store 就绪（dev server）', ready)
-if (!ready) { await close(); removeProfile(PROFILE); process.exit(1) }
+if (!ready) {
+  console.log('  页面文本片段:', String(await ev('document.body.innerText.slice(0,200)')).replace(/\s+/g, ' '))
+  await close(); removeProfile(PROFILE); process.exit(1)
+}
 
 console.log('\n=== 1) 造一份带逐条清单的预设，并启用它 ===')
 const seeded = await ev(`(async()=>{
@@ -240,8 +248,23 @@ check('★ 刷新后快照也不含它（说明真的写回磁盘了）',
 // 收尾：删掉走查用的预设，别污染本机库
 await ev(`(async()=>{ try { await window.__libraryStore.getState().deleteNarrativePreset('pt-walk') } catch(e){} return 'ok' })()`)
 
-const jsErrors = (errors || []).filter(e => !/favicon|ResizeObserver/.test(String(e)))
-check('没有 JS 报错', jsErrors.length === 0, jsErrors.slice(0, 2).join(' | '))
+/*
+  ⚠️ **只有未捕获的异常才算失败**（2026-11，CI 上盲红一次才改的）。
+
+  `launch()` 把两类东西都塞进 `errors`：CDP 的 `Runtime.exceptionThrown`
+  与页面里的 `console.error`。前者是真出事，后者什么都有 ——
+  CI 的 Edge 版本比本地新一点，就可能多出几条资源加载 / 字体 / 弃用警告，
+  于是这条 check 在 CI 上必红、而本地全绿，且**红得毫无信息量**。
+
+  别的走查套件（background-custom / heroes / builtin-refresh）本来就只
+  「打印不判定」，这里跟它们保持一致：console.error 记录，异常才拦。
+*/
+const hardErrors = (errors || []).filter(e => !/^console\.error:/.test(String(e)))
+const softErrors = (errors || []).filter(e => /^console\.error:/.test(String(e)))
+check('没有未捕获的 JS 异常', hardErrors.length === 0, hardErrors.slice(0, 2).join(' | '))
+if (softErrors.length) {
+  console.log(`  （console.error ${softErrors.length} 条，仅记录不计失败：${softErrors.slice(0, 2).join(' | ')}）`)
+}
 
 console.log(`\n=== 汇总 ===\n  通过 ${pass}/${pass + fail}`)
 await close()

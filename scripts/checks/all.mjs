@@ -201,6 +201,20 @@ console.log(`\n  ${results.length - failed.length}/${results.length} 套走查�
 if (failed.length) console.log('  失败：' + failed.map(r => r.name).join('、'))
 console.log(`  截图目录：${OUT}`)
 
+/*
+  ── 失败时要留下**能读到**的 annotation（2026-11）──
+
+  CI 里的失败原先只显示一句 `Process completed with exit code 1`，
+  workflow 会把输出 `Select-Object -Last 60` 再打印，而汇总行有二十几行 ——
+  每套失败时那条 `::error::` 一旦落到 60 行以外就没了，等于什么都没说。
+
+  所以在这里**再补一遍**，且只写一行、放在最末，保证一定被截取到。
+*/
+if (failed.length) {
+  const detail = failed.map(r => r.name).join('、')
+  console.log(`::error::走查未通过（${failed.length}/${results.length}）：${detail}`)
+}
+
 // ── 失败清单 ──
 if (isFullRun) {
   fs.mkdirSync(path.dirname(FAILED_LIST), { recursive: true })
