@@ -160,6 +160,26 @@ export interface TokenUsage {
    * 拿不到就是 `undefined`（按全部未命中算，偏保守）。
    */
   cacheHitTokens?: number
+
+  /**
+   * 这笔用量**发生在什么时候**（毫秒时间戳，2026-11）。
+   *
+   * ## 为什么必须有它
+   *
+   * 玩家对过一次账：这一轮后台花了七分钱，游戏里只显示四分。
+   *
+   * 光看单价和 token 都对得上，问题在**峰谷**。DeepSeek 的高峰时段是
+   * 北京时间工作日 9:00–12:00、14:00–18:00，那一档单价翻倍。
+   * 而金额是**看工具条那一刻**才折算的 —— 中午 12 点打的那一轮，
+   * 晚上七点再看，就被按"空闲"算了，直接少一半。
+   *
+   * 所以记录用量时把时刻一起存下来，折算时用**那一刻**的峰谷，
+   * 而不是"你现在看表的时间"。
+   *
+   * 累加（`addUsage`）时保留**最近一次**的时间 —— 一局里的多轮没法
+   * 精确分摊，但"最近那次"比"现在"准得多。
+   */
+  at?: number
 }
 
 /**
@@ -510,6 +530,9 @@ export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
   }
   // 两边都没报缓存命中就保持 undefined —— 0 会让"未知"看起来像"确实没命中"
   if (hit > 0) out.cacheHitTokens = hit
+  // 保留"最近一次"的时刻：峰谷折算要用它，见 TokenUsage.at 的说明
+  const at = b.at ?? a.at
+  if (typeof at === 'number') out.at = at
   return out
 }
 
@@ -1400,8 +1423,9 @@ export const useGameStore = create<GameState>()(
 
       // —— C9：成本可见 ——
       recordUsage: (usage) => set((state) => ({
-        lastUsage: addUsage(state.lastUsage || EMPTY_USAGE, usage),
-        sessionUsage: addUsage(state.sessionUsage || EMPTY_USAGE, usage),
+        // 打上发生时刻：峰谷价按下单时那一刻算，不是按"看工具条的时候"算
+        lastUsage: addUsage(state.lastUsage || EMPTY_USAGE, { ...usage, at: usage.at ?? Date.now() }),
+        sessionUsage: addUsage(state.sessionUsage || EMPTY_USAGE, { ...usage, at: usage.at ?? Date.now() }),
       })),
       clearLastUsage: () => set({ lastUsage: null }),
       recordResponseModel: (model) => set({ lastResponseModel: String(model || '') }),

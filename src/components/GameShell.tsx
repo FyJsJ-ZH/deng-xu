@@ -56,7 +56,13 @@ function formatUsage(u: TokenUsage | null | undefined, provider: string, model: 
   const approx = u.estimated ? '约' : ''
   const tokens = `${approx}${u.promptTokens + u.completionTokens} tok`
   const money = formatCost(estimateCost(provider, model, u))
-  return money ? `${tokens} ${money}` : tokens
+  /*
+    ⚠️ 金额前面**永远**带 `≈`（2026-11 玩家对账：后台七分钱，这里显示四分）。
+    折扣前的 token 数可能是估的，价目表也可能与服务商实际价有出入，
+    峰谷还只按周末与钟点判断（法定节假日判不出来）。
+    这么多个"不确定"叠起来，那个数字就不该长得像账单。
+  */
+  return money ? `${tokens} ≈${money}` : tokens
 }
 
 /**
@@ -86,13 +92,13 @@ function tokenTooltip(
 ): string {
   if (!u || (!u.promptTokens && !u.completionTokens)) return `${label}：暂无记录`
   const src = u.estimated
-    ? '接口未返回 usage，数字按字符数估算（仅供参考）'
+    ? '接口未返回 usage，数字按字符数估算（含思维链）—— 只能看个量级，别拿去对账'
     : '取自接口返回的 usage'
   const hit = u.cacheHitTokens
     ? `\n其中缓存命中 ${u.cacheHitTokens} tok（命中价比未命中便宜得多）`
     : ''
   return `${label}\n输入 ${u.promptTokens} tok / 输出 ${u.completionTokens} tok${hit}\n`
-    + `${priceSourceNote(provider, model)}\n${src}`
+    + `${priceSourceNote(provider, model)}\n${src}\n金额是**按官方价目折算的参考值**，不是账单。`
 }
 
 /** 回溯可用的轮次上限（与 gameStore 保持同一个数字，只用于提示文案） */

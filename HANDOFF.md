@@ -3802,7 +3802,50 @@ if (jsonMode && !isThinking) body.response_format = { type: 'json_object' }
 
 ---
 
-## 5. 测试体系（**12 套走查进 CI** + 1 套单独跑 + **1018** 单元测试 + 5 个独立工具）
+## 4.20 金额少算：漏了思维链、又用错了峰谷时刻（2026-11 第四十六轮）
+
+玩家对账：「我之前专门看了一轮，用了七分钱，游戏局内才显示用了 4 分」。
+
+差的这 43% 来自三个地方，全都不是"单价写错"。
+
+### 一、估算时漏掉了思维链
+
+拿不到 usage 时会按字符数估。而估算的文本只传了 `fullNarrative` ——
+**思考模式下思维链常常比正文还长**，它同样按输出计费。
+正文 1100 字 ≈ 1650 token，思维链三四千 token，只估正文等于白送一半不算。
+
+修：`estimatedOutput = fullNarrative + fullReasoning`，两处（`recordUsage` 与
+`estimateMissingCompletion`）都换成它。
+
+### 二、峰谷按"看工具条的时刻"算，而不是"那一轮发生的时刻"
+
+`estimateCost(provider, model, usage)` 里 `at` 默认 `new Date()` ——
+**你什么时候翻工具条，就用什么时候的单价**。
+
+中午 12 点打的那一轮按高峰价扣了钱，晚上七点看就是空闲价，直接少一半。
+
+修：`TokenUsage` 加 `at?: number`，`recordUsage` 在记录时打上；
+`estimateCost` 的优先级是 `usage.at` → 显式 `at` → 现在。
+`addUsage` 累加时保留**最近一次**的时间。
+
+### 三、流式请求干脆没要 usage
+
+`stream_options: { include_usage: true }` 是让服务商在最后一帧回 usage 的开关，
+我们一直没发 —— 于是大多数时候根本拿不到真实 token，全走估算。
+
+只对 `deepseek / openai / openrouter / siliconflow` 发：这几位都是标准 OpenAI
+兼容实现；自定义端点不认识时会直接 400，而 400 比少算几分钱糟得多。
+
+### 界面上也不许再装成账单
+
+金额前面统一加 `≈`（原先只有 token 数带"约"）。悬浮说明里写清：
+"金额是按官方价目折算的参考值，不是账单"。
+
+---
+
+## 5. 测试体系（**12 套走查进 CI** + 1 套单独跑 + **1022** 单元测试 + 5 个独立工具）
+
+
 
 
 

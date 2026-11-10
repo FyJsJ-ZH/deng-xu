@@ -170,4 +170,41 @@ describe('addUsage：缓存命中也要累加', () => {
     const est: TokenUsage = { ...u(100, 10), estimated: true }
     expect(addUsage(est, u(100, 10)).estimated).toBe(true)
   })
+
+  it('★ 累加保留"最近一次"的时刻（峰谷折算要用它）', () => {
+    const early = { ...u(100, 10), at: 1000 }
+    const late = { ...u(100, 10), at: 2000 }
+    expect(addUsage(early, late).at).toBe(2000)
+    // 只有一边有时间戳时也要留住
+    expect(addUsage(u(1, 1), late).at).toBe(2000)
+    expect(addUsage(early, u(1, 1)).at).toBe(1000)
+  })
+})
+
+/**
+ * 峰谷必须按**这一轮发生的那一刻**算（2026-11）。
+ *
+ * 玩家对过一次账：中午那一轮后台扣了七分，晚上翻工具条只显示四分 ——
+ * 同一批 token，只是因为我们拿"看表的时刻"去查了价目表。
+ */
+describe('estimateCost：峰谷按发生时刻，不按查看时刻', () => {
+  const usage = (at?: number): TokenUsage => ({ ...u(1_000_000, 0), ...(at !== undefined ? { at } : {}) })
+
+  it('★ 中午打的、晚上看 —— 仍然按高峰算（不能拿现在的时段重算过去）', () => {
+    const noon = new Date('2026-11-10T11:00:00+08:00').getTime()  // 高峰
+    const night = new Date('2026-11-10T23:00:00+08:00')            // 空闲
+    // 输入 1M，未命中，Flash：高峰 2 元
+    expect(estimateCost('deepseek', 'deepseek-flash', usage(noon), night)).toBeCloseTo(2, 6)
+  })
+
+  it('★ 深夜打的、白天看 —— 仍然按空闲算', () => {
+    const night = new Date('2026-11-10T23:00:00+08:00').getTime()
+    const noon = new Date('2026-11-10T11:00:00+08:00')
+    expect(estimateCost('deepseek', 'deepseek-flash', usage(night), noon)).toBeCloseTo(1, 6)
+  })
+
+  it('没有 usage.at（老存档）才退回传入的时刻', () => {
+    expect(estimateCost('deepseek', 'deepseek-flash', usage(), PEAK)).toBeCloseTo(2, 6)
+    expect(estimateCost('deepseek', 'deepseek-flash', usage(), IDLE)).toBeCloseTo(1, 6)
+  })
 })

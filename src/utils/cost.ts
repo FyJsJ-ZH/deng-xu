@@ -139,13 +139,24 @@ export function estimateCost(
   provider: string,
   model: string,
   usage: TokenUsage | null | undefined,
-  at: Date = new Date(),
+  at?: Date,
 ): number | null {
   if (!usage) return null
   const book = priceBookFor(provider, model)
   if (!book) return null
 
-  const peak = isPeakHour(at)
+  /*
+    ⚠️ 峰谷要按**这一轮发生的那一刻**算，不是按"现在看工具条的时刻"（2026-11）。
+
+    玩家对过账：中午那一轮后台扣了七分，晚上翻工具条只显示四分 ——
+    同一批 token，单价差一倍，只是因为我们拿错了时间。
+
+    优先级：`usage.at`（记录时打的时间戳）→ 显式传入的 `at`（测试用）→ 现在。
+    老存档里没有 `usage.at`，只能退回现在，这一档是承认不准的。
+  */
+  const effective = typeof usage.at === 'number' ? new Date(usage.at) : (at ?? new Date())
+
+  const peak = isPeakHour(effective)
   const pick = (t: PriceTier) => (peak ? t.peak : t.idle)
 
   const { hit, miss } = splitInput(usage)

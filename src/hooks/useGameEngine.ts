@@ -1321,12 +1321,17 @@ export function useGameEngine(): GameEngineReturn {
         记录第一段（叙事）的用量。
         流里没回 usage 时退回估算 —— 但**别丢掉已经拿到的 prompt 数**：
         只有 completion 缺失时补它（见 estimateMissingCompletion）。
+
+        ⚠️ 估算用的文本必须**带上思维链**（2026-11 玩家对账：后台七分、这里四分）。
+        思考模式下思维链常常比正文还长，而它同样按输出计费。
+        只拿正文去估，等于白送掉一半的钱不算 —— 玩家对一次账就再也不会信这个数。
       */
+      const estimatedOutput = fullNarrative + fullReasoning
       recordUsage(
         null,
         narrativeMessages,
-        fullNarrative,
-        streamUsage ? estimateMissingCompletion(streamUsage, fullNarrative) : null,
+        estimatedOutput,
+        streamUsage ? estimateMissingCompletion(streamUsage, estimatedOutput) : null,
       )
 
       /*

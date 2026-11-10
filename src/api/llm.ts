@@ -302,6 +302,24 @@ function buildBody(opts: ChatOptions, stream: boolean): string {
 
   // 推理模型通常拒绝 temperature / response_format，只在明确安全时附带
   const modelName = String(body.model).toLowerCase();
+
+  /*
+    ── 流式也要 usage（2026-11）──
+
+    玩家对过一次账：后台显示这一轮花了七分钱，游戏里只显示四分。
+
+    流式响应里 usage 通常**只在最后一帧**附带，而不少 OpenAI 兼容实现
+    默认根本不发 —— 于是我们退到"按字符数估算"，而估算只看得见正文，
+    看不见思考链（思考模式下思维链常常比正文还长）。少算的部分就是这么来的。
+
+    `stream_options.include_usage` 就是让服务商把最后一帧带上 usage 的开关。
+    只对确认支持它的服务商发：这几位都是标准 OpenAI 兼容实现；
+    自定义端点不认识这个字段时**可能直接 400**，而 400 比少算几分钱糟得多。
+  */
+  const streamUsageProviders = new Set(['deepseek', 'openai', 'openrouter', 'siliconflow']);
+  if (stream && streamUsageProviders.has(config.provider)) {
+    body.stream_options = { include_usage: true };
+  }
   /*
     **两条都要判**（2026-11）。
 
