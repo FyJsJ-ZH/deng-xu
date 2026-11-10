@@ -1,44 +1,44 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import type { AttributeDef } from '@/types/cards';
 
 interface Option {
   id: string;
   text: string;
-  style?: 'lantern' | 'forge' | 'edge' | 'winter' | 'heart' | 'grail' | 'moth' | 'knock' | 'neutral' | 'story';
+  /** 性相 id（或 'neutral' / 'story'）—— 由数据 AI 标注，见 prompts 的选项生成协议 */
+  style?: string;
   disabled?: boolean;
 }
 
 interface ChoicePanelProps {
   options: Option[];
+  /**
+   * 当前世界的属性（性相）定义 —— **选项的颜色从这里取**。
+   *
+   * 为什么不写死一张色表：世界卡的属性是玩家可改的（卡片编辑器里能加自己的相），
+   * 写死的表一改世界就对不上，而"对不上"的表现是不报错、只是颜色灰掉。
+   * 更关键的是：**颜色必须和右上角状态栏里那个相的颜色一致**，
+   * 否则玩家会以为是两个东西。
+   */
+  attributes?: AttributeDef[];
   onSelect: (id: string) => void;
   onCustomAction?: (text: string) => void;
   disabled?: boolean;
   isInputAllowed?: boolean;
 }
 
-const styleMap = {
-  lantern: 'border-accent-lantern text-accent-lantern hover:bg-accent-lantern/10',
-  forge: 'border-accent-grail text-accent-grail hover:bg-accent-grail/10', // 暂用红色
-  edge: 'border-accent-edge text-accent-edge hover:bg-accent-edge/10',
-  winter: 'border-accent-winter text-accent-winter hover:bg-accent-winter/10',
-  heart: 'border-accent-grail text-accent-grail hover:bg-accent-grail/10', // 暂用红色
-  grail: 'border-accent-grail text-accent-grail hover:bg-accent-grail/10',
-  moth: 'border-accent-moth text-accent-moth hover:bg-accent-moth/10',
-  knock: 'border-accent-mansus text-accent-mansus hover:bg-accent-mansus/10',
-  neutral: 'border-text-muted text-text-primary hover:bg-text-muted/10',
-  story: 'border-text-primary text-text-primary bg-surface/80 hover:bg-surface hover:border-accent-lantern font-bold tracking-wide',
-};
+/** 找不到性相时的兜底色（中性灰） */
+const NEUTRAL = '#8b8b8b';
 
-export function ChoicePanel({ options, onSelect, onCustomAction, disabled, isInputAllowed = true }: ChoicePanelProps) {
+export function ChoicePanel({
+  options, attributes = [], onSelect, onCustomAction, disabled, isInputAllowed = true,
+}: ChoicePanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [customInput, setCustomInput] = useState('');
 
-  // Auto-expand when options change
   useEffect(() => {
-    if (options.length > 0) {
-      setIsExpanded(true);
-    }
+    if (options.length > 0) setIsExpanded(true);
   }, [options]);
 
   const handleCustomSubmit = (e: React.FormEvent) => {
@@ -51,10 +51,13 @@ export function ChoicePanel({ options, onSelect, onCustomAction, disabled, isInp
 
   if (options.length === 0 && !isInputAllowed) return null;
 
+  /** 一个选项属于哪个性相（找不到就 null） */
+  const aspectOf = (style?: string) =>
+    style ? attributes.find(a => a.id === style) : undefined;
+
   return (
     <div className="border-t border-text-muted/20 bg-black/40 backdrop-blur-md shadow-[0_-10px_40px_rgba(0,0,0,0.3)] transition-all duration-300">
-      {/* Toggle Handle */}
-      <button 
+      <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center justify-center p-2 text-text-muted hover:text-text-primary hover:bg-white/5 transition-colors"
       >
@@ -70,7 +73,6 @@ export function ChoicePanel({ options, onSelect, onCustomAction, disabled, isInp
             className="overflow-hidden"
           >
             <div className="p-4 md:p-6 pt-0 flex flex-col gap-3 max-w-3xl mx-auto">
-              {/* Custom Input Field */}
               {isInputAllowed && (
                 <form onSubmit={handleCustomSubmit} className="mb-4">
                   <div className="relative group">
@@ -90,7 +92,6 @@ export function ChoicePanel({ options, onSelect, onCustomAction, disabled, isInp
                       <span className="sr-only">发送</span>
                       →
                     </button>
-                    <div className="absolute inset-0 border border-transparent group-hover:border-text-muted/10 pointer-events-none transition-colors rounded-sm" />
                   </div>
                 </form>
               )}
@@ -98,8 +99,23 @@ export function ChoicePanel({ options, onSelect, onCustomAction, disabled, isInp
               <div className="text-xs font-serif text-text-muted uppercase tracking-[0.3em] text-center mb-4 opacity-60">
                 — 抉择 —
               </div>
+
               {options.map((opt, index) => {
                 const isDisabled = disabled || opt.disabled;
+                const isStory = opt.style === 'story';
+                const attr = aspectOf(opt.style);
+                const color = isStory ? undefined : (attr?.color || NEUTRAL);
+
+                /*
+                  性相选项的样式全部走 inline style：
+                  边框与文字用该相的颜色，悬停只提亮背景。
+                  尾部的相名（「灯」「刃」…）就是原作那个做法——
+                  让玩家一眼看出"这个选项是哪一种人做的事"。
+                */
+                const inline: React.CSSProperties = isStory || !color
+                  ? {}
+                  : { borderColor: `${color}66`, color };
+
                 return (
                   <motion.button
                     key={opt.id}
@@ -108,18 +124,35 @@ export function ChoicePanel({ options, onSelect, onCustomAction, disabled, isInp
                     transition={{ delay: index * 0.1 }}
                     onClick={() => !isDisabled && onSelect(opt.id)}
                     disabled={isDisabled}
+                    style={inline}
                     className={`
                       w-full p-4 text-left border rounded-sm transition-all duration-300 font-serif text-base md:text-lg relative overflow-hidden group
-                      ${styleMap[opt.style || 'neutral']}
+                      ${isStory
+                        ? 'border-text-primary text-text-primary bg-surface/80 hover:bg-surface hover:border-accent-lantern font-bold tracking-wide'
+                        : 'border-text-muted/40 text-text-primary hover:bg-white/5'}
                       ${isDisabled ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:shadow-lg hover:-translate-y-0.5'}
                     `}
                   >
-                    <span className="relative z-10 flex items-center justify-between">
-                      <span className="flex items-center gap-3">
-                        <span className="opacity-50 text-xs transition-transform group-hover:rotate-45">◇</span>
-                        {opt.text}
+                    <span className="relative z-10 flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-3 min-w-0">
+                        <span
+                          className="opacity-60 text-xs shrink-0"
+                          style={color ? { color } : undefined}
+                        >◇</span>
+                        <span className="truncate">{opt.text}</span>
                       </span>
-                      {!isDisabled && <span className="opacity-0 group-hover:opacity-100 transition-opacity text-sm font-mono">→</span>}
+                      <span className="flex items-center gap-2 shrink-0">
+                        {attr && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-sm font-mono border"
+                            style={{ color, borderColor: `${color}55` }}
+                            title={`选它偏向「${attr.name}」——${attr.description || ''}`}
+                          >
+                            {attr.name}
+                          </span>
+                        )}
+                        {!isDisabled && <span className="opacity-0 group-hover:opacity-100 transition-opacity text-sm font-mono">→</span>}
+                      </span>
                     </span>
                     {!isDisabled && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />}
                   </motion.button>

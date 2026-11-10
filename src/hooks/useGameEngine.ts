@@ -1666,14 +1666,31 @@ export function useGameEngine(): GameEngineReturn {
       }
     }
 
-    // 选项自带的风格标签 → 对应属性 +1
+    /*
+      ── 选项自带的风格标签 → 对应属性 +1（原作的做法）──
+
+      玩家原话：「原作中选择选项对应的颜色有对应的性相加成」。
+      《苍白卷宗》里每个选项都标着它偏向哪个相，选了那个相就 +1 ——
+      属性是这么长起来的（你想成为哪种人，就一路挑那种人做的事），不是靠刷经验。
+
+      **放在这里而不是 UI 里**，因为这是唯一一条所有入口都会经过的路：
+      点选项、重试、回放、API Key 换了以后重跑，都从这里走。
+      放进 ChoicePanel 的 onClick 里，第一条路径能加，其余几条会漏或者重复加。
+
+      上限 10：属性注入提示词时是按档位解释的（4 以上＝内行 / 2~3＝够用 / 0~1＝不会），
+      涨到两位数没有区分度，只会把「内行」这个判据稀释掉。
+    */
+    const ASPECT_CAP = 10
     const option = useGameStore.getState().currentOptions.find((o: any) => o.id === actionId)
     const world = useSessionStore.getState().world
     if (option?.style && world && world.enableMechanics) {
       const valid = world.attributes.some(a => a.id === option.style)
       if (valid) {
         const aspects = useGameStore.getState().aspects
-        useGameStore.getState().setAspects({ [option.style]: (aspects[option.style] || 0) + 1 })
+        const cur = aspects[option.style] || 0
+        if (cur < ASPECT_CAP) {
+          useGameStore.getState().setAspects({ [option.style]: cur + 1 })
+        }
       }
     }
 

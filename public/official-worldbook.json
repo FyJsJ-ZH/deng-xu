@@ -15377,7 +15377,7 @@
           "id": "lantern",
           "name": "灯",
           "description": "理智，光明，残酷的真理",
-          "color": "#c9a227",
+          "color": "#facc15",
           "traits": [
             "理性",
             "残酷",
@@ -15395,7 +15395,7 @@
           "id": "forge",
           "name": "铸",
           "description": "力量，改变，火焰",
-          "color": "#b5532a",
+          "color": "#f97316",
           "traits": [
             "变革",
             "火焰",
@@ -15413,7 +15413,7 @@
           "id": "edge",
           "name": "刃",
           "description": "斗争，征服，痛苦",
-          "color": "#8b2f2f",
+          "color": "#4ade80",
           "traits": [
             "斗争",
             "痛苦",
@@ -15431,7 +15431,7 @@
           "id": "winter",
           "name": "冬",
           "description": "寂静，终结，寒冷",
-          "color": "#5b7c8d",
+          "color": "#bfdbfe",
           "traits": [
             "寂静",
             "终结",
@@ -15449,7 +15449,7 @@
           "id": "heart",
           "name": "心",
           "description": "生命，保存，永恒的跳动",
-          "color": "#b03a4a",
+          "color": "#f87171",
           "traits": [
             "延续",
             "保护",
@@ -15467,7 +15467,7 @@
           "id": "grail",
           "name": "杯",
           "description": "欲望，诱惑，感官",
-          "color": "#7a3f5c",
+          "color": "#dc2626",
           "traits": [
             "渴望",
             "诱惑",
@@ -15485,7 +15485,7 @@
           "id": "moth",
           "name": "蛾",
           "description": "混乱，自然，难以捉摸",
-          "color": "#8a7f4a",
+          "color": "#fde68a",
           "traits": [
             "混乱",
             "蜕变",
@@ -15503,7 +15503,7 @@
           "id": "knock",
           "name": "启",
           "description": "开启，秘密，界限",
-          "color": "#4e6b4a",
+          "color": "#c084fc",
           "traits": [
             "门扉",
             "伤口",
@@ -15521,7 +15521,7 @@
           "id": "secrethistory",
           "name": "秘史",
           "description": "悖论，多重历史，模糊，记录，选择",
-          "color": "#5c5c58",
+          "color": "#a16207",
           "traits": [
             "悖论",
             "多重历史",
@@ -15705,7 +15705,7 @@
           "id": "lantern",
           "name": "灯",
           "description": "理智，光明，残酷的真理",
-          "color": "#c9a227",
+          "color": "#facc15",
           "traits": [
             "理性",
             "残酷",
@@ -15723,7 +15723,7 @@
           "id": "forge",
           "name": "铸",
           "description": "力量，改变，火焰",
-          "color": "#b5532a",
+          "color": "#f97316",
           "traits": [
             "变革",
             "火焰",
@@ -15741,7 +15741,7 @@
           "id": "edge",
           "name": "刃",
           "description": "斗争，征服，痛苦",
-          "color": "#8b2f2f",
+          "color": "#4ade80",
           "traits": [
             "斗争",
             "痛苦",
@@ -15759,7 +15759,7 @@
           "id": "winter",
           "name": "冬",
           "description": "寂静，终结，寒冷",
-          "color": "#5b7c8d",
+          "color": "#bfdbfe",
           "traits": [
             "寂静",
             "终结",
@@ -15777,7 +15777,7 @@
           "id": "heart",
           "name": "心",
           "description": "生命，保存，永恒的跳动",
-          "color": "#b03a4a",
+          "color": "#f87171",
           "traits": [
             "延续",
             "保护",
@@ -15795,7 +15795,7 @@
           "id": "grail",
           "name": "杯",
           "description": "欲望，诱惑，感官",
-          "color": "#7a3f5c",
+          "color": "#dc2626",
           "traits": [
             "渴望",
             "诱惑",
@@ -15813,7 +15813,7 @@
           "id": "moth",
           "name": "蛾",
           "description": "混乱，自然，难以捉摸",
-          "color": "#8a7f4a",
+          "color": "#fde68a",
           "traits": [
             "混乱",
             "蜕变",
@@ -15831,7 +15831,7 @@
           "id": "knock",
           "name": "启",
           "description": "开启，秘密，界限",
-          "color": "#4e6b4a",
+          "color": "#c084fc",
           "traits": [
             "门扉",
             "伤口",
@@ -15849,7 +15849,7 @@
           "id": "secrethistory",
           "name": "秘史",
           "description": "悖论，多重历史，模糊，记录，选择",
-          "color": "#5c5c58",
+          "color": "#a16207",
           "traits": [
             "悖论",
             "多重历史",
@@ -16032,7 +16032,7 @@
           "id": "lantern",
           "name": "灯",
           "description": "理智，光明，残酷的真理",
-          "color": "#c9a227",
+          "color": "#facc15",
           "traits": [
             "理性",
             "残酷",
@@ -16050,7 +16050,7 @@
           "id": "forge",
           "name": "铸",
           "description": "力量，改变，火焰",
-          "color": "#b5532a",
+          "color": "#f97316",
           "traits": [
             "变革",
             "火焰",
@@ -16068,7 +16068,7 @@
           "id": "edge",
           "name": "刃",
           "description": "斗争，征服，痛苦",
-          "color": "#8b2f2f",
+          "color": "#4ade80",
           "traits": [
             "斗争",
             "痛苦",
@@ -16086,7 +16086,7 @@
           "id": "winter",
           "name": "冬",
           "description": "寂静，终结，寒冷",
-          "color": "#5b7c8d",
+          "color": "#bfdbfe",
           "traits": [
             "寂静",
             "终结",
@@ -16104,7 +16104,7 @@
           "id": "heart",
           "name": "心",
           "description": "生命，保存，永恒的跳动",
-          "color": "#b03a4a",
+          "color": "#f87171",
           "traits": [
             "延续",
             "保护",
@@ -16122,7 +16122,7 @@
           "id": "grail",
           "name": "杯",
           "description": "欲望，诱惑，感官",
-          "color": "#7a3f5c",
+          "color": "#dc2626",
           "traits": [
             "渴望",
             "诱惑",
@@ -16140,7 +16140,7 @@
           "id": "moth",
           "name": "蛾",
           "description": "混乱，自然，难以捉摸",
-          "color": "#8a7f4a",
+          "color": "#fde68a",
           "traits": [
             "混乱",
             "蜕变",
@@ -16158,7 +16158,7 @@
           "id": "knock",
           "name": "启",
           "description": "开启，秘密，界限",
-          "color": "#4e6b4a",
+          "color": "#c084fc",
           "traits": [
             "门扉",
             "伤口",
@@ -16176,7 +16176,7 @@
           "id": "secrethistory",
           "name": "秘史",
           "description": "悖论，多重历史，模糊，记录，选择",
-          "color": "#5c5c58",
+          "color": "#a16207",
           "traits": [
             "悖论",
             "多重历史",

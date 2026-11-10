@@ -44,6 +44,8 @@ const CHECKS = [
   { name: '我的主角', file: 'heroes.mjs', port: 9878 },
   // 「我自己写」背景项：选角页真的放出了文本框、输入真的进了 state
   { name: '自填背景', file: 'background-custom.mjs', port: 9879 },
+  // 九相配色 = 原作那组（刃是绿的、心浅红/杯深红），且选项按相上色、选中 +1 只加一次
+  { name: '九相配色', file: 'aspect-colors.mjs', port: 9881 },
   // 内置卡内容更新：把 IndexedDB 改成老玩家的样子再刷新，卡必须被换成新版。
   // 玩家为这件事说了三次「改了没生效」，所以它值得一套真机走查。
   { name: '内置卡刷新', file: 'builtin-refresh.mjs', port: 9868 },

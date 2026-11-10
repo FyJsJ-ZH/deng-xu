@@ -793,11 +793,19 @@ export function GameShell() {
 
           <ChoicePanel
             options={currentOptions}
+            attributes={world?.attributes}
             disabled={isProcessing}
             isInputAllowed={isInputAllowed}
             onCustomAction={(text) => handleAction('custom_action', text)}
             onSelect={(id) => {
               const opt = currentOptions.find((o: any) => o.id === id)
+              /*
+                ⚠️ 这里**不**再加性相。
+                选项的性相加成早在 `useGameEngine.handleAction` 里就做了
+                （搜索「选项自带的风格标签」），而且放在那里才对：
+                重试、回放、撤回都走同一条路，不会重一次加一次。
+                我一度在这里又加了一遍，实测点一下「灯」涨了 2 点。
+              */
               handleAction(id, opt?.text || id)
             }}
           />
