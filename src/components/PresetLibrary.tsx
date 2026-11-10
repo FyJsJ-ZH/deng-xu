@@ -3,9 +3,11 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, Download, Sparkles, Trash2, Upload, X, Check, FileText, AlertTriangle,
 } from 'lucide-react'
 import { useLibraryStore } from '@/stores/library'
-import type { NarrativePreset } from '@/types/cards'
+import type { NarrativePreset, PresetEntry } from '@/types/cards'
 import { isSillyTavernPreset, stPresetToNarrativePreset } from '@/utils/stPreset'
-import { describeNarrativePreset, presetHasContent, presetWarnings } from '@/utils/narrativePreset'
+import {
+  describeNarrativePreset, presetHasContent, presetWarnings, presetEntryStats,
+} from '@/utils/narrativePreset'
 import { StyleChooser } from '@/components/StyleChooser'
 import { downloadFile, timestampSuffix } from '@/utils/files'
 
@@ -302,9 +304,19 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
                             <span>{w}</span>
                           </div>
                         ))}
-                        <PresetBlock title="规则（每轮注入）" text={p.rules} budget={4000} />
-                        <PresetBlock title="文风（每轮注入）" text={p.style} budget={4000} />
-                        <PresetBlock title="其他条目（只存档，不注入）" text={p.lore} budget={6000} />
+                        {p.entries?.length ? (
+                          <PresetEntries preset={p} />
+                        ) : (
+                          <>
+                            <div className="text-[10px] text-amber-300/80 leading-relaxed">
+                              这份预设是旧版导入的：内容已经拼成一整块，不能逐条勾选。
+                              重新导入同一个 .json 就能拿到逐条开关。
+                            </div>
+                            <PresetBlock title="规则（每轮注入）" text={p.rules} budget={4000} />
+                            <PresetBlock title="文风（每轮注入）" text={p.style} budget={4000} />
+                            <PresetBlock title="其他条目（只存档，不注入）" text={p.lore} budget={6000} />
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -326,9 +338,134 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
   )
 }
 
+/**
+ * 逐条勾选（2026-11 第三十七轮）。
+ *
+ * 玩家原话：「现在的酒馆预设都有勾选功能，但本项目没有可自定义的选项，
+ * 导入以后就固定了，加入这个功能。」
+ *
+ * 三条 UX 决定，都是为了"点一下就知道结果"：
+ *
+ *  1. **勾掉的行变淡而不是消失** —— 酒馆里也是留在原位。
+ *     它得还在那儿，玩家才知道自己关了什么，也才点得回来。
+ *  2. **每类顶上写清"勾了几条 / 共几条 / 多少字"** ——
+ *     规则与文风是每轮全量注入的，字数就是成本，得让他看见自己在加什么。
+ *  3. **超预算的条目单独标灰 + 「超预算」角标**，而不是藏起来：
+ *     它内容一个字都没丢，玩家想要就自己勾上。
+ */
+const KIND_META: Record<PresetEntry['kind'], { title: string; hint: string }> = {
+  rules: { title: '规则', hint: '每轮注入' },
+  style: { title: '文风', hint: '每轮注入' },
+  other: { title: '其他', hint: '只存档，不注入' },
+}
+
+function PresetEntries({ preset }: { preset: NarrativePreset }) {
+  const toggleEntry = useLibraryStore(s => s.toggleNarrativePresetEntry)
+  const setEntries = useLibraryStore(s => s.setNarrativePresetEntries)
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  const entries = preset.entries || []
+  const stats = presetEntryStats(preset)
+
+  return (
+    <div className="space-y-2">
+      {(['rules', 'style', 'other'] as const).map(kind => {
+        const list = entries.filter(e => e.kind === kind)
+        if (!list.length) return null
+        const st = stats[kind]
+        const allOn = st.on === st.all
+        return (
+          <div key={kind} className="rounded border border-text-muted/20 bg-black/20 overflow-hidden">
+            <div className="flex items-center gap-2 px-2 py-1.5 border-b border-text-muted/15">
+              <span className="text-[10px] font-serif text-text-secondary shrink-0">{KIND_META[kind].title}</span>
+              <span className="text-[9px] text-text-muted truncate">{KIND_META[kind].hint}</span>
+              <span className="text-[9px] text-text-muted font-mono ml-auto shrink-0">
+                {st.on}/{st.all}{kind === 'other' ? '' : ` · ${st.chars} 字`}
+              </span>
+              <button
+                onClick={() => { void setEntries(preset.id, !allOn, kind) }}
+                data-preset-kind={kind}
+                aria-label={`${allOn ? '全关' : '全勾'}${KIND_META[kind].title}`}
+                className="text-[9px] px-1.5 py-0.5 rounded border border-text-muted/30 text-text-muted hover:text-accent-lantern hover:border-accent-lantern/50 shrink-0"
+                title={allOn ? `把${KIND_META[kind].title}全关掉` : `把${KIND_META[kind].title}全勾上`}
+              >
+                {allOn ? '全关' : '全勾'}
+              </button>
+            </div>
+
+            <div className="divide-y divide-text-muted/10">
+              {list.map(e => (
+                <PresetEntryRow
+                  key={e.id}
+                  entry={e}
+                  open={openId === e.id}
+                  onToggle={() => { void toggleEntry(preset.id, e.id) }}
+                  onExpand={() => setOpenId(openId === e.id ? null : e.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function PresetEntryRow({
+  entry, open, onToggle, onExpand,
+}: {
+  entry: PresetEntry
+  open: boolean
+  onToggle: () => void
+  onExpand: () => void
+}) {
+  const dim = !entry.enabled
+  return (
+    <div className={`px-2 py-1.5 ${dim ? 'opacity-50' : ''}`}>
+      <div className="flex items-start gap-2">
+        <button
+          onClick={onToggle}
+          role="checkbox"
+          aria-checked={entry.enabled}
+          aria-label={entry.name}
+          data-entry-id={entry.id}
+          title={entry.enabled ? '取消勾选（下一轮起不再注入）' : '勾上（下一轮起生效）'}
+          className={`mt-0.5 w-3.5 h-3.5 rounded-[3px] border shrink-0 flex items-center justify-center transition-colors
+            ${entry.enabled
+              ? 'border-accent-lantern/60 bg-accent-lantern/20 text-accent-lantern'
+              : 'border-text-muted/70 bg-black/30 text-transparent hover:border-text-muted'}`}
+        >
+          <Check size={9} strokeWidth={3} />
+        </button>
+
+        <button onClick={onExpand} className="min-w-0 flex-1 text-left" title={open ? '收起这一条' : '看这一条的内容'}>
+          <span className={`text-[11px] break-words ${entry.enabled ? 'text-text-secondary' : 'text-text-muted'}`}>
+            {entry.name}
+          </span>
+          <span className="text-[9px] text-text-muted/70 font-mono ml-1.5">{entry.content.length} 字</span>
+          {entry.dropped && (
+            <span className="text-[9px] px-1 py-0.5 ml-1.5 rounded bg-amber-500/15 text-amber-300/90 border border-amber-500/30 whitespace-nowrap">
+              超预算
+            </span>
+          )}
+        </button>
+
+        <button onClick={onExpand} className="p-0.5 text-text-muted/50 hover:text-accent-lantern shrink-0">
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+      </div>
+
+      {open && (
+        <pre className="mt-1.5 px-2 py-1.5 rounded bg-black/30 text-[10px] leading-relaxed text-text-secondary whitespace-pre-wrap break-words max-h-56 overflow-y-auto font-sans">
+          {entry.content}
+        </pre>
+      )}
+    </div>
+  )
+}
+
 /** 一段可展开的预设正文 */
-function PresetBlock({ title, text, budget }: { title: string; text: string; budget: number }) {
-  const [open, setOpen] = useState(false)
+function PresetBlock({ title, text, budget }: { title: string; text: string; budget: number }) {  const [open, setOpen] = useState(false)
   const body = text.trim()
   if (!body) return null
   const long = body.length > budget

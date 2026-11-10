@@ -354,3 +354,71 @@ describe('stPresetToNarrativePreset（存进预设库而不是世界卡）', () 
     expect(stPresetToNarrativePreset(preset([{ identifier: 'a', name: 'A', content: '' }]), 't.json')).toBeNull()
   })
 })
+
+/* ══════════════════════════════════════════════════════════════
+   2026-11 第三十七轮：导入时交出逐条清单（供 UI 勾选）
+   ══════════════════════════════════════════════════════════════ */
+
+describe('逐条清单 · entries', () => {
+  const raw = {
+    temperature: 1,
+    prompts: [
+      { identifier: 's', name: '✅基础文风', content: '写比喻要克制' },
+      { identifier: 'r', name: '✅基础创作准则', content: '不许替玩家做决定' },
+      { identifier: 'w', name: '⚠️使用必看', content: '禁止二创，下载后 24h 内删掉' },
+    ],
+    prompt_order: [{ order: [
+      { identifier: 's', enabled: true },
+      { identifier: 'r', enabled: true },
+      { identifier: 'w', enabled: true },
+    ] }],
+  }
+
+  it('★ 每条都进清单，带落点，默认全勾', () => {
+    const p = stPresetToNarrativePreset(raw, 'x.json')!
+    expect(p.entries).toHaveLength(3)
+    const byId = Object.fromEntries(p.entries!.map(e => [e.id, e]))
+    expect(byId.s.kind).toBe('style')
+    expect(byId.r.kind).toBe('rules')
+    expect(byId.w.kind).toBe('other')
+    for (const e of p.entries!) {
+      expect(e.enabled, e.id).toBe(true)
+      expect(e.dropped, e.id).toBeUndefined()
+    }
+  })
+
+  it('★ 顺序：先规则、再文风、最后其他（与三段快照的排法一致）', () => {
+    const p = stPresetToNarrativePreset(raw, 'x.json')!
+    expect(p.entries!.map(e => e.kind)).toEqual(['rules', 'style', 'other'])
+  })
+
+  it('★ 默认勾选拼出来，与三段快照逐字一致（导入不该改变注入内容）', () => {
+    const p = stPresetToNarrativePreset(raw, 'x.json')!
+    const on = p.entries!.filter(e => e.enabled && e.kind === 'rules')
+    expect(on.map(e => `【${e.name}】\n${e.content}`).join('\n\n')).toBe(p.rules)
+  })
+
+  it('★ 超预算而被丢掉的条目也在清单里，标记 dropped 且默认不勾（玩家能自己勾回来）', () => {
+    const huge = '文'.repeat(3000)
+    const p = stPresetToNarrativePreset(preset([
+      { identifier: 'r', name: '✅基础创作准则', content: '不许替玩家做决定' },
+      { identifier: 's1', name: '文风甲', content: huge },
+    ]), 'x.json')!
+    const s1 = p.entries!.find(e => e.id === 's1')!
+    expect(s1.enabled).toBe(false)
+    expect(s1.dropped).toBe(true)
+    // 它不在快照的正体里（默认注入时不出现），但内容一个字没丢
+    expect(p.style).not.toContain('文文文')
+    expect(s1.content).toHaveLength(3000)
+  })
+
+  it('counts.total 数的是"默认勾了几条"，不是"文件里有几条"', () => {
+    const huge = '文'.repeat(3000)
+    const p = stPresetToNarrativePreset(preset([
+      { identifier: 'r', name: '✅基础创作准则', content: '不许替玩家做决定' },
+      { identifier: 's1', name: '文风甲', content: huge },
+    ]), 'x.json')!
+    expect(p.entries).toHaveLength(2)
+    expect(p.counts.total).toBe(1)
+  })
+})

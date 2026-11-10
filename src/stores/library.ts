@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import type { WorldCard, HeroPreset, PlayerCard, NarrativePreset } from '@/types/cards';
+import type { WorldCard, HeroPreset, PlayerCard, NarrativePreset, PresetEntry } from '@/types/cards';
 import { EMPTY_STYLE_CHOICE, styleById, type StyleChoice } from '@/data/narrativeStyles';
 import { makeId } from '@/utils/files';
 import { createKVStore, isIdbAvailable } from '@/utils/idb';
 import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds, retireBuiltinWorlds } from '@/data/builtinWorldIds';
 import { BUILTIN_STAMP } from '@/data/builtinStamp';
 import { normalizeWorldCard } from '@/utils/worldCard';
+import { syncPresetSnapshot } from '@/utils/narrativePreset';
 
 /**
  * 卡片库为什么落在 IndexedDB 而不是 localStorage：
@@ -167,6 +168,20 @@ export interface LibraryState {
   deleteNarrativePreset: (id: string) => Promise<void>;
   /** 切换启用项；传 `''` 表示都不用 */
   setActiveNarrativePreset: (id: string) => Promise<void>;
+  /**
+   * 勾选 / 取消某一条（2026-11 第三十七轮）。
+   *
+   * 只动这一份预设里的这一条，然后由 `syncPresetSnapshot` 重算三段快照。
+   * 下一轮生成立刻生效 —— 玩家的期待是「我点一下就该变」，
+   * 而不是"去别处改文本再重新导入"。
+   */
+  toggleNarrativePresetEntry: (presetId: string, entryId: string, enabled?: boolean) => Promise<void>;
+  /** 把某一类条目全勾上或全关掉（传 kind 省略 = 全部三类） */
+  setNarrativePresetEntries: (
+    presetId: string,
+    enabled: boolean,
+    kind?: 'rules' | 'style' | 'other',
+  ) => Promise<void>;
   /** 同 getWorld：返回库内引用，请当只读用 */
   getNarrativePreset: (id: string) => NarrativePreset | undefined;
   /** 当前启用的那份（没有就是 undefined） */
@@ -794,6 +809,49 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       const id = get().activeNarrativePresetId;
       if (!id) return undefined;
       return get().narrativePresets.find((p) => p.id === id);
+    },
+
+    /*
+      ── 逐条勾选（2026-11 第三十七轮）──
+
+      每次改动都走 `syncPresetSnapshot`：三段快照与 counts 跟着勾选状态走，
+      导出、列表摘要、旧版本降级读才不会分家。
+
+      ⚠️ 写回**整份预设**（而不是只 patch entries）：IndexedDB 那边是整体写回，
+      只改一半反而要多一次合并；而且这样一来 store 里永远没有"半新半旧"的对象。
+    */
+    toggleNarrativePresetEntry: async (presetId, entryId, enabled) => {
+      const cur = get().narrativePresets.find((p) => p.id === presetId);
+      if (!cur?.entries?.length) return;
+      const hit = cur.entries.find((e) => e.id === entryId);
+      if (!hit) return;
+      const nextOn = typeof enabled === 'boolean' ? enabled : !hit.enabled;
+      if (hit.enabled === nextOn) return;
+
+      const entries: PresetEntry[] = cur.entries.map((e) => (
+        e.id === entryId ? { ...e, enabled: nextOn } : e
+      ));
+      const next: NarrativePreset = { ...syncPresetSnapshot({ ...cur, entries }), updatedAt: Date.now() };
+      await commitNarrativePresets(
+        get().narrativePresets.map((p) => (p.id === presetId ? next : p)),
+        get().activeNarrativePresetId,
+      );
+    },
+
+    setNarrativePresetEntries: async (presetId, enabled, kind) => {
+      const cur = get().narrativePresets.find((p) => p.id === presetId);
+      if (!cur?.entries?.length) return;
+      const target = (e: PresetEntry) => !kind || e.kind === kind;
+      if (cur.entries.every((e) => !target(e) || e.enabled === enabled)) return;
+
+      const entries: PresetEntry[] = cur.entries.map((e) => (
+        target(e) ? { ...e, enabled } : e
+      ));
+      const next: NarrativePreset = { ...syncPresetSnapshot({ ...cur, entries }), updatedAt: Date.now() };
+      await commitNarrativePresets(
+        get().narrativePresets.map((p) => (p.id === presetId ? next : p)),
+        get().activeNarrativePresetId,
+      );
     },
 
     setStyleChoice: async (next) => {

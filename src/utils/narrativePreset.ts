@@ -20,7 +20,7 @@
  *  - 玩家在编辑器里看到的世界卡还是他自己的内容，不会莫名其妙多出一段别人的话。
  */
 
-import type { NarrativePreset, WorldCard } from '@/types/cards'
+import type { NarrativePreset, PresetEntry, WorldCard } from '@/types/cards'
 import { chosenStyleIds, styleById, type StyleChoice } from '@/data/narrativeStyles'
 
 /** 预设两段各自的上限（字）。与 `stPreset.ts` 的预算一致，防止手动粘贴超长 */
@@ -37,6 +37,66 @@ function joinBlock(base: string, extra: string): string {
 }
 
 /**
+ * 把某一类**已勾选**的条目拼回一段正文。
+ *
+ * ## 格式与导入时完全一致
+ *
+ * `【条目名】\n正文`，条目之间空一行 —— 与 `stPreset.ts` 的 `fill()` 一模一样。
+ * 这不是巧合：勾选全部打开时，拼出来的必须与改之前**逐字相同**，
+ * 否则"我什么也没动，文风却变了"。测试里钉着这件事。
+ */
+export function renderPresetEntries(preset: NarrativePreset, kind: PresetEntry['kind']): string {
+  const list = (preset.entries || []).filter(e => e.enabled && e.kind === kind && e.content.trim())
+  if (!list.length) return ''
+  return list.map(e => `【${e.name}】\n${e.content}`).join('\n\n')
+}
+
+/** 这一类条目现在勾掉了几条、总几条、占多少字（给 UI 的小标题用） */
+export function presetEntryStats(preset: NarrativePreset): Record<PresetEntry['kind'], { on: number; all: number; chars: number }> {
+  const out = {
+    rules: { on: 0, all: 0, chars: 0 },
+    style: { on: 0, all: 0, chars: 0 },
+    other: { on: 0, all: 0, chars: 0 },
+  }
+  for (const e of preset.entries || []) {
+    const k = out[e.kind]
+    k.all++
+    if (e.enabled) {
+      k.on++
+      k.chars += e.content.length
+    }
+  }
+  return out
+}
+
+/**
+ * 由 `entries` 重算三段快照。
+ *
+ * 勾选一变就调一次，把 `rules` / `style` / `lore` 与 `counts` 跟上 ——
+ * 这三个字段是导出、列表摘要、旧版本降级读的入口，不能让它们与勾选状态分家。
+ *
+ * 没有 `entries` 的旧预设原样返回（不动它，也就不会误伤）。
+ */
+export function syncPresetSnapshot(preset: NarrativePreset): NarrativePreset {
+  const entries = preset.entries
+  if (!entries?.length) return preset
+  const stats = presetEntryStats(preset)
+  return {
+    ...preset,
+    rules: renderPresetEntries(preset, 'rules'),
+    style: renderPresetEntries(preset, 'style'),
+    lore: renderPresetEntries(preset, 'other'),
+    counts: {
+      ...preset.counts,
+      total: entries.filter(e => e.enabled).length,
+      rules: stats.rules.on,
+      style: stats.style.on,
+      other: stats.other.on,
+    },
+  }
+}
+
+/**
  * 把预设与文风叠到世界上，返回**新的** world 对象（原对象不变）。
  *
  * 三层，从下到上：
@@ -48,6 +108,12 @@ function joinBlock(base: string, extra: string): string {
  * 为什么第三层排最后：模型对越靠后的指令越敏感，而玩家刚点的那一下
  * 才是他此刻真正想要的。世界卡作者三年前写的文风不该压过他现在的选择。
  *
+ * ## 第 2 层现在按**勾选**取（2026-11 第三十七轮）
+ *
+ * 有 `entries` 就只拼已勾选的条目；没有（旧版导入的预设）就退回整块字符串。
+ * 两条路的上限是同一个 `PRESET_RULES_MAX` —— 玩家勾得再多，也不至于把
+ * 每轮提示词撑到失控。
+ *
  * 全空时原样返回同一个引用 —— 调用方常把它放在生成路径上，能不新建就不新建。
  */
 export function withNarrativePreset(
@@ -55,8 +121,13 @@ export function withNarrativePreset(
   preset: NarrativePreset | null | undefined,
   styleChoice?: StyleChoice | null,
 ): WorldCard {
-  const presetRules = preset ? preset.rules.trim().slice(0, PRESET_RULES_MAX) : ''
-  const presetStyle = preset ? preset.style.trim().slice(0, PRESET_STYLE_MAX) : ''
+  const useEntries = Boolean(preset?.entries?.length)
+  const presetRules = preset
+    ? (useEntries ? renderPresetEntries(preset, 'rules') : preset.rules.trim()).slice(0, PRESET_RULES_MAX)
+    : ''
+  const presetStyle = preset
+    ? (useEntries ? renderPresetEntries(preset, 'style') : preset.style.trim()).slice(0, PRESET_STYLE_MAX)
+    : ''
   const chosenStyle = renderStyleChoice(styleChoice).slice(0, PRESET_STYLE_MAX)
 
   if (!presetRules && !presetStyle && !chosenStyle) return world
@@ -92,6 +163,10 @@ export function withNarrativePreset(
 /** 这一份预设会不会真的改变提示词（空预设不该让"已启用"三个字骗人） */
 export function presetHasContent(preset: NarrativePreset | null | undefined): boolean {
   if (!preset) return false
+  if (preset.entries?.length) {
+    // 勾着 `other` 类不算 —— 那些本来就不注入
+    return preset.entries.some(e => e.enabled && e.kind !== 'other' && e.content.trim())
+  }
   return Boolean(preset.rules.trim() || preset.style.trim())
 }
 
@@ -141,6 +216,13 @@ export function styleConflicts(choice: StyleChoice | null | undefined): { a: str
 
 /** 给 UI 用的一句话摘要 */
 export function describeNarrativePreset(preset: NarrativePreset): string {
+  // 有逐条清单时按**实际勾选**报，而不是报导入时那一瞬间的数字
+  if (preset.entries?.length) {
+    const stats = presetEntryStats(preset)
+    const on = stats.rules.on + stats.style.on + stats.other.on
+    const chars = stats.rules.chars + stats.style.chars
+    return `${on}/${preset.entries.length} 条勾选 · 每轮注入 ${chars} 字`
+  }
   const { counts } = preset
   const parts = [
     `${counts.total} 条启用条目`,
@@ -168,7 +250,13 @@ export function describeNarrativePreset(preset: NarrativePreset): string {
  * 全部只在**展开后提示**，不做拦截：那是作者的内容，删不删由玩家决定。
  */
 export function presetWarnings(preset: NarrativePreset): string[] {
-  const text = `${preset.rules}\n${preset.style}`
+  /*
+    只看**勾着的**条目：玩家已经把「思维链格式」那条关掉了，
+    还弹一句"它可能污染正文"就是在骗他关错了。
+  */
+  const text = preset.entries?.length
+    ? `${renderPresetEntries(preset, 'rules')}\n${renderPresetEntries(preset, 'style')}`
+    : `${preset.rules}\n${preset.style}`
   const out: string[] = []
   if (/<think>|<thinking>|begin▁of▁thinking|思考格式/.test(text)) {
     out.push('含思维链格式要求（<think> 等）：这些标签在本作不会自动摘掉，可能漏进正文。发现正文被污染就关掉这份，或删掉那一条。')

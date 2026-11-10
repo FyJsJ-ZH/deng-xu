@@ -264,6 +264,18 @@ export function willThink(model: string, provider: string, mode: ThinkingMode = 
 }
 
 /**
+ * 发出去的 `max_tokens` 绝不超过这个数。
+ *
+ * 65536 是主流服务商里最紧的公共上限（Gemini 系、Claude 系都在这一档）。
+ * 再往上只有 DeepSeek 的 393216，而叙事正文 1800 字 × 3 倍也只到 5400 ——
+ * 为了那点用不完的余量去撞别人的 400，不值。
+ *
+ * 比 65536 更低的模型（GPT-4o 16384、部分中转 8192）由 `llmChat`
+ * 按报错里的真实上限自动降级重发，不需要在这里逐个维护。
+ */
+export const MAX_OUTPUT_TOKENS_CAP = 65536
+
+/**
  * 按「目标回复字数」推算该发多大的 `max_tokens`。
  *
  * ## 换算依据
@@ -363,10 +375,22 @@ function buildBody(opts: ChatOptions, stream: boolean): string {
     这一行是本项目「字数不达标」问题的真正解。在此之前从来没发过 max_tokens，
     于是长度由服务商默认值决定：官方 4096 够用，中转站常见 2048 ——
     中文约 1365 字，正是玩家说的「不到 1200 字」。
+
+    ⚠️ 还有个反向的坑（2026-11，玩家在手机上撞的）：玩家手填的值**原样透传**，
+    他照着模型的上下文长度填了 1000000，而那个模型（Gemini 系中转）
+    只让写到 65536 —— 请求在服务商侧就被打回来了，正文一个字都没生成，
+    界面上只有一句英文报错。
+
+    所以这里加一道硬闸。65536 是主流里最紧的那档公共上限（Gemini / Claude 系），
+    再往上的 DeepSeek 393216 我们用不到：正文 1800 字 × 3 倍也只到 5400。
+    真撞到更低的模型（GPT-4o 16384），`llmChat` 会按服务商报的数字自动降级重发。
   */
-  const maxTokens = opts.maxTokens ?? config.maxTokens;
-  if (typeof maxTokens === 'number' && Number.isFinite(maxTokens) && maxTokens > 0) {
-    body.max_tokens = Math.floor(maxTokens);
+  const rawMaxTokens = opts.maxTokens ?? config.maxTokens;
+  const maxTokens = typeof rawMaxTokens === 'number' && Number.isFinite(rawMaxTokens) && rawMaxTokens > 0
+    ? Math.min(Math.floor(rawMaxTokens), MAX_OUTPUT_TOKENS_CAP)
+    : undefined;
+  if (maxTokens !== undefined) {
+    body.max_tokens = maxTokens;
   }
 
   if (!isThinking && typeof (temperature ?? config.temperature) === 'number') {
@@ -399,7 +423,16 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
 
-  const body = buildBody(opts, stream);
+  /**
+   * 这一次实际会发出去的 `max_tokens`。
+   *
+   * 它是**可变**的：服务商嫌太大时，下面会按它报的实际上限把它压下来重发。
+   * 所以请求体不能像以前那样在循环外构建一次 —— 得跟着它走。
+   */
+  let effectiveMaxTokens = opts.maxTokens ?? config.maxTokens;
+  /** 降级重发只做一次：压到上限还被拒，那就是别的问题了 */
+  let limitRetryLeft = 1;
+
   const maxAttempts = stream ? 1 : RETRY_MAX_ATTEMPTS;
 
   let lastErr: LlmError | null = null;
@@ -407,6 +440,8 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // 用户已取消就别再发请求了
     if (signal?.aborted) throw new LlmError(classifyLlmError(undefined, '', { name: 'AbortError' }));
+
+    const body = buildBody({ ...opts, maxTokens: effectiveMaxTokens }, stream);
 
     try {
       const response = await fetch(url, { method: 'POST', headers, body, signal });
@@ -419,6 +454,33 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
       const errorText = await response.text().catch(() => '');
       const info = classifyLlmError(response.status, errorText);
       lastErr = new LlmError(info);
+
+      /*
+        ── 输出额度超了：压到服务商给的那个数，原地重发（2026-11）──
+
+        玩家的手机上存着 `maxTokens: 1000000`（他照抄了模型的上下文长度），
+        而那个 Gemini 系中转只让写到 65536。旧代码把这串数字原样发出去，
+        服务商直接 400，正文一个字都没生成 —— 界面上只有一段英文 JSON。
+
+        这里做两件事：
+          1. 用报错里解析出来的上限覆盖本次额度（不是猜的，是服务商自己写的）；
+          2. 把这一次从重试预算里退回去 —— 它根本没轮到模型干活。
+
+        **流式也安全**：能走到这里说明 `response.ok === false`，
+        SSE 一个字都还没开始吐，重发不会造成内容重复。
+      */
+      if (
+        limitRetryLeft > 0
+        && info.kind === 'max_tokens'
+        && info.outputLimit !== undefined
+        && effectiveMaxTokens !== undefined
+        && effectiveMaxTokens > info.outputLimit
+      ) {
+        limitRetryLeft -= 1;
+        effectiveMaxTokens = info.outputLimit;
+        attempt -= 1;
+        continue;
+      }
 
       // 不可重试 → 立刻抛出（例如 Key 无效、余额不足）
       if (!info.retryable || attempt === maxAttempts) throw lastErr;

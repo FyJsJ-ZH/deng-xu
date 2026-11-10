@@ -10,9 +10,10 @@ import { describe, it, expect } from 'vitest'
 import {
   withNarrativePreset, presetHasContent, describeNarrativePreset, presetWarnings,
   renderStyleChoice, styleConflicts,
+  renderPresetEntries, presetEntryStats, syncPresetSnapshot,
 } from './narrativePreset'
 import { EMPTY_STYLE_CHOICE, styleById, type StyleChoice } from '@/data/narrativeStyles'
-import type { NarrativePreset, WorldCard } from '@/types/cards'
+import type { NarrativePreset, PresetEntry, WorldCard } from '@/types/cards'
 
 const world = {
   id: 'w1',
@@ -264,5 +265,122 @@ describe('内置文风库本身', () => {
       expect(s.text, id).not.toContain('{{')
       expect(s.text, id).not.toContain('<user>')
     }
+  })
+})
+
+/* ══════════════════════════════════════════════════════════════
+   2026-11 第三十七轮：逐条勾选
+   ══════════════════════════════════════════════════════════════ */
+
+const entry = (
+  id: string,
+  kind: 'rules' | 'style' | 'other',
+  content: string,
+  patch: Partial<PresetEntry> = {},
+): PresetEntry => ({ id, name: `条目${id}`, kind, content, enabled: true, ...patch })
+
+/** 一份带逐条清单的预设 */
+const presetWithEntries = (entries: PresetEntry[]): NarrativePreset => presetOf({
+  entries,
+  rules: '',
+  style: '',
+  lore: '',
+})
+
+describe('逐条勾选 · 注入只认勾着的', () => {
+  const p = presetWithEntries([
+    entry('r1', 'rules', '不许替玩家做决定'),
+    entry('r2', 'rules', '正文里不要出现属性名', { enabled: false }),
+    entry('s1', 'style', '比喻要克制'),
+    entry('s2', 'style', '对白单独成段', { enabled: false }),
+    entry('o1', 'other', '作者说明：禁止二创'),
+  ])
+
+  it('★ 关掉的那一条下一轮就不进提示词', () => {
+    const out = withNarrativePreset(world, p)
+    expect(out.rules).toContain('不许替玩家做决定')
+    expect(out.rules).not.toContain('正文里不要出现属性名')
+    expect(out.narrative.customStyle).toContain('比喻要克制')
+    expect(out.narrative.customStyle).not.toContain('对白单独成段')
+  })
+
+  it('★ `other` 类勾着也不注入（它本来就不是给模型的）', () => {
+    const out = withNarrativePreset(world, p)
+    expect(out.rules).not.toContain('禁止二创')
+    expect(out.narrative.customStyle).not.toContain('禁止二创')
+  })
+
+  it('★ 全勾时拼出来的，与旧的整块字符串**逐字相同**（格式没变）', () => {
+    const on = presetWithEntries([
+      entry('r1', 'rules', '甲'),
+      entry('r2', 'rules', '乙'),
+      entry('s1', 'style', '丙'),
+    ])
+    expect(renderPresetEntries(on, 'rules')).toBe('【条目r1】\n甲\n\n【条目r2】\n乙')
+    expect(renderPresetEntries(on, 'style')).toBe('【条目s1】\n丙')
+  })
+
+  it('一条都没勾 ⇒ 只剩世界卡自己的那段（不该多出一个空标题）', () => {
+    const off = presetWithEntries([entry('r1', 'rules', '甲', { enabled: false })])
+    expect(withNarrativePreset(world, off)).toBe(world)
+  })
+
+  it('没有 entries 的旧预设仍然走整块字符串（向后兼容）', () => {
+    const out = withNarrativePreset(world, presetOf())
+    expect(out.rules).toContain('不许替玩家做决定')
+  })
+})
+
+describe('逐条勾选 · 统计与快照', () => {
+  const p = presetWithEntries([
+    entry('r1', 'rules', '甲甲甲'),
+    entry('r2', 'rules', '乙', { enabled: false }),
+    entry('s1', 'style', '丙丙'),
+    entry('o1', 'other', '丁'),
+  ])
+
+  it('presetEntryStats 分别报三类', () => {
+    const s = presetEntryStats(p)
+    expect(s.rules).toEqual({ on: 1, all: 2, chars: 3 })
+    expect(s.style).toEqual({ on: 1, all: 1, chars: 2 })
+    expect(s.other).toEqual({ on: 1, all: 1, chars: 1 })
+  })
+
+  it('★ syncPresetSnapshot 把三段快照与 counts 跟上勾选', () => {
+    const next = syncPresetSnapshot(p)
+    expect(next.rules).toBe('【条目r1】\n甲甲甲')
+    expect(next.style).toBe('【条目s1】\n丙丙')
+    expect(next.lore).toBe('【条目o1】\n丁')
+    expect(next.counts.rules).toBe(1)
+    expect(next.counts.style).toBe(1)
+    expect(next.counts.total).toBe(3)
+  })
+
+  it('没有 entries 的原样返回（不误伤旧预设）', () => {
+    const old = presetOf()
+    expect(syncPresetSnapshot(old)).toBe(old)
+  })
+
+  it('★ presetHasContent：只勾着 other 类时算"没有可注入的内容"', () => {
+    expect(presetHasContent(presetWithEntries([entry('o1', 'other', '说明')]))).toBe(false)
+    expect(presetHasContent(presetWithEntries([entry('r1', 'rules', '甲')]))).toBe(true)
+    expect(presetHasContent(presetWithEntries([entry('r1', 'rules', '  ')]))).toBe(false)
+  })
+
+  it('describeNarrativePreset 报的是**实际勾选**而不是导入时的数字', () => {
+    const s = describeNarrativePreset(p)
+    expect(s).toContain('3/4 条勾选')
+    expect(s).toContain('每轮注入 5 字')
+  })
+
+  it('★ presetWarnings 只看勾着的条目（关掉了就别再吓唬玩家）', () => {
+    const quiet = presetWithEntries([
+      entry('s1', 'style', '正文底部输出 <SUOT> 行动选项 </SUOT>', { enabled: false }),
+    ])
+    expect(presetWarnings(quiet)).toEqual([])
+    const loud = presetWithEntries([
+      entry('s1', 'style', '正文底部输出 <SUOT> 行动选项 </SUOT>'),
+    ])
+    expect(presetWarnings(loud).join()).toContain('状态栏')
   })
 })

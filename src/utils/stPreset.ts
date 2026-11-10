@@ -35,7 +35,7 @@
  * 免得玩家开一局发现世界一片空白，以为导入坏了。
  */
 
-import type { NarrativePreset, WorldCard } from '@/types/cards'
+import type { NarrativePreset, PresetEntry, WorldCard } from '@/types/cards'
 import { makeId } from '@/utils/files'
 
 type JsonObject = Record<string, unknown>
@@ -174,7 +174,7 @@ export function isSillyTavernPreset(raw: unknown): boolean {
 }
 
 /** 一条预设条目（只留用得上的字段） */
-interface PresetEntry {
+interface StEntry {
   id: string
   name: string
   content: string
@@ -272,7 +272,7 @@ function pickMainOrder(raw: JsonObject, contentById: Map<string, string>): Map<s
  *
  * 顺序很重要：ST 里条目顺序就是注入顺序，作者有意让"总控"排在前面。
  */
-function readEntries(raw: JsonObject): PresetEntry[] {
+function readEntries(raw: JsonObject): StEntry[] {
   const prompts = Array.isArray(raw.prompts) ? raw.prompts : []
 
   // 先建「id → 原文」的表，供挑方案时统计"哪一套里有内容"
@@ -290,7 +290,7 @@ function readEntries(raw: JsonObject): PresetEntry[] {
 
   const order = pickMainOrder(raw, contentById)
 
-  const byId = new Map<string, PresetEntry>()
+  const byId = new Map<string, StEntry>()
   for (const [id, p] of rawById) {
     // 有方案表时，**不在表里就是没勾选** —— 备选池不参与注入
     const enabled = order ? (order.get(id) ?? false) : true
@@ -307,7 +307,7 @@ function readEntries(raw: JsonObject): PresetEntry[] {
     })
   }
 
-  const ordered: PresetEntry[] = []
+  const ordered: StEntry[] = []
   const seen = new Set<string>()
   if (order) {
     for (const id of order.keys()) {
@@ -341,11 +341,11 @@ function readEntries(raw: JsonObject): PresetEntry[] {
  * 而短的往往是硬规矩（「禁八股」「别关」），丢了整份预设就散了。
  */
 function fill(
-  entries: PresetEntry[],
+  entries: StEntry[],
   budget: number,
-): { text: string; used: PresetEntry[]; dropped: PresetEntry[] } {
+): { text: string; used: StEntry[]; dropped: StEntry[] } {
   const sorted = [...entries].sort((a, b) => b.content.length - a.content.length)
-  const dropped = new Set<PresetEntry>()
+  const dropped = new Set<StEntry>()
   let total = entries.reduce((n, e) => n + e.content.length + e.name.length + 8, 0)
   for (const e of sorted) {
     if (total <= budget) break
@@ -361,14 +361,14 @@ function fill(
  * 同一套分类：转换世界卡、统计面板、预设库**都走这里**。
  * 三处各写一遍的话，面板上的数字迟早和实际落点对不上。
  */
-function classifyEntries(entries: PresetEntry[]): {
-  world: PresetEntry[]
-  rules: PresetEntry[]
-  style: PresetEntry[]
+function classifyEntries(entries: StEntry[]): {
+  world: StEntry[]
+  rules: StEntry[]
+  style: StEntry[]
 } {
-  const world: PresetEntry[] = []
-  const rules: PresetEntry[] = []
-  const style: PresetEntry[] = []
+  const world: StEntry[] = []
+  const rules: StEntry[] = []
+  const style: StEntry[] = []
   for (const e of entries) {
     // 先挑出"给读者看的说明 / 给 ST 用的系统人设"：它们不进每轮注入
     if (looksLikeMeta(e.name, e.content)) world.push(e)
@@ -380,7 +380,7 @@ function classifyEntries(entries: PresetEntry[]): {
 }
 
 /** 被预算裁掉时如实写在段末 —— 悄悄截断等于把作者的东西吃掉一半还不告诉他 */
-function droppedNote(part: { dropped: PresetEntry[] }, label: string): string {
+function droppedNote(part: { dropped: StEntry[] }, label: string): string {
   return part.dropped.length
     ? `\n\n（另有 ${part.dropped.length} 条${label}因超出篇幅预算未并入：${part.dropped.map(e => e.name).join('、')}）`
     : ''
@@ -465,6 +465,17 @@ export function describePreset(raw: unknown): { total: number; rules: number; st
  *
  * 预算与分类完全一致（同一个 `classifyEntries` 与 `fill`），
  * 所以两张入口看到的内容不会互相矛盾。
+ *
+ * ## 同时交出逐条清单（2026-11 第三十七轮）
+ *
+ * 玩家要的是酒馆那种勾选。「三块大字符串」做不到 —— 粘好了就再也拆不开。
+ * 所以这里把 `fill()` 的**入选与落选**都摆进 `entries`：
+ *
+ * - 入选的 `enabled: true`（默认勾上，与改之前注入的内容**逐字一致**）；
+ * - 预算落选的 `enabled: false, dropped: true`（默认不勾，但玩家能自己勾回来）。
+ *
+ * 拼接出来的 `rules` / `style` / `lore` 仍然照旧返回一份快照，
+ * 用来导出、列表摘要，以及旧版本读到新文件时的兜底。
  */
 export function stPresetToNarrativePreset(raw: unknown, fileName = ''): NarrativePreset | null {
   if (!isPlainObject(raw)) return null
@@ -479,6 +490,33 @@ export function stPresetToNarrativePreset(raw: unknown, fileName = ''): Narrativ
   const now = Date.now()
   const baseName = fileName.replace(/\.json$/i, '').trim()
 
+  const toEntry = (
+    e: StEntry,
+    kind: PresetEntry['kind'],
+    kept: boolean,
+  ): PresetEntry => ({
+    id: e.id,
+    name: e.name,
+    kind,
+    content: e.content,
+    enabled: kept,
+    ...(kept ? {} : { dropped: true }),
+  })
+
+  /*
+    顺序：先规则、再文风、最后其他 —— 与下面三段快照的排法一致，
+    免得玩家在列表里看到的顺序和实际注入顺序对不上。
+    组内保持作者原来的顺序（`fill()` 的 `used` 是 filter 出来的，原序不变）。
+  */
+  const entryList: PresetEntry[] = [
+    ...rulesPart.used.map(e => toEntry(e, 'rules', true)),
+    ...rulesPart.dropped.map(e => toEntry(e, 'rules', false)),
+    ...stylePart.used.map(e => toEntry(e, 'style', true)),
+    ...stylePart.dropped.map(e => toEntry(e, 'style', false)),
+    ...lorePart.used.map(e => toEntry(e, 'other', true)),
+    ...lorePart.dropped.map(e => toEntry(e, 'other', false)),
+  ]
+
   return {
     id: makeId('preset'),
     name: (baseName || '导入的叙事预设').slice(0, 60),
@@ -486,8 +524,9 @@ export function stPresetToNarrativePreset(raw: unknown, fileName = ''): Narrativ
     rules: rulesPart.text + droppedNote(rulesPart, '规则类条目'),
     style: stylePart.text + droppedNote(stylePart, '文风类条目'),
     lore: lorePart.text + droppedNote(lorePart, '设定类条目'),
+    entries: entryList,
     counts: {
-      total: entries.length,
+      total: entryList.filter(e => e.enabled).length,
       rules: rulesPart.used.length,
       style: stylePart.used.length,
       other: lorePart.used.length,
