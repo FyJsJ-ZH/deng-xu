@@ -8,9 +8,9 @@ import { zhiming } from '@/data/worlds/zhiming'
 import { ximeng } from '@/data/worlds/ximeng'
 import { elysion } from '@/data/worlds/elysion'
 import { london1905 } from '@/data/worlds/london1905'
-import { leadthrone } from '@/data/worlds/leadthrone'
-import { guanwai } from '@/data/worlds/guanwai'
-import { fogseason } from '@/data/worlds/fogseason'
+import { albion } from '@/data/worlds/albion'
+import { jianghu } from '@/data/worlds/jianghu'
+import { wudu } from '@/data/worlds/wudu'
 
 /**
  * 内置世界总表（**9 个深度世界**，每个 ≥5 万字设定）。
@@ -103,9 +103,9 @@ export const BUILTIN_WORLDS: WorldCard[] = [
   ximeng,
   elysion,
   london1905,
-  leadthrone,
-  guanwai,
-  fogseason,
+  albion,
+  jianghu,
+  wudu,
 ].map(withAvatarStyle)
 
 export default BUILTIN_WORLDS

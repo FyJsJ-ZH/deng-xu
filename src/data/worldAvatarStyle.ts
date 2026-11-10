@@ -30,9 +30,9 @@ const AVATAR_STYLE_BY_WORLD: Record<string, { style: WorldCard['avatarStyle']; t
   builtin_ximeng: { style: 'holo', tone: '#1f6f8b' },           // 汐梦洲：光环 + 深海蓝（渊海、魔网、珊瑚）
   builtin_elysion: { style: 'ink', tone: '#4a2d5c' },           // 埃律西昂：水墨 + 暗紫（魔素、原欲、黑铁）
   builtin_london1905: { style: 'ink', tone: '#3a3f47' },
-  builtin_leadthrone: { style: 'parchment', tone: '#6b5334' },  // 残烛王庭：羊皮纸 + 陈蜡黄
-  builtin_guanwai: { style: 'ink', tone: '#6b6250' },           // 关外无侠：水墨 + 风沙土
-  builtin_fogseason: { style: 'ink', tone: '#4a4f55' },         // 雾季手记：水墨 + 铅灰雾        // 雾都1905：水墨 + 煤烟灰（煤气灯、雾、砖墙）
+  builtin_albion: { style: 'parchment', tone: '#4f5d3a' },     // 阿尔比恩边境：羊皮纸 + 林苔绿
+  builtin_jianghu: { style: 'ink', tone: '#4a4f55' },          // 江湖夜雨：水墨 + 烟雨灰
+  builtin_wudu: { style: 'ink', tone: '#3f444a' },             // 雾都：水墨 + 铅灰雾        // 雾都1905：水墨 + 煤烟灰（煤气灯、雾、砖墙）
 }
 
 /** 给一张内置世界卡补上头像风格；没有配过的原样返回 */

@@ -115,10 +115,24 @@ check('★ 每个背景槽都有且仅有一个「我自己写」、且在末尾
 
 console.log('\n=== 2) 进入选角页 ===')
 await clickText('/开始新游戏/')
-// 卡片列表要把九张卡从 IndexedDB 里读出来再渲染，CI 上给足时间
+// 卡片列表要把内置卡从 IndexedDB 里读出来再渲染，CI 上给足时间
 await waitFor(`/用这个世界开始|^开始$/.test(document.body.innerText)`, 30000)
-await ev(`(()=>{const b=[...document.querySelectorAll('button')]
-  .find(x=>/^用这个世界开始$|^开始$/.test((x.textContent||'').trim()));if(b)b.click();return 1})()`)
+/*
+  ⚠️ 点第一张卡会踩坑：冰山三卡（阿尔比恩 / 江湖 / 雾都）**没有背景槽**，
+  点进去选角页里根本没有「背景」这一步。本走查验证的恰是背景槽，
+  所以必须**挑一张有背景槽的卡**（store 里第一张 `backgrounds` 非空的）。
+*/
+await ev(`(()=>{
+  const ws = __libraryStore.getState().worlds || [];
+  const w = ws.find(x => (x.backgrounds || []).length > 0);
+  if (!w) return 'no-world';
+  const h = [...document.querySelectorAll('h3')].find(x => (x.textContent||'').trim() === w.title);
+  if (!h) return 'no-title';
+  const card = h.closest('button')?.parentElement;
+  const start = card ? [...card.querySelectorAll('button')].find(b => /用这个世界开始/.test((b.textContent||'').trim())) : null;
+  if (!start) return 'no-start';
+  start.click(); return 'ok';
+})()`)
 await waitFor(`/扮演角色/.test(document.body.innerText) && /下一步/.test(document.body.innerText)`, 30000)
 
 console.log('\n=== 3) 走到「背景」这一步 ===')

@@ -112,10 +112,21 @@ console.log('\n=== 2) 选角 ===')
 // 主菜单 → 开始新游戏 → 卡片列表
 await ev(`(()=>{const b=[...document.querySelectorAll('button')].find(x=>/开始新游戏/.test((x.textContent||'').trim()));if(b)b.click();return 1})()`)
 await sleep(2200)
-// 卡片列表 → 点第一张卡的开局按钮。
+// 卡片列表 → 点一张**有背景槽的深度卡**开局。
 // 文案从「开始」改成了「用这个世界开始」（主页三个入口区分开之后，
 // "开始"这个词在同一屏里有歧义），所以两种写法都要认。
-await ev(`(()=>{const b=[...document.querySelectorAll('button')].find(x=>/^用这个世界开始$|^开始$/.test((x.textContent||'').trim()));if(b)b.click();return 1})()`)
+// ⚠️ 不能点第一张：冰山三卡没有背景槽、没有预置物品，本走查要验"开局物品还在"。
+await ev(`(()=>{
+  const ws = __libraryStore.getState().worlds || [];
+  const w = ws.find(x => (x.backgrounds || []).length > 0);
+  if (!w) return 'no-world';
+  const h = [...document.querySelectorAll('h3')].find(x => (x.textContent||'').trim() === w.title);
+  if (!h) return 'no-title';
+  const card = h.closest('button')?.parentElement;
+  const start = card ? [...card.querySelectorAll('button')].find(b => /^用这个世界开始$|^开始$/.test((b.textContent||'').trim())) : null;
+  if (!start) return 'no-start';
+  start.click(); return 'ok';
+})()`)
 await sleep(2500)
 const setup = JSON.parse(await ev(`(()=>{
   const T=document.body.innerText;
@@ -224,12 +235,23 @@ const mid = JSON.parse(await ev(`(()=>{
   */
   let attrNames = [], resNames = [];
   try {
-    const st = window.__gameStore ? window.__gameStore.getState() : null;
+    /*
+      ⚠️ **当前世界在 session.world 上，不在 gameStore 里**（2026-11 修）。
+
+      这段原先读的是 gameStore.currentWorldId —— 而 gameStore 根本没有这个字段，
+      于是永远走 lib.worlds[0] 兜底。卡库里第 0 张是某张**深度卡**，
+      而这一局玩的可能是另一张，两边的资源名对不上：
+      界面明明写着「资源 / 生命 / 精力 / 贡献点」，探针却拿别的卡的名字去比，
+      报「状态栏不显示资源」——**产品是对的，探针选错了卡**。
+
+      这类"探针读错字段 → 报产品有 bug"的假失败，比真 bug 更浪费时间：
+      它看起来完全像界面出了问题。
+    */
+    const sess = window.__sessionStore ? window.__sessionStore.getState() : null;
     const lib = window.__libraryStore ? window.__libraryStore.getState() : null;
-    if (lib && Array.isArray(lib.worlds) && lib.worlds.length) {
-      // 优先取当前世界；取不到时回退到"卡库里的第一个世界"——
-      // 这条断言的意图是"状态栏画出了属性名"，不必依赖具体是哪一张卡。
-      const w = (st && st.currentWorldId && lib.worlds.find(x => x.id === st.currentWorldId)) || lib.worlds[0];
+    const w = (sess && sess.world)
+      || (lib && Array.isArray(lib.worlds) && lib.worlds.length ? lib.worlds[0] : null);
+    if (w) {
       attrNames = (w.attributes || []).map(a => a.name);
       resNames = (w.resources || []).map(r => r.name);
     }
@@ -249,6 +271,9 @@ const mid = JSON.parse(await ev(`(()=>{
     attrNames, resNames,
   });})()`))
 console.log('  ' + JSON.stringify(mid))
+if (process.env.DX_DUMP_MID) {
+  console.log('  [mid-dump] ' + (await ev(`document.body.innerText`)).replace(/\n+/g, ' ⏎ ').slice(0, 1500))
+}
 check('游戏内有模型设置入口', mid.settings)
 check('游戏内有返回标题入口', mid.returnBtn)
 check('显示当前世界（知道自己在哪里）', mid.currentWorld)
