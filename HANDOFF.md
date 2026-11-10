@@ -3843,6 +3843,91 @@ if (jsonMode && !isThinking) body.response_format = { type: 'json_object' }
 
 ---
 
+### 4.21 冰山三卡 + 篇幅全线降到 1100（2026-11）
+
+玩家的三轮要求连成一条线：
+
+> 「把带详细预置设定拆成某种模棱两可的，只有一个大致的世界基底，氛围的框架……
+>   重点在于**冰山式的构造**，明面上的结构决定了一次游戏的风格和主线，
+>   而玩家可以尽情探索，ai可以尽情的即兴发挥」
+> 「世界书全部新做，不限字数（但学一学原作的氛围塑造，**不要详细**）」
+> 「**只做三个**，而且字数要适度，控制在苍白卷宗的原作水准」
+
+#### 做了哪三张
+
+| 卡 | id | 类型 | 全卡汉字 | worldLore |
+|---|---|---|---|---|
+| 《残烛王庭》 | `builtin_leadthrone` | 经典西幻 | 4795 | 1234 |
+| 《关外无侠》 | `builtin_guanwai` | 边地武侠 | 4211 | 1448 |
+| 《雾季手记》 | `builtin_fogseason` | 1907 伦敦（类原作） | 4298 | 1313 |
+
+对照九张深度卡（5–9 万字），这是**刻意的**：冰山卡只写水面之上那一层。
+
+#### 三张卡的共同构造
+
+1. **没有背景槽**（`backgrounds: []`）—— 开场由 AI 依玩家自设身份现场创作。
+   `SessionSetup` 的 `stepsFor()` 会在槽位为 0 时隐藏「背景」那一步。
+2. **没有预置物品与知识**（`items: []` / `lores: []`）。
+3. **属性是性相，不是技能**。每卡 8 个相，各带 `traits`（三四个词的价值取向）
+   与 `behaviors`（下意识会做的动作）—— 学《苍白卷宗》的做法：
+   选一个相不是选加成，是**选一双看世界的眼睛**。
+   · 西幻：炬 / 炉 / 刃 / 霜 / 薪 / 杯 / 蛾 / 钥
+   · 武侠：烈 / 静 / 察 / 执 / 慈 / 诡 / 枯 / 明
+   · 伦敦：灯 / 墨 / 门 / 齿 / 灰 / 脉 / 雾 / 钟
+4. **资源三条**，id 统一为 `hp` / `coin` / `mind`（跨卡复用逻辑）。
+5. **三章**（`enableStages: true`）：每章只写"该发生什么、该有什么味道、到哪儿算完"，
+   不给待办清单，不写结局。
+6. **水下的一律不写死**：烛为什么不能灭、那年冬天关里出了什么事、卷宗是谁抄的 ——
+   这三类是留给 AI 在玩家碰到时当场长出来的，旁白只说「有人在传」。
+7. **每个世界的第一条 rules 都是沙盒条款**，且写明"没有必须做的事"。
+
+#### 字数为什么从 1800 降到 1100（**九张旧卡一起改了**）
+
+玩家早前说过「现在输出的字数有些多了，从 1800 降到 1100 吧」。
+我当时只改了 `dayan.ts`（那张卡不在内置里）—— **九张内置卡其实没动**。
+这一轮一并改掉：`replyLength: 1800 → 1100`，同时把各卡 `customStyle` /
+`rules` 里写死的「一千八百字」改成「一千一百字」。
+
+`prompts.length.test.ts` 的判据也跟着改：
+`STATED` 表里加了 `{ n: 1100 }` 一档，且下限从 1500 降到 1100。
+
+#### `check-worlds.mjs` 加了「冰山卡」一档门槛
+
+原先的门槛（≥5 万字 / worldLore ≥3 万字 / 物品 ≥15 / 知识 ≥8 / 背景槽 ≥3）
+是给深度卡定的。拿它去卡冰山卡，等于逼作者把冰山重新填平 ——
+**门槛与设计打架时，错的是门槛。**
+
+所以 `EXPECTED` 里三张新卡带 `lean: true`，走 `LEAN_GATE`：
+
+```
+worldCjk 4200 / worldLoreCjk 1200 / rulesCjk 700 / customStyleCjk 380
+mainQuestCjk 200 / sandboxRuleCjk 100
+geoCjk, factionCjk, lifeCjk = 0        ← 这三项量的就是"铺得多厚"
+minChars 5 / minItems 0 / minLores 0 / minBackgroundSlots 0
+```
+
+实现上：主循环开头 `const L = exp.lean ? { ...GATE, ...LEAN_GATE } : GATE`，
+循环内所有 `GATE.` 全换成 `L.`（49 处）；`openerSlot` 那条检查在
+`slots.length === 0` 时豁免。
+
+#### `gen-worldbook.mjs` 分了两章
+
+「深度世界 · 九张」/「冰山卡 · 三张」。官方世界书的 tagline 与 description
+也重写了，明确写出冰山卡的设计意图，免得下一个读的人以为它们没写完。
+
+#### 顺带修的一个本地环境坑（**不是代码问题，但会骗人**）
+
+本地跑 `check:all` 时十二套走查有七套报 `__gameStore is not defined`。
+根因是 **DSH 环境把 `NODE_ENV` 继承成了 `production`** ——
+vite dev 返回的模块头部成了 `import.meta.env = {DEV: false, PROD: true}`，
+于是 `src/main.tsx` 里那段 dev-only 的 store 挂载不执行。
+起 dev server 前必须 `$env:NODE_ENV='development'`。
+
+顺带把 `playtest-shots/` 加进 `vite.config.ts` 的 `server.watch.ignored` ——
+走查每写一张截图都会触发一次整页 reload，把正在被 puppeteer 驱动的页面刷掉。
+
+---
+
 ## 5. 测试体系（**12 套走查进 CI** + 1 套单独跑 + **1022** 单元测试 + 5 个独立工具）
 
 

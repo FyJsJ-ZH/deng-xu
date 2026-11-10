@@ -20,10 +20,10 @@
  *
  * ## 这一套在验什么
  *
- * 1. 首次进入，库里是新的（1800）；
+ * 1. 首次进入，库里是新的（1100）；
  * 2. 把 IndexedDB 里的库**改回老玩家的样子**（那张卡退回 800、抹掉指纹）；
  * 3. 刷新页面；
- * 4. 卡**必须**变回 1800，指纹**必须**写回去，卡片的顺序**不许**变。
+ * 4. 卡**必须**变回 1100，指纹**必须**写回去，卡片的顺序**不许**变。
  */
 
 import './_ws-shim.mjs'
@@ -94,8 +94,8 @@ if (!ready) {
 const readLen = `__libraryStore.getState().worlds.find(w=>w.id===${JSON.stringify(CARD)})?.narrative.replyLength`
 const beforeLen = await ev(readLen)
 const beforeIds = await ev(`__libraryStore.getState().worlds.map(w=>w.id).join('|')`)
-check('库里九张内置卡都在', (beforeIds || '').split('|').length >= 9, `${(beforeIds || '').split('|').length} 张`)
-check('★ 首次拿到的是源码里的篇幅（1800）', beforeLen === 1800, String(beforeLen))
+check('库里十二张内置卡都在', (beforeIds || '').split('|').length >= 9, `${(beforeIds || '').split('|').length} 张`)
+check('★ 首次拿到的是源码里的篇幅（1100）', beforeLen === 1100, String(beforeLen))
 
 console.log('\n=== 2) 把库改成「老玩家」的样子：那张卡退回 800、抹掉指纹 ===')
 const seeded = await ev(`(async () => {${IDB_HELPERS}
@@ -123,7 +123,7 @@ const ready2 = await waitFor(`typeof __libraryStore!=='undefined' && __librarySt
 check('刷新后卡片库加载完成', ready2)
 
 const afterLen = await ev(readLen)
-check('★ 旧卡被换成了 1800（这一条就是玩家等了三轮的那个修复）', afterLen === 1800, String(afterLen))
+check('★ 旧卡被换成了 1100（这一条就是玩家等了三轮的那个修复）', afterLen === 1100, String(afterLen))
 
 const afterIds = await ev(`__libraryStore.getState().worlds.map(w=>w.id).join('|')`)
 check('★ 卡片顺序没有被打乱（刷新是就地替换）', afterIds === beforeIds, afterIds === beforeIds ? '一致' : '顺序变了')
@@ -141,7 +141,7 @@ await ev(`(()=>{try{const u=__uiStore.getState();u.setApiKeyModalOpen&&u.setApiK
   u.setShowTutorial&&u.setShowTutorial(false);}catch(e){}return 1})()`)
 await waitFor(`typeof __libraryStore!=='undefined' && __libraryStore.getState().loaded`, 30000)
 const len3 = await ev(readLen)
-check('★ 第二次刷新后仍然是 1800', len3 === 1800, String(len3))
+check('★ 第二次刷新后仍然是 1100', len3 === 1100, String(len3))
 
 const failed = fail
 console.log(`\n=== 汇总 ===\n  通过 ${pass}/${pass + fail}`)

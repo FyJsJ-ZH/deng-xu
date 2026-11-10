@@ -212,6 +212,44 @@ const EXPECTED = [
       '抗生素', '电视', '广播网', '民航', '雷达',
     ],
   },
+
+  /*
+    ── 冰山三卡（2026-11）──
+
+    用户这一轮的要求是把「详细的预置设定」拆成「模棱两可的、只有一个大致的世界基底」：
+
+    > 「重点在于冰山式的构造，明面上的结构决定了一次游戏的风格和主线，
+    >   而玩家可以尽情探索，ai可以尽情的即兴发挥。」
+    > 「机制一概从简，不要背景槽位，预置物品和知识一概留空」
+
+    所以这三张卡**故意不达标**上面那套门槛 —— 它们要短、要空、要留白。
+    给它们套 5 万字门槛，等于逼作者把冰山重新填成一座山。
+
+    这里给一档 `lean: true` 的独立门槛（见 LEAN_GATE）：
+    只卡「够不够撑起一局」，不卡「写没写满」。
+    被砍掉的检查项都在下面 LEAN_GATE 里注明了理由。
+  */
+  {
+    id: 'builtin_leadthrone',
+    label: '残烛王庭（经典西幻 · 冰山式）',
+    required: false,
+    lean: true,
+    banned: ['系统', '面板', '经验值', '技能点', '内力', '真气', '修仙', '电脑', '网络', '数据', '程序', '人工智能', '机器人', '手机', '塑料'],
+  },
+  {
+    id: 'builtin_guanwai',
+    label: '关外无侠（边地武侠 · 冰山式）',
+    required: false,
+    lean: true,
+    banned: ['系统', '面板', '经验值', '技能点', '等级', '任务', '副本', '轻功', '剑气', '真气护体', '电脑', '网络', '数据'],
+  },
+  {
+    id: 'builtin_fogseason',
+    label: '雾季手记（1907 伦敦 · 冰山式）',
+    required: false,
+    lean: true,
+    banned: ['系统', '面板', '经验值', '技能点', '等级', '任务', '副本', '电脑', '网络', '数据', '程序', '人工智能', '机器人', '手机', '塑料', '结界', '能量场'],
+  },
 ]
 
 // 篇幅门槛
@@ -251,7 +289,7 @@ const GATE = {
     真正的篇幅要求由 `constants/prompts.ts` 的「篇幅与信息投放」一节下发，
     并有一组单测盯着（`prompts.length.test.ts`）。
   */
-  minReplyLength: 1500,
+  minReplyLength: 1100,
   /*
     角色数门槛从 6 提到 8。
     实测三个世界各有 9 / 10 / 13 张，6 这个门槛等于没约束；
@@ -342,6 +380,49 @@ const GATE = {
   forbiddenKinPhrases: ['你的上司', '你的上峰', '你的上官', '你的同僚', '你的顶头上司', '你的直属'],
 }
 
+/**
+ * **冰山卡**（`lean: true`）的独立门槛 —— 与 `GATE` 合并使用，覆盖掉其中几项。
+ *
+ * ## 为什么值得单独一档，而不是把这些卡排除出校验
+ *
+ * 排除等于不检 —— 那下一次没人知道它们写崩了没有。
+ * 一档低门槛至少还能挡住三种真错误：
+ *   ① 卡被写成了空壳（worldLore 只剩几句话）；
+ *   ② rules 里没有沙盒条款（AI 会把冰山玩成单线任务）；
+ *   ③ 角色不够撑起一张关系网。
+ *
+ * ## 每一项降到多少，以及为什么
+ *
+ * · `worldCjk 4200` —— 三张卡实测 4000~5200。这是「够一局用」的量级，
+ *   对标《苍白卷宗》：原作的世界书不是设定集，是一段能让人走进去的文字。
+ * · `worldLoreCjk 1200` —— 水下的一概不写，所以水面上只剩这么点。
+ * · `rulesCjk 700` —— 冰山卡靠 rules 定"什么不许写"（不解释、不给答案、
+ *   不催进度），这一节反而比设定重要，所以门槛不低。
+ * · `geoCjk / factionCjk / lifeCjk = 0` —— 这三项量的是"设定铺得多厚"，
+ *   而冰山卡的整个设计就是不铺。**留着它们等于要求作者把山填平。**
+ * · `minItems / minLores / minBackgroundSlots = 0` —— 用户明确要求
+ *   「预置物品和知识一概留空」「不要背景槽位」。
+ * · `minChars 5` —— 冰山卡给 6 张，门槛压到 5 是留余量，不是鼓励再减。
+ * · `mainQuestCjk 200` —— 长期目标只写「几条一直在往前走的事」，不写任务书。
+ * · `sandboxRuleCjk 100` —— 沙盒条款照样要有，但不必写成长篇。
+ */
+const LEAN_GATE = {
+  worldCjk: 4200,
+  worldLoreCjk: 1200,
+  rulesCjk: 700,
+  customStyleCjk: 380,
+  openingCjk: 120,
+  mainQuestCjk: 200,
+  sandboxRuleCjk: 100,
+  geoCjk: 0,
+  factionCjk: 0,
+  lifeCjk: 0,
+  minChars: 5,
+  minItems: 0,
+  minLores: 0,
+  minBackgroundSlots: 0,
+}
+
 
 /**
  * 沙盒内容的识别正则。
@@ -384,6 +465,7 @@ for (const exp of EXPECTED) {
 
 for (const exp of EXPECTED) {
   const w = WORLDS.find(x => x.id === exp.id)
+  const L = exp.lean ? { ...GATE, ...LEAN_GATE } : GATE
   // 可选世界不存在就跳过（不算失败）
   if (!w) continue
 
@@ -415,19 +497,20 @@ for (const exp of EXPECTED) {
     bgSlots: w.backgrounds?.length || 0,
     attrs: w.attributes?.length || 0,
     res: w.resources?.length || 0,
+    lean: !!exp.lean,
   }
   report.push(row)
 
   // ① 篇幅
-  if (cjkTotal < GATE.worldCjk) fail(exp.label, '篇幅不足', `中文字符 ${cjkTotal} < ${GATE.worldCjk}`)
-  if (loreCjk < GATE.worldLoreCjk) fail(exp.label, 'worldLore 不足', `${loreCjk} < ${GATE.worldLoreCjk}`)
-  if (rulesCjk < GATE.rulesCjk) fail(exp.label, 'rules 不足', `${rulesCjk} < ${GATE.rulesCjk}`)
-  if (styleCjk < GATE.customStyleCjk) fail(exp.label, 'customStyle 不足', `${styleCjk} < ${GATE.customStyleCjk}`)
+  if (cjkTotal < L.worldCjk) fail(exp.label, '篇幅不足', `中文字符 ${cjkTotal} < ${L.worldCjk}`)
+  if (loreCjk < L.worldLoreCjk) fail(exp.label, 'worldLore 不足', `${loreCjk} < ${L.worldLoreCjk}`)
+  if (rulesCjk < L.rulesCjk) fail(exp.label, 'rules 不足', `${rulesCjk} < ${L.rulesCjk}`)
+  if (styleCjk < L.customStyleCjk) fail(exp.label, 'customStyle 不足', `${styleCjk} < ${L.customStyleCjk}`)
 
   // 单次回复的目标字数：太短装不下一个场景，玩家演起来就像在挤牙膏
   const replyLen = Number(w.narrative?.replyLength)
-  if (!Number.isFinite(replyLen) || replyLen < GATE.minReplyLength) {
-    fail(exp.label, '回复篇幅太短', `replyLength ${w.narrative?.replyLength} < ${GATE.minReplyLength}（一次回复要装得下一个完整场景）`)
+  if (!Number.isFinite(replyLen) || replyLen < L.minReplyLength) {
+    fail(exp.label, '回复篇幅太短', `replyLength ${w.narrative?.replyLength} < ${L.minReplyLength}（一次回复要装得下一个完整场景）`)
   }
 
   /*
@@ -440,7 +523,7 @@ for (const exp of EXPECTED) {
     所以：配了 openerSlot 的世界只要求一段像样的兜底（≥60 字）；
     没配的仍然按 ≥1200 字要求（那时它真的是唯一开场）。
   */
-  const openingGate = w.story?.openerSlot ? GATE.openingFallbackCjk : GATE.openingCjk
+  const openingGate = w.story?.openerSlot ? L.openingFallbackCjk : L.openingCjk
   row.openingGate = openingGate
   if (openingCjk < openingGate) {
     fail(exp.label, 'opening 不足',
@@ -453,8 +536,8 @@ for (const exp of EXPECTED) {
   // ② 结构
   if (!w.attributes?.length) fail(exp.label, '结构', 'attributes 为空')
   if (!w.resources?.length) fail(exp.label, '结构', 'resources 为空')
-  if ((w.characters?.length || 0) < GATE.minChars) fail(exp.label, '角色太少', `${w.characters?.length || 0} < ${GATE.minChars}`)
-  if (row.present < GATE.minPresent) fail(exp.label, '开局登场角色太少', `${row.present} < ${GATE.minPresent}`)
+  if ((w.characters?.length || 0) < L.minChars) fail(exp.label, '角色太少', `${w.characters?.length || 0} < ${L.minChars}`)
+  if (row.present < L.minPresent) fail(exp.label, '开局登场角色太少', `${row.present} < ${L.minPresent}`)
   /*
     ⚠️ 这个**上限**是 2026-10 用户要求「所有预设 NPC 不在场」之后加的。
     下一个人看到"没有开局登场角色"时，很自然会想"是不是漏了 present: true"，
@@ -466,16 +549,16 @@ for (const exp of EXPECTED) {
       `${row.present} 张卡标了 present: true —— ` +
       `本项目的规则是**所有预设 NPC 都不在场**，谁在场由 AI 依据玩家的自设身份与处境在开场现场决定`)
   }
-  if ((w.items?.length || 0) < GATE.minItems) fail(exp.label, '物品太少', `${w.items?.length || 0} < ${GATE.minItems}`)
-  if ((w.lores?.length || 0) < GATE.minLores) fail(exp.label, 'lore 太少', `${w.lores?.length || 0} < ${GATE.minLores}`)
-  if ((w.backgrounds?.length || 0) < GATE.minBackgroundSlots) fail(exp.label, '背景槽太少', `${w.backgrounds?.length || 0} < ${GATE.minBackgroundSlots}`)
+  if ((w.items?.length || 0) < L.minItems) fail(exp.label, '物品太少', `${w.items?.length || 0} < ${L.minItems}`)
+  if ((w.lores?.length || 0) < L.minLores) fail(exp.label, 'lore 太少', `${w.lores?.length || 0} < ${L.minLores}`)
+  if ((w.backgrounds?.length || 0) < L.minBackgroundSlots) fail(exp.label, '背景槽太少', `${w.backgrounds?.length || 0} < ${L.minBackgroundSlots}`)
   for (const slot of w.backgrounds || []) {
-    if (slot.options.length < GATE.minOptionsPerSlot) {
+    if (slot.options.length < L.minOptionsPerSlot) {
       fail(exp.label, '背景选项太少', `「${slot.label}」只有 ${slot.options.length} 个选项`)
     }
-    if (slot.options.length > GATE.maxOptionsPerSlot) {
+    if (slot.options.length > L.maxOptionsPerSlot) {
       fail(exp.label, '背景选项太多',
-        `「${slot.label}」有 ${slot.options.length} 个选项 > ${GATE.maxOptionsPerSlot} —— ` +
+        `「${slot.label}」有 ${slot.options.length} 个选项 > ${L.maxOptionsPerSlot} —— ` +
         `请**合并同类**（把几个细分身份合成一项，把各自的具体细节揉进那一项的 description），` +
         `不要直接删选项`)
     }
@@ -553,14 +636,14 @@ for (const exp of EXPECTED) {
     const fac = sectionCjk(SANDBOX_SECTIONS.faction)
     const life = sectionCjk(SANDBOX_SECTIONS.life)
     row.geo = geo.n; row.faction = fac.n; row.life = life.n; row.sections = segs.length
-    if (geo.n < GATE.geoCjk) fail(exp.label, '地理/地图内容不足', `命中标题下共 ${geo.n} 字（${geo.hits} 节）< ${GATE.geoCjk}`)
-    if (fac.n < GATE.factionCjk) fail(exp.label, '势力范围内容不足', `命中标题下共 ${fac.n} 字（${fac.hits} 节）< ${GATE.factionCjk}`)
-    if (life.n < GATE.lifeCjk) fail(exp.label, '生活气息内容不足', `命中标题下共 ${life.n} 字（${life.hits} 节）< ${GATE.lifeCjk}`)
+    if (geo.n < L.geoCjk) fail(exp.label, '地理/地图内容不足', `命中标题下共 ${geo.n} 字（${geo.hits} 节）< ${L.geoCjk}`)
+    if (fac.n < L.factionCjk) fail(exp.label, '势力范围内容不足', `命中标题下共 ${fac.n} 字（${fac.hits} 节）< ${L.factionCjk}`)
+    if (life.n < L.lifeCjk) fail(exp.label, '生活气息内容不足', `命中标题下共 ${life.n} 字（${life.hits} 节）< ${L.lifeCjk}`)
 
     const mqCjk = cjk(w.story?.mainQuest)
     row.mqCjk = mqCjk
-    if (mqCjk < GATE.mainQuestCjk) {
-      fail(exp.label, '长期目标太窄', `mainQuest ${mqCjk} 字 < ${GATE.mainQuestCjk}（沙盒里应是"几个宽泛的可选方向"）`)
+    if (mqCjk < L.mainQuestCjk) {
+      fail(exp.label, '长期目标太窄', `mainQuest ${mqCjk} 字 < ${L.mainQuestCjk}（沙盒里应是"几个宽泛的可选方向"）`)
     }
     // 目标里不该出现硬期限/命令式措辞
     const mq = String(w.story?.mainQuest || '')
@@ -576,11 +659,11 @@ for (const exp of EXPECTED) {
       .split(/\n(?=\s*(?:\d+[.、]|[一二三四五六七八九十]+[、.]))/)
       .map(s => s.trim())
     const sandboxClause = ruleBlocks.find(b =>
-      /沙盒|不是任务|可选/.test(b) && /不要催|没有必须|不必|不要强行|自由/.test(b) && cjk(b) >= GATE.sandboxRuleCjk
+      /沙盒|不是任务|可选/.test(b) && /不要催|没有必须|不必|不要强行|自由/.test(b) && cjk(b) >= L.sandboxRuleCjk
     )
     if (!sandboxClause) {
       fail(exp.label, 'rules 缺少沙盒条款',
-        `需要一条独立规则（≥${GATE.sandboxRuleCjk} 字）同时说明"这是沙盒/目标可选"与"不要催进度/没有必须做的事"`)
+        `需要一条独立规则（≥${L.sandboxRuleCjk} 字）同时说明"这是沙盒/目标可选"与"不要催进度/没有必须做的事"`)
     } else {
       row.sandboxRule = cjk(sandboxClause)
     }
@@ -620,9 +703,9 @@ for (const exp of EXPECTED) {
         fail(exp.label, '背景选项 id 重复', `${[...new Set(dupOpts)].join('、')}`)
       }
 
-      if (slots.length < GATE.minBackgroundSlots) {
+      if (slots.length < L.minBackgroundSlots) {
         fail(exp.label, '背景槽位太少',
-          `${slots.length} 槽 < ${GATE.minBackgroundSlots}（用户要求"像游戏目标一样多元"）`)
+          `${slots.length} 槽 < ${L.minBackgroundSlots}（用户要求"像游戏目标一样多元"）`)
       }
       /*
         ⚠️ 上限同样是硬指标。玩家反馈：
@@ -630,21 +713,21 @@ for (const exp of EXPECTED) {
             不然在世界书内容量大的时候非常杂乱」
         槽位多 → 选角页长 → 世界书预览更长。所以多了要合并，不是留着。
       */
-      if (slots.length > GATE.maxBackgroundSlots) {
+      if (slots.length > L.maxBackgroundSlots) {
         fail(exp.label, '背景槽位太多（该合并了）',
-          `${slots.length} 槽 > ${GATE.maxBackgroundSlots} —— ` +
+          `${slots.length} 槽 > ${L.maxBackgroundSlots} —— ` +
           `把语义相近的槽位合并（例如"出身"与"入仕之途"→"来路"、"立场"与"志向"→"立场与野心"），` +
           `但**不要靠删选项来变短**：身份种类必须留住`)
       }
       for (const slot of slots) {
-        if (slot.options.length < GATE.minOptionsPerSlot) {
+        if (slot.options.length < L.minOptionsPerSlot) {
           fail(exp.label, '背景槽选项太少',
-            `「${slot.label}」只有 ${slot.options.length} 个 < ${GATE.minOptionsPerSlot}`)
+            `「${slot.label}」只有 ${slot.options.length} 个 < ${L.minOptionsPerSlot}`)
         }
         for (const o of slot.options) {
           const n = cjk(o.description)
-          if (n < GATE.bgOptionDescCjk) {
-            fail(exp.label, '背景选项描述太短', `「${slot.label}／${o.title}」${n} < ${GATE.bgOptionDescCjk} 字`)
+          if (n < L.bgOptionDescCjk) {
+            fail(exp.label, '背景选项描述太短', `「${slot.label}／${o.title}」${n} < ${L.bgOptionDescCjk} 字`)
           }
           /*
             ⚠️ 反向门槛：选项描述**写得太长**会挤掉玩家的自设空间。
@@ -671,8 +754,16 @@ for (const exp of EXPECTED) {
       const seedMap = w.story?.openingSeeds
 
       if (!openerLabel) {
-        fail(exp.label, '没指定处境槽位（openerSlot）',
-          '必须有一个背景槽位描述"主角大致处在什么场合、什么层级"，否则 AI 无从取材')
+        /*
+          ⚠️ 背景槽为 0 的世界**豁免**这一项（冰山三卡）。
+          用户明确要求「不要背景槽位」，所以没有 openerSlot 是设计，不是遗漏 ——
+          开场由 AI 依据玩家自设的身份与处境现场创作。
+          在这里补一段写死的"处境素材"，恰恰是这项检查本身要防的东西。
+        */
+        if (slots.length > 0) {
+          fail(exp.label, '没指定处境槽位（openerSlot）',
+            '必须有一个背景槽位描述"主角大致处在什么场合、什么层级"，否则 AI 无从取材')
+        }
       } else if (!openerSlot) {
         fail(exp.label, 'openerSlot 指向了不存在的槽位',
           `story.openerSlot="${openerLabel}"，但 backgrounds 里没有这个 label`)
@@ -693,7 +784,7 @@ for (const exp of EXPECTED) {
           const text = (seedMap?.[o.id] ?? seedMap?.[o.title] ?? '').trim()
           if (!text) { missing.push(o.title); continue }
           const n = cjk(text)
-          if (n < GATE.openingSeedCjk) tooShort.push(`${o.title}(${n})`)
+          if (n < L.openingSeedCjk) tooShort.push(`${o.title}(${n})`)
           seeds.push({ title: o.title, text })
         }
         row.opener = openerLabel
@@ -706,7 +797,7 @@ for (const exp of EXPECTED) {
         }
         if (tooShort.length) {
           fail(exp.label, '开局素材太短',
-            `每条需 ≥${GATE.openingSeedCjk} 汉字（要能说清这类处境的场合、人与麻烦）：` +
+            `每条需 ≥${L.openingSeedCjk} 汉字（要能说清这类处境的场合、人与麻烦）：` +
             tooShort.slice(0, 8).join('、'))
         }
 
@@ -717,7 +808,7 @@ for (const exp of EXPECTED) {
         */
         const kinHits = []
         const scanKin = (where, text) => {
-          for (const ph of GATE.forbiddenKinPhrases) {
+          for (const ph of L.forbiddenKinPhrases) {
             if (String(text || '').includes(ph)) kinHits.push(`${where} → 「${ph}」`)
           }
         }
@@ -755,7 +846,7 @@ for (const exp of EXPECTED) {
         for (let i = 0; i < sets.length; i++) {
           for (let j = i + 1; j < sets.length; j++) {
             const v = sim(sets[i].set, sets[j].set)
-            if (v >= GATE.sceneMaxSimilarity) {
+            if (v >= L.sceneMaxSimilarity) {
               tooSimilar.push(`${sets[i].title} ↔ ${sets[j].title}（相似 ${(v * 100).toFixed(0)}%）`)
             }
           }
@@ -796,7 +887,7 @@ for (const exp of EXPECTED) {
   const MALE = /少年|男子|男人|男性|先生|男士|少爷|公子|老汉|老头|老者|父亲|爸爸|哥哥|弟弟|儿子|修士|僧人|农夫/
   for (const c of w.characters || []) {
     const n = cjk(c.description)
-    if (n < GATE.charDescCjk) fail(exp.label, '角色描述过短', `${c.name} ${n} < ${GATE.charDescCjk} 字`)
+    if (n < L.charDescCjk) fail(exp.label, '角色描述过短', `${c.name} ${n} < ${L.charDescCjk} 字`)
     if (!FEMALE.test(c.description) && !MALE.test(c.description) && !/男|女/.test(c.description)) {
       fail(exp.label, '角色描述缺性别线索', `${c.name} —— 立绘会随机长脸`)
     }
@@ -877,8 +968,10 @@ console.log('\n  —— 沙盒内容（用户要求：地图 / 势力范围 / �
 console.log('  ' + '世界'.padEnd(30) + '地理'.padStart(8) + '势力'.padStart(8)
   + '生活'.padStart(8) + '长期目标'.padStart(10) + '沙盒条款'.padStart(10))
 for (const r of report) {
-  const ok = (r.geo || 0) >= GATE.geoCjk && (r.faction || 0) >= GATE.factionCjk
-    && (r.life || 0) >= GATE.lifeCjk && (r.mqCjk || 0) >= GATE.mainQuestCjk
+  // 冰山卡按它自己那一档判（geo/faction/life 在冰山卡上是 0 门槛 —— 它们的设计就是不铺设定）
+  const G2 = r.lean ? { ...GATE, ...LEAN_GATE } : GATE
+  const ok = (r.geo || 0) >= G2.geoCjk && (r.faction || 0) >= G2.factionCjk
+    && (r.life || 0) >= G2.lifeCjk && (r.mqCjk || 0) >= G2.mainQuestCjk
   console.log('  ' + (ok ? '✓ ' : '✗ ') + r.title.padEnd(28)
     + String(r.geo ?? '-').padStart(8) + String(r.faction ?? '-').padStart(8)
     + String(r.life ?? '-').padStart(8) + String(r.mqCjk ?? '-').padStart(10)
@@ -903,7 +996,9 @@ if (problems.length) {
 }
 
 console.log(`\n  门槛：中文字数 ≥${GATE.worldCjk} / worldLore ≥${GATE.worldLoreCjk} / rules ≥${GATE.rulesCjk}`
-  + ` / 角色 ≥${GATE.minChars}（预设**全部不在场**，谁在场由 AI 开场现场决定）/ 物品 ≥${GATE.minItems} / lore ≥${GATE.minLores}\n`)
+  + ` / 角色 ≥${GATE.minChars}（预设**全部不在场**，谁在场由 AI 开场现场决定）/ 物品 ≥${GATE.minItems} / lore ≥${GATE.minLores}`)
+console.log(`  冰山卡（lean）另有低门槛：中文字数 ≥${LEAN_GATE.worldCjk} / worldLore ≥${LEAN_GATE.worldLoreCjk}`
+  + ` / rules ≥${LEAN_GATE.rulesCjk} / 角色 ≥${LEAN_GATE.minChars}，且不要求物品、知识、背景槽位与地理/势力/生活三类内容\n`)
 
 /*
   ── A4：专名一致性（**只警告，绝不进 problems，也就不影响退出码**）──

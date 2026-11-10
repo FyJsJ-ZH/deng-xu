@@ -749,7 +749,7 @@ export const london1905: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'past',
-    replyLength: 1800,
+    replyLength: 1100,
     customStyle: `舰队街　本报本市新闻部　内部传阅（不对外，阅后归档）
 
 一九〇五年三月十一日

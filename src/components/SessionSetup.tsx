@@ -30,6 +30,19 @@ const STEPS = [
 
 type StepId = typeof STEPS[number]['id']
 
+/**
+ * 这张卡实际有几个步骤（2026-11）。
+ *
+ * 世界卡可以**不写背景槽位**（新版的世界基底全部走这条路）——
+ * 那种时候「背景」整步都不该出现：点进去是一片空白，
+ * 而玩家会以为这张卡坏了。
+ */
+function stepsFor(world: { backgrounds: unknown[] }) {
+  return world.backgrounds.length
+    ? STEPS
+    : STEPS.filter(s => s.id !== 'background') as unknown as typeof STEPS
+}
+
 const inputCls =
   'w-full bg-black/30 border border-text-muted/30 rounded px-2 py-1.5 text-sm text-text-primary ' +
   'placeholder:text-text-muted/50 focus:border-accent-lantern outline-none'
@@ -321,7 +334,8 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backgroundChoices, backgroundCustom, world])
 
-  const stepIndex = STEPS.findIndex(s => s.id === step)
+  const steps = stepsFor(world)
+  const stepIndex = steps.findIndex(s => s.id === step)
   const activeCharacters = world.characters.filter(c => activeIds.includes(c.id))
 
   const canLaunch = world.enableMechanics ? remaining >= 0 : true
@@ -434,7 +448,7 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
 
       {/* 步骤指示 */}
       <div className="flex items-center justify-center gap-2 py-4 border-b border-text-muted/10">
-        {STEPS.map((s, i) => (
+        {steps.map((s, i) => (
           <button
             key={s.id}
             onClick={() => setStep(s.id)}
@@ -964,7 +978,7 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
       {/* 底部导航 */}
       <footer className="flex items-center justify-between gap-4 px-6 py-4 border-t border-text-muted/20">
         <button
-          onClick={() => setStep(STEPS[Math.max(0, stepIndex - 1)].id)}
+          onClick={() => setStep(steps[Math.max(0, stepIndex - 1)].id)}
           disabled={stepIndex === 0}
           className="flex items-center gap-1.5 px-4 py-2 text-sm border border-text-muted/40 rounded hover:text-accent-lantern hover:border-accent-lantern/40 transition-colors disabled:opacity-30 disabled:hover:text-text-muted"
         >
@@ -975,9 +989,9 @@ export function SessionSetup({ world, onCancel, onLaunch }: SessionSetupProps) {
           {!canLaunch && (
             <span className="text-xs text-red-400">还有 {Math.abs(remaining)} 点未分配完</span>
           )}
-          {stepIndex < STEPS.length - 1 ? (
+          {stepIndex < steps.length - 1 ? (
             <button
-              onClick={() => setStep(STEPS[stepIndex + 1].id)}
+              onClick={() => setStep(steps[stepIndex + 1].id)}
               className="flex items-center gap-1.5 px-5 py-2 text-sm bg-accent-lantern/15 border border-accent-lantern/40 text-accent-lantern rounded hover:bg-accent-lantern/25 transition-colors"
             >
               下一步 <ArrowRight size={14} />

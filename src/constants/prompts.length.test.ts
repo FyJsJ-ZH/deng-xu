@@ -285,10 +285,10 @@ describe('篇幅节的位置 —— 放在禁令之前才像要求，不像又�
   })
 })
 
-describe('九张内置卡 · 都按新篇幅落地了', () => {
-  it('★ 每张卡的目标字数都不低于 1500（不许哪一张被改回去）', () => {
+describe('十二张内置卡 · 都按新篇幅落地了', () => {
+  it('★ 每张卡的目标字数都不低于 1100（不许哪一张被改回去）', () => {
     for (const w of BUILTIN_WORLDS) {
-      expect(w.narrative.replyLength, `《${w.title}》`).toBeGreaterThanOrEqual(1500)
+      expect(w.narrative.replyLength, `《${w.title}》`).toBeGreaterThanOrEqual(1100)
     }
   })
 
@@ -307,6 +307,7 @@ describe('九张内置卡 · 都按新篇幅落地了', () => {
     */
     const STATED = [
       { n: 800, re: /(?<!千)八百(?:五十)?字|(?<!\d)80[05]\s*字/ },
+      { n: 1100, re: /一千一百字|(?<!\d)1100\s*字/ },
       { n: 1800, re: /一千八百字|(?<!\d)1800\s*字/ },
       { n: 2400, re: /两千四百字|(?<!\d)2400\s*字/ },
     ]

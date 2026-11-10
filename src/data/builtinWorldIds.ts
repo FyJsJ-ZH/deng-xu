@@ -33,6 +33,9 @@ export const BUILTIN_WORLD_IDS: readonly string[] = [
   'builtin_ximeng',
   'builtin_elysion',
   'builtin_london1905',
+  'builtin_leadthrone',
+  'builtin_guanwai',
+  'builtin_fogseason',
 ]
 
 /**
@@ -142,6 +145,9 @@ const WORLD_LOADERS: Record<string, () => Promise<WorldCard>> = {
   builtin_ximeng: async () => (await import('./worlds/ximeng')).ximeng,
   builtin_elysion: async () => (await import('./worlds/elysion')).elysion,
   builtin_london1905: async () => (await import('./worlds/london1905')).london1905,
+  builtin_leadthrone: async () => (await import('./worlds/leadthrone')).leadthrone,
+  builtin_guanwai: async () => (await import('./worlds/guanwai')).guanwai,
+  builtin_fogseason: async () => (await import('./worlds/fogseason')).fogseason,
 }
 
 /** 加载器覆盖了哪些 id（供测试核对，不必真的把卡读进来） */

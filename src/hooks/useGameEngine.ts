@@ -825,6 +825,25 @@ export function useGameEngine(): GameEngineReturn {
           if (useGameStore.getState().story.activeEventId === change.target) {
             setStoryState({ activeEventId: null })
           }
+          /*
+            ── 完成一章就推进到下一章（2026-11 冰山改造）──
+
+            章节的"推进"原先只挂在**玩家点了某个章节选项**上，而内置世界
+            根本没有选项卡 —— 于是 `currentChapter` 永远停在 1，
+            提示词里那一段「这一章」也就永远不换。
+
+            现在：数据 AI 在剧情里判定了"这一章的目标达成"，就会输出
+            `COMPLETE_EVENT`；这里顺手把章节推进一格，下一轮注入的
+            「这一章」就换成新的一章。**不需要玩家点任何东西。**
+          */
+          {
+            const w = useSessionStore.getState().world
+            const chapterOf = w?.story?.stages?.find(s => s.id === change.target)?.chapterId
+            if (typeof chapterOf === 'number') {
+              const cur = useGameStore.getState().story.currentChapter
+              if (chapterOf >= cur - 1) setStoryState({ currentChapter: chapterOf + 1 })
+            }
+          }
           break
 
         case 'TRIGGER_EVENT':
@@ -1160,6 +1179,8 @@ export function useGameEngine(): GameEngineReturn {
             backgroundChoices: useSessionStore.getState().backgroundChoices,
             backgroundCustom: useSessionStore.getState().backgroundCustom,
             aspects: updatedStore.aspects,
+            // 当前章节：提示词里那一段「这一章」靠它取（见 buildNarrativeSystemPrompt）
+            chapter: updatedStore.story.currentChapter,
             /*
               世界书按这段文本挑章节（见 utils/loreDigest.ts），所以要拼成
               「这一轮真正出现了什么」：玩家这一轮的动作、他此刻在哪、谁在场、

@@ -47,6 +47,19 @@ export default defineConfig({
         // chokidar 一碰就 EBUSY，足以把 dev server 直接打挂。
         '**/edge-*/**',
         '**/chrome-*/**',
+        /*
+          ⚠️ **走查截图目录必须忽略**（2026-11，本地跑 `check:all` 时踩到）。
+
+          走查每过一步就往 `playtest-shots/` 写一张截图，而 vite 把这个目录
+          当成源码在监听 —— 于是每写一张图就触发一次 **page reload**，
+          把正在被 puppeteer 驱动的那个页面整页刷掉。
+
+          症状极具误导性：报的是 `__gameStore is not defined`
+          （main.tsx 里那个 dev-only 的 window 挂载随页面重载一起消失了），
+          看起来像 store 没初始化或某个模块挂了，实际与业务代码无关。
+          更坑的是它**随截图数量而加重** —— 跑单套时偶尔能过，跑全套必红。
+        */
+        '**/playtest-shots/**',
       ],
     },
   },
