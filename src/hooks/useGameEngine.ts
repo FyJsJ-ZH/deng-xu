@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useGameStore, countTurns, type GameState, type TokenUsage } from '@/stores/game'
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
@@ -409,6 +409,19 @@ export function useGameEngine(): GameEngineReturn {
   const [truncationWarning, setTruncationWarning] = useState<string | null>(null)
   const [streamingContent, setStreamingContent] = useState<string | null>(null)
   const [streamingReasoning, setStreamingReasoning] = useState<string | null>(null)
+
+  /**
+   * 这一局里「流式叙事」是不是已经确定不可用（2026-11）。
+   *
+   * 起因：Gemini 这类先想三十秒再开口的模型，SSE 首字节迟迟不来，
+   * 手机网络 / 中间代理会在空窗期把连接掐掉 —— 界面上就是 `network error`
+   * 或者「模型返回了空内容」。降级改用整段返回能解决，
+   * 但**每轮都先白试一次**等于每轮白等一个思考时间。
+   *
+   * 所以记住是哪个（服务商|模型|地址）坏过：之后这一局直接走非流式，
+   * 换模型（键变了）自动重试流式。
+   */
+  const streamBrokenRef = useRef<{ key: string; broken: boolean }>({ key: '', broken: false })
   /*
     ⚠️ 这里**故意没有**"本轮是第几轮"的 useState。
     轮次来自 `countTurns(history)` —— 它是唯一可信的来源：回溯会**真的截短历史**，
@@ -1260,71 +1273,172 @@ export function useGameEngine(): GameEngineReturn {
         ? withThinkingReserve(config.maxTokens, config.narrativeModel, config.provider, config.thinking ?? 'auto')
         : suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel, config.provider, config.thinking ?? 'auto')
 
-      const streamResponse = await llmChat({
-        messages: narrativeMessages,
-        config,
-        model: config.narrativeModel,
-        stream: true,
-        maxTokens: narrativeMaxTokens,
-      }) as Response
+      /*
+        ── 叙事请求：先流式，拿不到内容就整段返回重试一次（2026-11）──
 
-      const reader = streamResponse.body?.getReader()
-      if (!reader) throw new Error('无法读取模型响应流')
+        玩家报：「测试链接成功，网络顺畅，调整过默认 token 输出和 65536 最大上限输出，
+        仍然出现 network error / 模型返回了空内容」。
 
-      const decoder = new TextDecoder()
-      let fullNarrative = ''
-      let fullReasoning = ''
-      let buffer = ''
-      /** 服务商在流里回的 usage（通常只在最后一个 chunk 带一次） */
-      let streamUsage: TokenUsage | null = null
-      /** 流最后一个 chunk 的 finish_reason —— `length` 表示撞到 token 上限 */
-      let streamFinishReason = ''
-      /** 回包里的 model 只记一次（每个 chunk 都带同一个值，没必要反复写 store） */
-      let responseModelSeen = false
+        查下来是 Gemini 这类**先想三十秒才说第一句话**的模型撞上了流式的软肋：
+        SSE 的第一个字节要等思考结束才来，而这段时间连接上**一个字节都没有** ——
+        手机网络、中间代理、甚至服务商自己的网关，都会在几十秒空窗后把它掐掉。
+        掐掉之后的表现正好对上他那两张截图：
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+          · 连接直接断 → `network error`
+          · 断得晚一点、我们仍拿得到一个空 body → 「模型返回了空内容」
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        // 最后一行可能被截断，留到下次
-        buffer = lines.pop() ?? ''
+        非流式不受这个影响：请求发出去，服务端算完一次性回，中间没有空窗
+        （实测同一家中转、同一个模型，非流式 16~45 秒稳定成功）。
+        代价是没有"边写边看"，所以顺序是**先试流式** ——
+        本机与中转都正常时体验照旧，只有流式白跑（空 / 断连）才降级。
+      */
+      type NarrativeAttempt = {
+        text: string
+        reasoning: string
+        finishReason: string
+        /** 流式那次的 usage（服务端常在最后一帧才给） */
+        streamUsage: TokenUsage | null
+        streamed: boolean
+        /** 非流式的原始回包：`recordUsage` 从它里面取真实用量 */
+        response?: any
+      }
 
-        for (const line of lines) {
-          const usage = parseSseUsage(line.trim())
-          if (usage) streamUsage = usage
-          const chunk = parseSseLine(line.trim())
-          if (!chunk) continue
-          /*
-            服务端回包里的 model 是**唯一可信**的"到底在跑什么模型"的证据
-            （我们发出去的是别名，中转站还可能改路由）。只记第一次拿到的那个。
-          */
-          if (chunk.model && !responseModelSeen) {
-            responseModelSeen = true
-            useGameStore.getState().recordResponseModel(chunk.model)
-          }
-          if (chunk.finishReason) streamFinishReason = chunk.finishReason
-          if (chunk.reasoning) {
-            fullReasoning += chunk.reasoning
-            reasoningStats.chunks++
-            setStreamingReasoning(fullReasoning)
-          }
-          if (chunk.content) {
-            fullNarrative += chunk.content
-            setStreamingContent(fullNarrative)
+      const requestNarrative = async (stream: boolean): Promise<NarrativeAttempt> => {
+        if (!stream) {
+          const res = await llmChat({
+            messages: narrativeMessages,
+            config,
+            model: config.narrativeModel,
+            stream: false,
+            maxTokens: narrativeMaxTokens,
+          })
+          const content = extractContent(res)
+          const reasoning = String(res?.choices?.[0]?.message?.reasoning_content ?? '')
+          if (res?.model) useGameStore.getState().recordResponseModel(String(res.model))
+          // 一次性把全文交给界面：没有流，但至少比一直空白好
+          if (content) setStreamingContent(content)
+          if (reasoning && config.showReasoning) setStreamingReasoning(reasoning)
+          return {
+            text: content,
+            reasoning,
+            finishReason: String(res?.choices?.[0]?.finish_reason ?? ''),
+            streamUsage: null,
+            streamed: false,
+            response: res,
           }
         }
+
+        const streamResponse = await llmChat({
+          messages: narrativeMessages,
+          config,
+          model: config.narrativeModel,
+          stream: true,
+          maxTokens: narrativeMaxTokens,
+        }) as Response
+
+        const reader = streamResponse.body?.getReader()
+        if (!reader) throw new Error('无法读取模型响应流')
+
+        const decoder = new TextDecoder()
+        let text = ''
+        let reasoning = ''
+        let buffer = ''
+        /** 服务商在流里回的 usage（通常只在最后一个 chunk 带一次） */
+        let streamUsage: TokenUsage | null = null
+        /** 流最后一个 chunk 的 finish_reason —— `length` 表示撞到 token 上限 */
+        let finishReason = ''
+        /** 回包里的 model 只记一次（每个 chunk 都带同一个值，没必要反复写 store） */
+        let responseModelSeen = false
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          // 最后一行可能被截断，留到下次
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            const usage = parseSseUsage(line.trim())
+            if (usage) streamUsage = usage
+            const chunk = parseSseLine(line.trim())
+            if (!chunk) continue
+            /*
+              服务端回包里的 model 是**唯一可信**的"到底在跑什么模型"的证据
+              （我们发出去的是别名，中转站还可能改路由）。只记第一次拿到的那个。
+            */
+            if (chunk.model && !responseModelSeen) {
+              responseModelSeen = true
+              useGameStore.getState().recordResponseModel(chunk.model)
+            }
+            if (chunk.finishReason) finishReason = chunk.finishReason
+            if (chunk.reasoning) {
+              reasoning += chunk.reasoning
+              reasoningStats.chunks++
+              setStreamingReasoning(reasoning)
+            }
+            if (chunk.content) {
+              text += chunk.content
+              setStreamingContent(text)
+            }
+          }
+        }
+        // 处理残留缓冲
+        const tailLine = buffer.trim()
+        const tailUsage = parseSseUsage(tailLine)
+        if (tailUsage) streamUsage = tailUsage
+        const tail = parseSseLine(tailLine)
+        if (tail?.content) {
+          text += tail.content
+          setStreamingContent(text)
+        }
+
+        return { text, reasoning, finishReason, streamUsage, streamed: true }
       }
-      // 处理残留缓冲
-      const tailLine = buffer.trim()
-      const tailUsage = parseSseUsage(tailLine)
-      if (tailUsage) streamUsage = tailUsage
-      const tail = parseSseLine(tailLine)
-      if (tail?.content) {
-        fullNarrative += tail.content
-        setStreamingContent(fullNarrative)
+
+      let attempt: NarrativeAttempt | null = null
+      let streamFailure: unknown = null
+
+      /*
+        ── 这一局里流式是不是已经确定不可用（2026-11）──
+
+        Gemini 走中转时，流式**每次都**会在思考那三十秒里被掐断。
+        如果每轮都先白试一次，玩家就要多等一个整轮的思考时间，才看到
+        "正在改用整段返回重试" —— 那比一开始就不试更难受。
+
+        所以断过一次就记住（**按 服务商|模型|地址 记**，换模型要重来），
+        之后这一局直接走非流式。第一次慢一次，剩下的都稳。
+      */
+      const streamKey = `${config.provider}|${config.narrativeModel}|${config.baseUrl}`
+      const skipStream = streamBrokenRef.current.broken && streamBrokenRef.current.key === streamKey
+
+      if (!skipStream) {
+        try {
+          attempt = await requestNarrative(true)
+        } catch (e) {
+          // 流读到一半断了（Chrome 抛的就是一句 'network error'），或者不支持 SSE
+          streamFailure = e
+          streamBrokenRef.current = { key: streamKey, broken: true }
+          console.warn('流式叙事没走完，改用整段返回重试', e)
+          setStreamingContent('')
+          setStreamingReasoning(null)
+        }
       }
+      if (!attempt || !attempt.text.trim()) {
+        // 流式给不出内容（断连，或断了但留了个空 body）→ 整段返回再要一次
+        if (streamFailure || attempt) {
+          if (!attempt || !attempt.text.trim()) streamBrokenRef.current = { key: streamKey, broken: true }
+          useUIStore.getState().setStatusMessage(
+            skipStream ? '正在等模型写完…' : '这个模型想得太久、流式连接断了，正在改用整段返回重试…',
+          )
+        }
+        attempt = await requestNarrative(false)
+      }
+
+      const fullNarrative = attempt.text
+      const fullReasoning = attempt.reasoning
+      const streamFinishReason = attempt.finishReason
 
       /*
         ⚠️ **别在这里一律说"检查模型名称与接口地址"**（2026-11 玩家实测）。
@@ -1336,6 +1450,9 @@ export function useGameEngine(): GameEngineReturn {
 
         `describeEmptyNarrative` 按流里实际看到的东西（finish_reason + 有没有思维链）
         分辨出具体是哪一种，并给出下一步该改哪个设置。
+
+        ⚠️ 走到这里说明**流式和非流式都白跑了**，所以那条兜底文案现在带了
+        "两条路都没拿到内容"的意思（见 engineErrors 里的措辞）。
       */
       if (!fullNarrative.trim()) {
         throw new Error(describeEmptyNarrative({
@@ -1357,10 +1474,12 @@ export function useGameEngine(): GameEngineReturn {
       */
       const estimatedOutput = fullNarrative + fullReasoning
       recordUsage(
-        null,
+        attempt.streamed ? null : attempt.response,
         narrativeMessages,
         estimatedOutput,
-        streamUsage ? estimateMissingCompletion(streamUsage, estimatedOutput) : null,
+        attempt.streamed && attempt.streamUsage
+          ? estimateMissingCompletion(attempt.streamUsage, estimatedOutput)
+          : null,
       )
 
       /*
