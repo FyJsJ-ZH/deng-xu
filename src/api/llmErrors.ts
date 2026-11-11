@@ -26,6 +26,15 @@ export type LlmErrorKind =
   /** 请求本身有问题（400：模型名不存在、上下文超长等）—— 重试无用 */
   | 'bad_request'
   /**
+   * 服务商不认识这个**模型名**（2026-11）。
+   *
+   * 单独一类值得，因为它有独有的下一步：去核对模型名。
+   * 玩家截图里的原文是 `{"detail":"未知模型: vtx-抗截断-gemini-4-Argon-high"}` ——
+   * 同一家中转他填的叙事模型写 `Argon`、结算模型写 `argon`，
+   * 而"测试连接"只测了结算那个，于是出现「链接成功但一生成就说模型未知」。
+   */
+  | 'model'
+  /**
    * 输出的 `max_tokens` 超出服务商允许范围 —— 重试无用，但**能自动降级**。
    *
    * 单独一类是因为它有一个别的错误没有的性质：报错里写着真正的上限。
@@ -88,6 +97,22 @@ function extractServerMessage(body: string): string | undefined {
     // OpenAI / DeepSeek / 硅基流动 / OpenRouter 大体都是 { error: { message } }
     const m = j?.error?.message || j?.message || j?.error?.type
     if (typeof m === 'string' && m.trim()) return m.trim().slice(0, 300)
+    /*
+      ── FastAPI 风格的中转（2026-11 玩家截图）──
+
+      原文是 `{"detail":"未知模型: vtx-抗截断-gemini-4-Argon-high"}`。
+      不认这个字段的后果很直接：界面上原样显示一整串 JSON（连花括号都在），
+      而真正那句话只有五个字 —— "未知模型"。
+    */
+    const d = j?.detail
+    if (typeof d === 'string' && d.trim()) return d.trim().slice(0, 300)
+    if (Array.isArray(d)) {
+      // FastAPI 的 422 校验错误：detail 是 [{ loc, msg, type }, ...]
+      const parts = d
+        .map((x: any) => (typeof x === 'string' ? x : x?.msg))
+        .filter((x: any): x is string => typeof x === 'string' && !!x.trim())
+      if (parts.length) return parts.join('；').slice(0, 300)
+    }
   } catch {
     /* 不是 JSON，退回纯文本 */
   }
@@ -100,7 +125,14 @@ function extractServerMessage(body: string): string | undefined {
 const QUOTA_RE = /(insufficient|quota|balance|credit|billing|欠费|余额|额度|超出.*配额)/i
 const AUTH_RE = /(invalid.*api.*key|incorrect.*api.*key|unauthorized|authentication|api key|密钥|无效的.*key|token.*invalid)/i
 const CONTEXT_RE = /(context.*length|too many tokens|maximum context|上下文|token.*limit)/i
-const MODEL_RE = /(model.*not.*found|unknown model|does not exist|no such model|模型.*不存在)/i
+/**
+ * "模型名不对"的各种说法。
+ *
+ * 中文那几种是 2026-11 补的：玩家那家中转回的是 `未知模型: xxx`，
+ * 而这里原来只认英文 —— 于是它落进通用 400，提示变成"模型名不对、
+ * 参数不被支持、上下文过长"三选一，等于让他自己猜。
+ */
+const MODEL_RE = /(model.*not.*found|unknown model|does not exist|no such model|invalid model|未知模型|未知的模型|模型.*不存在|没有这个模型|模型.*无效)/i
 
 /**
  * 报错里出现这些字样，才可能是「输出上限超范围」。
@@ -236,6 +268,30 @@ export function classifyLlmError(
     }
   }
 
+  /*
+    ── 404：两种可能，差得很远（2026-11）──
+
+    一种是**地址少了 /v1**（`/chat/completions` 根本不存在）；
+    另一种是**模型名不对**，而许多中转（FastAPI 那类）用 404 表达它。
+    判反了会让玩家去改一个没坏的字段。
+  */
+  if (status === 404) {
+    if (MODEL_RE.test(body)) {
+      return {
+        kind: 'model', retryable: false, status,
+        message: serverMsg || '服务商不认识这个模型名',
+        hint: '核对模型名：叙事模型与结算模型要分别核对，大小写与前后空格都不能差',
+        raw,
+      }
+    }
+    return {
+      kind: 'bad_request', retryable: false, status,
+      message: serverMsg || '接口路径不存在（404）',
+      hint: '检查「接口地址」：OpenAI 兼容端点通常要以 /v1 结尾',
+      raw,
+    }
+  }
+
   if (status === 400 || status === 422) {
     /*
       ── Gemini 系拒了 JSON 模式（2026-11）──
@@ -309,9 +365,10 @@ export function classifyLlmError(
     }
     if (MODEL_RE.test(body)) {
       return {
-        kind: 'bad_request', retryable: false, status,
-        message: serverMsg || '模型名不存在',
-        hint: '请到「模型设置」确认模型名拼写，以及服务商是否提供该模型', raw,
+        kind: 'model', retryable: false, status,
+        message: serverMsg || '服务商不认识这个模型名',
+        hint: '核对模型名：叙事模型与结算模型要分别核对，大小写与前后空格都不能差',
+        raw,
       }
     }
     return {

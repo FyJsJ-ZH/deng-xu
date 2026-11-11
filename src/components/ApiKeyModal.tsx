@@ -227,6 +227,24 @@ export function ApiKeyModal() {
         <p className="text-[10px] text-text-muted -mt-2">
           模型名可自由填写；下拉候选仅作参考，随服务商切换而更新。
         </p>
+        {/*
+          2026-11 玩家截图：两个模型名只差一个大小写（叙事 `...-Argon-high`、
+          结算 `...-argon-high`），而中转大小写敏感 —— 于是"测试连接"用结算那个过了，
+          一生成就 `未知模型`。这种情况肉眼几乎看不出来，所以在这里点名。
+        */}
+        {(() => {
+          const a = draft.narrativeModel.trim()
+          const b = draft.analysisModel.trim()
+          if (!a || !b || a === b) return null
+          if (a.toLowerCase() !== b.toLowerCase()) return null
+          return (
+            <p className="text-[10px] text-accent-grail -mt-2 leading-relaxed">
+              两个模型名<b>只差大小写</b>（<span className="font-mono">{a}</span> /{' '}
+              <span className="font-mono">{b}</span>）。有些中转是大小写敏感的，
+              其中一个会报「未知模型」—— 建议统一成服务商文档里的写法。
+            </p>
+          )
+        })()}
 
         {/* 温度 */}
         <div>
@@ -371,10 +389,30 @@ export function ApiKeyModal() {
         )}
         {status === 'error' && (
           <div className="space-y-2 border border-accent-grail/30 bg-accent-grail/5 p-2 rounded">
-            <p className="text-xs text-accent-grail">连接失败，请检查接口地址、模型名与 Key 是否正确。</p>
-            <p className="text-[10px] font-mono text-text-muted break-all">
-              {lastError?.message || String(lastError)}
+            {/*
+              这里以前是一句固定的话：「连接失败，请检查接口地址、模型名与 Key 是否正确。」
+              —— 三选一，等于让玩家自己猜（2026-11 他就在这三样都没错的情况下卡了两轮）。
+              现在显示分类后的**具体那一句**，例如
+              「模型名对不上：「…-Argon-high」—— 服务商里叫「…-argon-high」，大小写差了一点」。
+            */}
+            <p className="text-xs text-accent-grail break-words">
+              {lastError?.info?.message || '连接失败，请检查接口地址、模型名与 Key 是否正确。'}
             </p>
+            {lastError?.info?.hint && (
+              <p className="text-[10px] text-text-muted leading-relaxed break-words">
+                {lastError.info.hint}
+              </p>
+            )}
+            {lastError?.info?.raw && lastError.info.raw !== lastError.info.message && (
+              <p className="text-[10px] font-mono text-text-muted/70 break-all">
+                {lastError.info.raw}
+              </p>
+            )}
+            {!lastError?.info && (
+              <p className="text-[10px] font-mono text-text-muted break-all">
+                {lastError?.message || String(lastError)}
+              </p>
+            )}
             {/*
               玩家自己开了 / 关了思考模式，然后在别的端点上测连接失败时，
               最可能的错因恰恰不是 Key 也不是模型名，而是那个参数不被认。

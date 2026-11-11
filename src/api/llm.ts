@@ -505,7 +505,12 @@ function buildBody(
 ): string {
   const { messages, config, model, temperature, jsonMode } = opts;
   const body: Record<string, unknown> = {
-    model: model || config.narrativeModel,
+    /*
+      模型名**去掉首尾空格**（2026-11）。从网页或聊天窗口复制过来时常带一个
+      尾随空格或换行，肉眼看不出来，服务商却认不出这个名字 ——
+      而报错只会说"未知模型"，玩家照着屏幕上的名字核对一百遍也发现不了。
+    */
+    model: (model || config.narrativeModel || '').trim(),
     /*
       **只发 role 与 content。**
 
@@ -848,12 +853,112 @@ export function extractContent(response: any): string {
   return '';
 }
 
-/** 快速连通性测试 */
+/**
+ * 问服务商要一份**模型清单**。
+ *
+ * ## 为什么值得单独做（2026-11 玩家截图）
+ *
+ * 他两个模型名只差一个大小写（叙事 `...-Argon-high`、结算 `...-argon-high`），
+ * 而中转是大小写敏感的：结算那个能跑、叙事那个回 `未知模型`。
+ * 于是他看到的是「链接成功」，一生成就报错，改来改去都不知道错在哪一个字上。
+ *
+ * 有了清单就不一样了：直接告诉他"服务商里叫 ...-argon-high"，
+ * 或者"这家根本没有这个模型，可选的是这些"。
+ *
+ * 拉不到就返回空数组（很多中转不实现 `/models`，不该因此判失败）。
+ */
+export async function listModels(config: LLMConfig): Promise<string[]> {
+  const base = (config.baseUrl || '').trim().replace(/\/+$/, '');
+  if (!base) return [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${base}/models`, {
+      headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    const json: any = await res.json();
+    const arr = Array.isArray(json?.data) ? json.data
+      : Array.isArray(json?.models) ? json.models
+      : Array.isArray(json) ? json : [];
+    return arr
+      .map((x: any) => (typeof x === 'string' ? x : x?.id ?? x?.name))
+      .filter((x: any): x is string => typeof x === 'string' && !!x.trim());
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * 快速连通性测试。
+ *
+ * ## 为什么两个模型都要测（2026-11 玩家截图）
+ *
+ * 玩家点「测试连接」显示成功，一进游戏立刻：
+ *
+ * ```
+ * {"detail":"未知模型: vtx-抗截断-gemini-4-Argon-high"}
+ * ```
+ *
+ * 原因很简单 —— 这里原来只测 `analysisModel`。他两个模型名只差大小写
+ * （叙事 `Argon`、结算 `argon`），中转大小写敏感：结算那个能跑，
+ * 叙事那个压根不存在。于是「测试成功」是个**假信号**，
+ * 而玩家对着一个绿色的成功提示去查别的，越查越远。
+ *
+ * 现在：先问模型清单（快、准，还能指出大小写差在哪），
+ * 拉不到清单才真跑一次请求；失败时把是**哪个模型**说清楚。
+ */
 export async function testConnection(config: LLMConfig): Promise<void> {
-  await llmChat({
+  const models = [config.narrativeModel, config.analysisModel]
+    .map(m => (m || '').trim())
+    .filter((m, i, arr) => !!m && arr.indexOf(m) === i);
+
+  if (!models.length) {
+    throw new LlmError({
+      kind: 'model', retryable: false,
+      message: '还没有填模型名',
+      hint: '「叙事模型」与「结算模型」都填上再测',
+    });
+  }
+
+  const catalog = await listModels(config);
+  if (catalog.length) {
+    const missing = models.filter(m => !catalog.includes(m));
+    if (missing.length) {
+      const lines = missing.map(m => {
+        const same = catalog.find(x => x.toLowerCase() === m.toLowerCase());
+        return same
+          ? `「${m}」—— 服务商里叫「${same}」，大小写差了一点`
+          : `「${m}」—— 它的模型清单里没有这个名字`;
+      });
+      throw new LlmError({
+        kind: 'model', retryable: false,
+        message: `模型名对不上：${lines.join('；')}`,
+        hint: `这家现在可选：${catalog.slice(0, 12).join('、')}`
+          + (catalog.length > 12 ? ` 等 ${catalog.length} 个` : ''),
+      });
+    }
+    return;
+  }
+
+  // 拿不到清单（多数中转不实现 /models）→ 老老实实跑一次最小请求
+  const results = await Promise.all(models.map(model => llmChat({
     messages: [{ role: 'user', content: 'ping' }],
     config,
-    model: config.analysisModel || config.narrativeModel,
+    model,
     stream: false,
-  });
+  }).then(() => null, (e: unknown) => e)));
+
+  const failedAt = results.findIndex(r => r !== null);
+  if (failedAt === -1) return;
+
+  const err = results[failedAt];
+  const model = models[failedAt];
+  if (err instanceof LlmError) {
+    throw new LlmError({ ...err.info, message: `「${model}」—— ${err.info.message}` });
+  }
+  throw err;
 }
