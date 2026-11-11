@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import {
   ChevronDown, ChevronLeft, ChevronRight, Download, Sparkles, Trash2, Upload, X, Check, FileText, AlertTriangle,
+  Pencil, Plus, Save,
 } from 'lucide-react'
 import { useLibraryStore } from '@/stores/library'
 import type { NarrativePreset, PresetEntry } from '@/types/cards'
@@ -39,9 +40,12 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
   const savePreset = useLibraryStore(s => s.saveNarrativePreset)
   const deletePreset = useLibraryStore(s => s.deleteNarrativePreset)
   const setActive = useLibraryStore(s => s.setActiveNarrativePreset)
+  const renamePreset = useLibraryStore(s => s.renameNarrativePreset)
 
   const [openId, setOpenId] = useState<string | null>(null)
   const [flash, setFlash] = useState<{ text: string; bad?: boolean } | null>(null)
+  /** 正在改名的预设：`{ id, value }`，null = 没人在改名 */
+  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const say = (text: string, bad = false) => {
@@ -290,6 +294,52 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
 
                     {open && (
                       <div className="px-3 pb-3 space-y-2 border-t border-text-muted/15 pt-2">
+                        {/* 改名（2026-11 第三十八轮）：导入时名字取自文件名，一堆 "预设 (3).json" 分不清谁是谁 */}
+                        <div className="flex items-center gap-2 text-[10px] text-text-muted">
+                          <span className="shrink-0">名称</span>
+                          {renaming?.id === p.id ? (
+                            <>
+                              <input
+                                autoFocus
+                                value={renaming.value}
+                                onChange={e => setRenaming({ id: p.id, value: e.target.value })}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') { void renamePreset(p.id, renaming.value); setRenaming(null) }
+                                  if (e.key === 'Escape') setRenaming(null)
+                                }}
+                                className="flex-1 min-w-0 px-1.5 py-0.5 rounded bg-black/40 border border-accent-lantern/40
+                                  text-[11px] text-text-primary outline-none focus:border-accent-lantern"
+                                aria-label="预设名称"
+                              />
+                              <button
+                                onClick={() => { void renamePreset(p.id, renaming.value); setRenaming(null) }}
+                                className="p-1 rounded text-emerald-400/80 hover:text-emerald-300 shrink-0"
+                                title="保存名字"
+                              >
+                                <Save size={11} />
+                              </button>
+                              <button
+                                onClick={() => setRenaming(null)}
+                                className="p-1 rounded text-text-muted hover:text-text-secondary shrink-0"
+                                title="放弃"
+                              >
+                                <X size={11} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className={`truncate ${on ? 'text-accent-lantern' : 'text-text-secondary'}`}>{p.name}</span>
+                              <button
+                                onClick={() => setRenaming({ id: p.id, value: p.name })}
+                                className="p-1 rounded text-text-muted/60 hover:text-accent-lantern shrink-0"
+                                title="改个名字"
+                                aria-label="重命名这份预设"
+                              >
+                                <Pencil size={11} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                         <div className="text-[10px] text-text-muted">
                           来源：{p.source || '（手动创建）'}
                           {p.counts.dropped.length > 0 && (
@@ -305,7 +355,7 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
                           </div>
                         ))}
                         {p.entries?.length ? (
-                          <PresetEntries preset={p} />
+                          <PresetEntries preset={p} onSay={say} />
                         ) : (
                           <>
                             <div className="text-[10px] text-amber-300/80 leading-relaxed">
@@ -359,21 +409,60 @@ const KIND_META: Record<PresetEntry['kind'], { title: string; hint: string }> = 
   other: { title: '其他', hint: '只存档，不注入' },
 }
 
-function PresetEntries({ preset }: { preset: NarrativePreset }) {
+function PresetEntries({
+  preset, onSay,
+}: {
+  preset: NarrativePreset
+  onSay: (text: string, bad?: boolean) => void
+}) {
   const toggleEntry = useLibraryStore(s => s.toggleNarrativePresetEntry)
   const setEntries = useLibraryStore(s => s.setNarrativePresetEntries)
+  const updateEntry = useLibraryStore(s => s.updateNarrativePresetEntry)
+  const addEntry = useLibraryStore(s => s.addNarrativePresetEntry)
+  const deleteEntry = useLibraryStore(s => s.deleteNarrativePresetEntry)
+
   const [openId, setOpenId] = useState<string | null>(null)
+  /**
+   * 正在编辑的那一条。
+   *
+   * 放在这一层而不是行内，是为了**新增条目后能自动进入编辑态** ——
+   * 加了空白的一条却要玩家再点一次「编辑」，等于让他对着一个控件猜下一步。
+   */
+  const [draft, setDraft] = useState<{
+    id: string
+    name: string
+    content: string
+    kind: PresetEntry['kind']
+  } | null>(null)
 
   const entries = preset.entries || []
   const stats = presetEntryStats(preset)
+
+  const beginEdit = (e: PresetEntry) => {
+    setOpenId(e.id)
+    setDraft({ id: e.id, name: e.name, content: e.content, kind: e.kind })
+  }
+
+  const commitDraft = () => {
+    if (!draft) return
+    void updateEntry(preset.id, draft.id, { name: draft.name, content: draft.content, kind: draft.kind })
+    setDraft(null)
+    onSay('已保存。下一轮生成即生效。')
+  }
+
+  const addOne = async (kind: PresetEntry['kind']) => {
+    const id = await addEntry(preset.id, kind)
+    if (!id) return
+    setOpenId(id)
+    setDraft({ id, name: '新条目', content: '', kind })
+  }
 
   return (
     <div className="space-y-2">
       {(['rules', 'style', 'other'] as const).map(kind => {
         const list = entries.filter(e => e.kind === kind)
-        if (!list.length) return null
         const st = stats[kind]
-        const allOn = st.on === st.all
+        const allOn = st.all > 0 && st.on === st.all
         return (
           <div key={kind} className="rounded border border-text-muted/20 bg-black/20 overflow-hidden">
             <div className="flex items-center gap-2 px-2 py-1.5 border-b border-text-muted/15">
@@ -382,28 +471,56 @@ function PresetEntries({ preset }: { preset: NarrativePreset }) {
               <span className="text-[9px] text-text-muted font-mono ml-auto shrink-0">
                 {st.on}/{st.all}{kind === 'other' ? '' : ` · ${st.chars} 字`}
               </span>
-              <button
-                onClick={() => { void setEntries(preset.id, !allOn, kind) }}
-                data-preset-kind={kind}
-                aria-label={`${allOn ? '全关' : '全勾'}${KIND_META[kind].title}`}
-                className="text-[9px] px-1.5 py-0.5 rounded border border-text-muted/30 text-text-muted hover:text-accent-lantern hover:border-accent-lantern/50 shrink-0"
-                title={allOn ? `把${KIND_META[kind].title}全关掉` : `把${KIND_META[kind].title}全勾上`}
-              >
-                {allOn ? '全关' : '全勾'}
-              </button>
+              {st.all > 0 && (
+                <button
+                  onClick={() => { void setEntries(preset.id, !allOn, kind) }}
+                  data-preset-kind={kind}
+                  aria-label={`${allOn ? '全关' : '全勾'}${KIND_META[kind].title}`}
+                  className="text-[9px] px-1.5 py-0.5 rounded border border-text-muted/30 text-text-muted hover:text-accent-lantern hover:border-accent-lantern/50 shrink-0"
+                  title={allOn ? `把${KIND_META[kind].title}全关掉` : `把${KIND_META[kind].title}全勾上`}
+                >
+                  {allOn ? '全关' : '全勾'}
+                </button>
+              )}
             </div>
 
-            <div className="divide-y divide-text-muted/10">
-              {list.map(e => (
-                <PresetEntryRow
-                  key={e.id}
-                  entry={e}
-                  open={openId === e.id}
-                  onToggle={() => { void toggleEntry(preset.id, e.id) }}
-                  onExpand={() => setOpenId(openId === e.id ? null : e.id)}
-                />
-              ))}
-            </div>
+            {list.length ? (
+              <div className="divide-y divide-text-muted/10">
+                {list.map(e => (
+                  <PresetEntryRow
+                    key={e.id}
+                    entry={e}
+                    open={openId === e.id}
+                    editing={draft?.id === e.id}
+                    draft={draft?.id === e.id ? draft : null}
+                    onToggle={() => { void toggleEntry(preset.id, e.id) }}
+                    onExpand={() => setOpenId(openId === e.id ? null : e.id)}
+                    onEdit={() => beginEdit(e)}
+                    onDraftChange={patch => setDraft(d => (d && d.id === e.id ? { ...d, ...patch } : d))}
+                    onSave={commitDraft}
+                    onCancel={() => setDraft(null)}
+                    onDelete={() => {
+                      void deleteEntry(preset.id, e.id)
+                      if (draft?.id === e.id) setDraft(null)
+                      onSay(`已删除「${e.name}」。`)
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="px-2 py-2 text-[10px] text-text-muted/70">这一类还没有条目。</div>
+            )}
+
+            <button
+              onClick={() => { void addOne(kind) }}
+              data-add-kind={kind}
+              className="w-full flex items-center justify-center gap-1 text-[10px] py-1.5 border-t border-text-muted/15
+                text-text-muted hover:text-accent-lantern transition-colors"
+              title={`往「${KIND_META[kind].title}」里加一条`}
+            >
+              <Plus size={11} />
+              添加一条{KIND_META[kind].title}条目
+            </button>
           </div>
         )
       })}
@@ -412,14 +529,24 @@ function PresetEntries({ preset }: { preset: NarrativePreset }) {
 }
 
 function PresetEntryRow({
-  entry, open, onToggle, onExpand,
+  entry, open, editing, draft, onToggle, onExpand, onEdit, onDraftChange, onSave, onCancel, onDelete,
 }: {
   entry: PresetEntry
   open: boolean
+  editing: boolean
+  draft: { id: string; name: string; content: string; kind: PresetEntry['kind'] } | null
   onToggle: () => void
   onExpand: () => void
+  onEdit: () => void
+  onDraftChange: (patch: { name?: string; content?: string; kind?: PresetEntry['kind'] }) => void
+  onSave: () => void
+  onCancel: () => void
+  onDelete: () => void
 }) {
-  const dim = !entry.enabled
+  /** 删除要点两下：这条是真扔，不是"取消勾选"那种可逆操作 */
+  const [confirmDel, setConfirmDel] = useState(false)
+  const dim = !entry.enabled && !editing
+
   return (
     <div className={`px-2 py-1.5 ${dim ? 'opacity-50' : ''}`}>
       <div className="flex items-start gap-2">
@@ -440,9 +567,11 @@ function PresetEntryRow({
 
         <button onClick={onExpand} className="min-w-0 flex-1 text-left" title={open ? '收起这一条' : '看这一条的内容'}>
           <span className={`text-[11px] break-words ${entry.enabled ? 'text-text-secondary' : 'text-text-muted'}`}>
-            {entry.name}
+            {editing && draft ? draft.name || '（未命名）' : entry.name}
           </span>
-          <span className="text-[9px] text-text-muted/70 font-mono ml-1.5">{entry.content.length} 字</span>
+          <span className="text-[9px] text-text-muted/70 font-mono ml-1.5">
+            {(editing && draft ? draft.content : entry.content).length} 字
+          </span>
           {entry.dropped && (
             <span className="text-[9px] px-1 py-0.5 ml-1.5 rounded bg-amber-500/15 text-amber-300/90 border border-amber-500/30 whitespace-nowrap">
               超预算
@@ -450,15 +579,117 @@ function PresetEntryRow({
           )}
         </button>
 
+        {!editing && (
+          <button
+            onClick={onEdit}
+            className="p-0.5 text-text-muted hover:text-accent-lantern shrink-0"
+            title="改这一条的名字、正文与落点"
+            aria-label={`编辑 ${entry.name}`}
+            data-edit-id={entry.id}
+          >
+            <Pencil size={11} />
+          </button>
+        )}
+
         <button onClick={onExpand} className="p-0.5 text-text-muted/50 hover:text-accent-lantern shrink-0">
           {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
       </div>
 
-      {open && (
+      {open && !editing && (
         <pre className="mt-1.5 px-2 py-1.5 rounded bg-black/30 text-[10px] leading-relaxed text-text-secondary whitespace-pre-wrap break-words max-h-56 overflow-y-auto font-sans">
-          {entry.content}
+          {entry.content || '（这一条没有正文）'}
         </pre>
+      )}
+
+      {open && editing && draft && (
+        <div className="mt-1.5 space-y-1.5">
+          <input
+            autoFocus
+            value={draft.name}
+            onChange={e => onDraftChange({ name: e.target.value })}
+            onKeyDown={e => { if (e.key === 'Escape') onCancel() }}
+            placeholder="这一条的名字（会成为注入时的【小标题】）"
+            aria-label="条目名称"
+            className="w-full px-2 py-1 rounded bg-black/40 border border-accent-lantern/30 text-[11px]
+              text-text-primary outline-none focus:border-accent-lantern"
+          />
+          <textarea
+            value={draft.content}
+            onChange={e => onDraftChange({ content: e.target.value })}
+            onKeyDown={e => {
+              // Esc 放弃、Ctrl/Cmd+Enter 保存 —— 手机上没有 Esc，按钮在下面
+              if (e.key === 'Escape') onCancel()
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onSave()
+            }}
+            rows={8}
+            spellCheck={false}
+            placeholder="这一条的正文。留空等于不注入，但条目本身会留着。"
+            aria-label="条目正文"
+            className="w-full px-2 py-1.5 rounded bg-black/40 border border-accent-lantern/30 text-[11px] leading-relaxed
+              text-text-secondary outline-none focus:border-accent-lantern resize-y min-h-[140px] font-sans"
+          />
+          {/* 落点：这条到底是规则、文风，还是只存档 */}
+          <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-text-muted">
+            <span className="shrink-0">注入到</span>
+            {(['rules', 'style', 'other'] as const).map(k => {
+              const picked = draft.kind === k
+              return (
+                <button
+                  key={k}
+                  onClick={() => onDraftChange({ kind: k })}
+                  data-draft-kind={k}
+                  aria-pressed={picked}
+                  className={`px-1.5 py-0.5 rounded border transition-colors
+                    ${picked
+                      ? 'border-accent-lantern/60 text-accent-lantern bg-accent-lantern/10'
+                      : 'border-text-muted/30 text-text-muted hover:text-text-secondary'}`}
+                  title={k === 'other' ? '只存档：留在库里给人看，不进提示词' : '每轮注入提示词'}
+                >
+                  {KIND_META[k].title}
+                </button>
+              )
+            })}
+            <span className="text-[9px] text-text-muted/60">
+              {draft.kind === 'other' ? '只存档，不注入' : '每轮注入'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={onSave}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-accent-lantern/50
+                text-accent-lantern hover:bg-accent-lantern/10"
+            >
+              <Save size={11} />
+              保存
+            </button>
+            <button
+              onClick={onCancel}
+              className="px-2 py-1 text-[10px] rounded border border-text-muted/40 text-text-muted hover:text-text-secondary"
+            >
+              取消
+            </button>
+            <span className="text-[9px] text-text-muted/60 font-mono">
+              Ctrl/⌘+Enter 保存 · Esc 取消
+            </span>
+            <button
+              onClick={() => {
+                if (!confirmDel) { setConfirmDel(true); return }
+                setConfirmDel(false)
+                onDelete()
+              }}
+              className={`ml-auto flex items-center gap-1 px-2 py-1 text-[10px] rounded border transition-colors
+                ${confirmDel
+                  ? 'border-red-500/60 text-red-300 bg-red-500/10'
+                  : 'border-text-muted/40 text-text-muted/70 hover:text-red-400 hover:border-red-500/40'}`}
+              title={confirmDel ? '再点一次就真的删掉' : '删掉这一条（与"取消勾选"不同，删了就回不来）'}
+              data-delete-id={entry.id}
+            >
+              <Trash2 size={11} />
+              {confirmDel ? '确认删除' : '删除'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

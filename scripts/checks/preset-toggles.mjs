@@ -205,7 +205,140 @@ check('全关后按钮变成「全勾」', b.labelMid === '全勾', b.labelMid |
 check('★ 全勾把它们又都勾回来', b.on && b.on.r1 === true && b.on.r2 === true, JSON.stringify(b.on))
 check('★ 勾回来之后 rules 快照恢复完整', b.rulesBack === true)
 
+console.log('\n=== 4.5) 就地编辑：加一条 → 改它 → 删掉它 ===')
+/*
+  玩家原话：「把预设做成可编辑的」。
+
+  这一节专测"点了之后真的改到东西了"，不测逻辑（那有单测）：
+  加了一条之后有没有**自动进入编辑态**、保存后**快照**跟不跟、
+  删除是不是真的要两下。三个都容易做成"看起来能点"。
+*/
+const edited = await ev(`(async()=>{
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  // React 受控组件必须走 native setter，直接 el.value= 会被 React 丢掉合成事件
+  const setVal = (el, v) => {
+    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const byText = (re) => [...document.querySelectorAll('button')].find(x => re.test((x.textContent||'').trim()));
+
+  // 1) 往「规则」里加一条
+  const addBtn = document.querySelector('[data-add-kind="rules"]');
+  if (!addBtn) return JSON.stringify({ step:'no-add' });
+  addBtn.click();
+  await wait(350);
+  const p0 = window.__libraryStore.getState().getNarrativePreset('pt-walk');
+  const added = p0.entries[p0.entries.length - 1];
+  const textarea = document.querySelector('textarea[aria-label="条目正文"]');
+  const hasEditor = !!textarea;
+
+  // 2) 填名字与正文，再把落点从「规则」改成「文风」，保存
+  const nameInput = document.querySelector('input[aria-label="条目名称"]');
+  if (nameInput) setVal(nameInput, '走查新条目');
+  if (textarea) setVal(textarea, '这是走查加的一条');
+  await wait(250);
+  const kindChip = document.querySelector('[data-draft-kind="style"]');
+  const hasKindChip = !!kindChip;
+  if (kindChip) { kindChip.click(); await wait(200); }
+  const saveBtn = byText(/^保存$/);
+  if (!saveBtn) return JSON.stringify({ step:'no-save', hasEditor });
+  saveBtn.click();
+  await wait(450);
+  const p1 = window.__libraryStore.getState().getNarrativePreset('pt-walk');
+  const saved = p1.entries.find(e => e.id === added.id);
+
+  // 3) 点铅笔再改一次（它现在在「文风」组里）
+  const pencil = document.querySelector('[data-edit-id="' + added.id + '"]');
+  if (!pencil) return JSON.stringify({ step:'no-pencil', hasEditor, addedCount: p0.entries.length });
+  pencil.click();
+  await wait(300);
+  const ta2 = document.querySelector('textarea[aria-label="条目正文"]');
+  if (ta2) setVal(ta2, '这是走查改过的一条');
+  await wait(200);
+  const save2 = byText(/^保存$/);
+  if (save2) save2.click();
+  await wait(450);
+  const p2 = window.__libraryStore.getState().getNarrativePreset('pt-walk');
+
+  // 4) 删掉它（要两下）
+  const pencil2 = document.querySelector('[data-edit-id="' + added.id + '"]');
+  if (pencil2) pencil2.click();
+  await wait(300);
+  const del1 = document.querySelector('[data-delete-id="' + added.id + '"]');
+  if (del1) { del1.click(); await wait(200); }
+  const del2 = document.querySelector('[data-delete-id="' + added.id + '"]');
+  const confirmLabel = del2 ? (del2.textContent||'').trim() : '';
+  const stillThereAfterOneClick = window.__libraryStore.getState().getNarrativePreset('pt-walk')
+    .entries.some(e => e.id === added.id);
+  if (del2) del2.click();
+  await wait(450);
+  const p3 = window.__libraryStore.getState().getNarrativePreset('pt-walk');
+
+  return JSON.stringify({
+    step:'ok',
+    hasEditor,
+    addedCount: p0.entries.length,
+    hasKindChip,
+    savedName: saved && saved.name,
+    savedContent: saved && saved.content,
+    savedKind: saved && saved.kind,
+    inStyleSnapshot: p1.style.includes('这是走查加的一条'),
+    notInRules: !p1.rules.includes('这是走查加的一条'),
+    changed: p2.style.includes('这是走查改过的一条') && !p2.style.includes('这是走查加的一条'),
+    confirmLabel,
+    stillThereAfterOneClick,
+    afterDelete: p3.entries.length,
+    goneFromSnapshot: !p3.style.includes('这是走查改过的一条'),
+  });
+})()`)
+const ed = JSON.parse(edited || '{}')
+check('找得到「添加一条」按钮', ed.step === 'ok', ed.step || '')
+check('★ 加完立刻进入编辑态（不用再点一次「编辑」）', ed.hasEditor === true)
+check('条目数从 4 变 5', ed.addedCount === 5, `entries=${ed.addedCount}`)
+check('★ 保存后名字与正文都写进去了', ed.savedName === '走查新条目' && ed.savedContent === '这是走查加的一条',
+  `${ed.savedName} / ${ed.savedContent}`)
+check('★ 落点能改：从「规则」挪到「文风」', ed.hasKindChip === true && ed.savedKind === 'style', ed.savedKind || '')
+check('★ 保存后进入 style 快照、不再在 rules 里', ed.inStyleSnapshot === true && ed.notInRules === true)
+check('★ 再编辑一次生效，旧文字从快照里消失', ed.changed === true)
+check('★ 删除要确认：点一下只变成「确认删除」', ed.confirmLabel === '确认删除' && ed.stillThereAfterOneClick === true,
+  ed.confirmLabel || '')
+check('★ 第二下真删掉，快照里也没了', ed.afterDelete === 4 && ed.goneFromSnapshot === true,
+  `entries=${ed.afterDelete}`)
+await shot('preset-04-edited')
+
+console.log('\n=== 4.6) 预设改名 ===')
+const renamed = await ev(`(async()=>{
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const btn = document.querySelector('[aria-label="重命名这份预设"]');
+  if (!btn) return JSON.stringify({ step:'no-button' });
+  btn.click();
+  await wait(300);
+  const input = document.querySelector('input[aria-label="预设名称"]');
+  if (!input) return JSON.stringify({ step:'no-input' });
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '走查用预设（改过名）');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await wait(200);
+  const save = [...document.querySelectorAll('button')].find(x => (x.getAttribute('title')||'') === '保存名字');
+  if (!save) return JSON.stringify({ step:'no-save' });
+  save.click();
+  await wait(400);
+  const p = window.__libraryStore.getState().getNarrativePreset('pt-walk');
+  return JSON.stringify({ step:'ok', name: p.name, onPage: /走查用预设（改过名）/.test(document.body.innerText) });
+})()`)
+const rn = JSON.parse(renamed || '{}')
+check('找得到「改名」按钮', rn.step === 'ok', rn.step || '')
+check('★ 改完 store 里的名字变了', rn.name === '走查用预设（改过名）', rn.name || '')
+check('★ 界面上也跟着显示新名字', rn.onPage === true)
+
 console.log('\n=== 5) 手机宽度（390×844）不许横向溢出 ===')
+/*
+  先把一条**打开成编辑态**：textarea + 落点 chip + 三个按钮挤在一行，
+  是这一页最容易溢出的地方，而折叠态怎么量都看不出来。
+*/
+await ev(`(()=>{const b=document.querySelector('[data-edit-id="r1"]'); if(b) b.click(); return 'ok'})()`)
+await sleep(400)
+check('手机上编辑态能打开', await ev(`!!document.querySelector('textarea[aria-label="条目正文"]')`))
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
 await sleep(700)
 const narrow = await ev(`(()=>{

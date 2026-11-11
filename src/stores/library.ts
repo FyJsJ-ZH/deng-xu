@@ -182,6 +182,36 @@ export interface LibraryState {
     enabled: boolean,
     kind?: 'rules' | 'style' | 'other',
   ) => Promise<void>;
+  /**
+   * 改某一条的名字或正文（2026-11 第三十八轮）。
+   *
+   * 玩家原话：「把预设做成可编辑的」。上一轮只做到"能勾选"，
+   * 而勾选管的是"要不要这一段"，改不了"这一段该怎么说"——
+   * 别人的预设里总有几句不合自己的口味，他现在的唯一出路是
+   * 改原文件再重新导入，等于绕开这个页面。
+   *
+   * 改完同样走 `syncPresetSnapshot`：三段快照跟着重算，
+   * 所以「下一轮就生效」这件事与勾选完全一致。
+   */
+  updateNarrativePresetEntry: (
+    presetId: string,
+    entryId: string,
+    patch: { name?: string; content?: string; kind?: 'rules' | 'style' | 'other' },
+  ) => Promise<void>;
+  /** 往某一类里加一条空白条目，返回新条目的 id（拿不到就是失败） */
+  addNarrativePresetEntry: (
+    presetId: string,
+    kind: 'rules' | 'style' | 'other',
+  ) => Promise<string | null>;
+  /**
+   * 删掉一条。
+   *
+   * 与"取消勾选"是两件事：取消勾选只是不注入、内容还在（想回来随时点回来）；
+   * 删除是真的扔掉。所以界面上必须做二次确认，别让手滑毁掉别人的预设。
+   */
+  deleteNarrativePresetEntry: (presetId: string, entryId: string) => Promise<void>;
+  /** 改预设自己的名字（列表里显示的那个） */
+  renameNarrativePreset: (presetId: string, name: string) => Promise<void>;
   /** 同 getWorld：返回库内引用，请当只读用 */
   getNarrativePreset: (id: string) => NarrativePreset | undefined;
   /** 当前启用的那份（没有就是 undefined） */
@@ -850,6 +880,130 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       const next: NarrativePreset = { ...syncPresetSnapshot({ ...cur, entries }), updatedAt: Date.now() };
       await commitNarrativePresets(
         get().narrativePresets.map((p) => (p.id === presetId ? next : p)),
+        get().activeNarrativePresetId,
+      );
+    },
+
+    /*
+      ── 就地编辑（2026-11 第三十八轮）──
+
+      玩家原话：「把预设做成可编辑的」。
+
+      上一轮只做到"能勾选"，而勾选回答的是"要不要这一段"，
+      回答不了"这一段该怎么说"。别人的预设里总有几句不合口味，
+      他唯一的出路是改原文件再重新导入 —— 等于绕开这个页面。
+
+      ⚠️ 四个动作都走同一条收尾：改 `entries` → `syncPresetSnapshot` 重算快照 →
+      `commitNarrativePresets` 整份写回。与勾选完全一致，
+      所以"下一轮就生效"这条承诺对编辑同样成立。
+    */
+    updateNarrativePresetEntry: async (presetId, entryId, patch) => {
+      const cur = get().narrativePresets.find((p) => p.id === presetId);
+      if (!cur?.entries?.length) return;
+      const hit = cur.entries.find((e) => e.id === entryId);
+      if (!hit) return;
+
+      // 名字留空不算"改成空名字"，保留原名（删掉标题会让注入出去的段落没有抬头）
+      const name = typeof patch.name === 'string' ? (patch.name.trim() || hit.name) : hit.name;
+      const content = typeof patch.content === 'string' ? patch.content : hit.content;
+      /*
+        落点也能改（2026-11）。
+
+        这条是玩家截图里看出来的：他导入的「剑仙」只有一条，
+        内容是那段英文系统提示，而它被归进了 `other`（只存档、不注入）——
+        于是在界面上明明"勾着"，每轮注入却是 0 字。不给换落点，
+        他就只能眼睁睁看着一份有用的预设什么也不做。
+      */
+      const kind = patch.kind && patch.kind !== hit.kind ? patch.kind : hit.kind;
+      if (name === hit.name && content === hit.content && kind === hit.kind) return;
+
+      const entries: PresetEntry[] = cur.entries.map((e) => (
+        e.id === entryId
+          /*
+            编辑过的条目**摘掉「超预算」标记**：那个标记记的是"导入时按原长度
+            没挤进默认勾选"，而内容已经不一定是原来那段了，再把角标挂在上面
+            就是在骗人。同时从 `counts.dropped` 里去掉这个名字，
+            免得展开区还写着"超篇幅未并入 N 条"。
+          */
+          ? { ...e, name, content, kind, dropped: false }
+          : e
+      ));
+      const synced = syncPresetSnapshot({ ...cur, entries });
+      const next: NarrativePreset = {
+        ...synced,
+        counts: {
+          ...synced.counts,
+          dropped: (cur.counts?.dropped || []).filter((n) => n !== hit.name),
+        },
+        updatedAt: Date.now(),
+      };
+      await commitNarrativePresets(
+        get().narrativePresets.map((p) => (p.id === presetId ? next : p)),
+        get().activeNarrativePresetId,
+      );
+    },
+
+    addNarrativePresetEntry: async (presetId, kind) => {
+      const cur = get().narrativePresets.find((p) => p.id === presetId);
+      if (!cur) return null;
+      /*
+        新条目**从空白开始**，并且在正文为空时不参与拼接
+        （`renderPresetEntries` 会跳过 `content.trim()` 为空的条目）——
+        所以"点了加一条但还没写"不会把提示词弄脏。
+      */
+      const entries: PresetEntry[] = [
+        ...(cur.entries || []),
+        {
+          id: `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          name: '新条目',
+          kind,
+          content: '',
+          enabled: true,
+        },
+      ];
+      const next: NarrativePreset = { ...syncPresetSnapshot({ ...cur, entries }), updatedAt: Date.now() };
+      await commitNarrativePresets(
+        get().narrativePresets.map((p) => (p.id === presetId ? next : p)),
+        get().activeNarrativePresetId,
+      );
+      return entries[entries.length - 1].id;
+    },
+
+    deleteNarrativePresetEntry: async (presetId, entryId) => {
+      const cur = get().narrativePresets.find((p) => p.id === presetId);
+      if (!cur?.entries?.length) return;
+      const entries: PresetEntry[] = cur.entries.filter((e) => e.id !== entryId);
+      if (entries.length === cur.entries.length) return;
+
+      /*
+        ⚠️ 删空了要**手动清三段快照**：`syncPresetSnapshot` 在 `entries` 为空时
+        原样返回（那是留给"旧版预设根本没有 entries 字段"的），
+        于是 `rules` / `style` 会留着已经删掉的内容 —— 玩家看到列表空着，
+        提示词里却还在注入。
+      */
+      const base = syncPresetSnapshot({ ...cur, entries });
+      const next: NarrativePreset = entries.length
+        ? { ...base, updatedAt: Date.now() }
+        : {
+            ...base,
+            rules: '',
+            style: '',
+            lore: '',
+            counts: { total: 0, rules: 0, style: 0, other: 0, dropped: [] },
+            updatedAt: Date.now(),
+          };
+      await commitNarrativePresets(
+        get().narrativePresets.map((p) => (p.id === presetId ? next : p)),
+        get().activeNarrativePresetId,
+      );
+    },
+
+    renameNarrativePreset: async (presetId, name) => {
+      const cur = get().narrativePresets.find((p) => p.id === presetId);
+      const next = name.trim();
+      if (!cur || !next || next === cur.name) return;
+      await commitNarrativePresets(
+        get().narrativePresets.map((p) => (p.id === presetId ? { ...p, name: next, updatedAt: Date.now() } : p)),
         get().activeNarrativePresetId,
       );
     },
