@@ -387,9 +387,40 @@ describe('逐条清单 · entries', () => {
     }
   })
 
-  it('★ 顺序：先规则、再文风、最后其他（与三段快照的排法一致）', () => {
+  it('★ 顺序照酒馆的 prompt_order，不按落点分组重排（2026-11）', () => {
+    /*
+      上一版这里断言的是 `['rules','style','other']` —— 那是"按语义重排"，
+      而玩家看到的正是它的后果：「user → 头部破甲 → 格式要求结束 → 主提示下半
+      → 自定义字数 → 文风开始」被拆成三段，他一句"顺序都是错乱的"。
+      现在只认文件里的顺序：style / rules / other 按 order 交错也可以。
+    */
     const p = stPresetToNarrativePreset(raw, 'x.json')!
-    expect(p.entries!.map(e => e.kind)).toEqual(['rules', 'style', 'other'])
+    expect(p.entries!.map(e => e.id)).toEqual(['s', 'r', 'w'])
+    expect(p.entries!.map(e => e.order)).toEqual([0, 1, 2])
+  })
+
+  it('★ 被预算裁掉的条目也留在原位（只是没勾上，不是被搬到组尾）', () => {
+    const big = '长'.repeat(3000)
+    const raw3 = {
+      temperature: 1,
+      prompts: [
+        { identifier: 'a', name: 'A', content: '短的一条' },
+        { identifier: 'b', name: '✅基础文风', content: big },
+        { identifier: 'c', name: 'C', content: '另一条短的' },
+      ],
+      prompt_order: [{ order: [
+        { identifier: 'a', enabled: true },
+        { identifier: 'b', enabled: true },
+        { identifier: 'c', enabled: true },
+      ] }],
+    }
+    const p = stPresetToNarrativePreset(raw3, 'y.json')!
+    expect(p.entries!.map(e => e.id)).toEqual(['a', 'b', 'c'])
+    const b = p.entries!.find(e => e.id === 'b')!
+    expect(b.dropped).toBe(true)
+    expect(b.enabled).toBe(false)
+    // 原位不动
+    expect(b.order).toBe(1)
   })
 
   it('★ 默认勾选拼出来，与三段快照逐字一致（导入不该改变注入内容）', () => {

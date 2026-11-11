@@ -796,10 +796,23 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
     saveNarrativePreset: async (preset, options) => {
       const now = Date.now();
       const list = get().narrativePresets;
+      /*
+        ── 同一个文件重新导入 = **更新**，不是再存一份（2026-11）──
+
+        玩家报「预设导入得七零八落、顺序错乱」。修好解析之后他需要重新导入一次，
+        而旧逻辑每次都会多存一份副本 —— 列表很快变成
+        「Izumi 1029 (1)、Izumi 1029 (1) (1)、…」，越修越乱。
+
+        判据只用 `source`（原文件名）：同一个 .json 再拖进来就是同一份预设，
+        复用它的 id 与 createdAt。真想留旧版的话，改个文件名再导 —— 那本来就是两份文件。
+      */
+      const sameFile = preset.id
+        ? undefined
+        : list.find((p) => p.source && p.source === preset.source);
       const next: NarrativePreset = {
         ...deepClone(preset),
-        id: preset.id || makeId('preset'),
-        createdAt: preset.createdAt || now,
+        id: preset.id || sameFile?.id || makeId('preset'),
+        createdAt: preset.createdAt || sameFile?.createdAt || now,
         updatedAt: now,
       };
       const index = list.findIndex((p) => p.id === next.id);
@@ -959,6 +972,8 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           kind,
           content: '',
           enabled: true,
+          // 排在最后：`order` 是"作者序列里的位置"，新加的东西没有原位
+          order: (cur.entries || []).reduce((max, e) => Math.max(max, e.order ?? -1), -1) + 1,
         },
       ];
       const next: NarrativePreset = { ...syncPresetSnapshot({ ...cur, entries }), updatedAt: Date.now() };

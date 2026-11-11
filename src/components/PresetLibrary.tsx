@@ -108,9 +108,22 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
       return
     }
 
+    /*
+      同一个文件再导入一次 = 覆盖那一份（2026-11）。
+      玩家修顺序需要重新导入，而这句提示得让他知道"是更新了一份，不是又多了一份"。
+    */
+    const sameSource = presets.find(p => p.source && p.source === preset.source)
     await savePreset(preset)
-    setOpenId(preset.id)
+    setOpenId(sameSource?.id || preset.id)
     const c = preset.counts
+    if (sameSource) {
+      say(
+        `已用这个文件更新《${sameSource.name}》：${c.total} 条启用条目，`
+        + '条目顺序已按文件里的 prompt_order 重排。'
+        + '（同一份文件再导入是覆盖，不是新增；你在这个页面里的手改会被替换掉。）',
+      )
+      return
+    }
     say(
       `已导入《${preset.name}》：${c.total} 条启用条目 —— `
       + `规则 ${c.rules} 条、文风 ${c.style} 条、其余 ${c.other} 条（只存档，不注入）。`
@@ -348,6 +361,21 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
                             </span>
                           )}
                         </div>
+                        {/*
+                          旧数据提示（2026-11）：`order` 是这一轮才加的字段。
+                          之前导入的预设是按「规则/文风/存档」重排过的，
+                          那个顺序已经不是作者的原序列 —— 让玩家知道重导一次就好，
+                          而不是自己一条条往上挪。
+                        */}
+                        {!!p.entries?.length && !p.entries.every(e => typeof e.order === 'number') && (
+                          <div className="flex items-start gap-1.5 text-[10px] text-amber-300/90 leading-relaxed">
+                            <AlertTriangle size={11} className="mt-0.5 shrink-0" />
+                            <span>
+                              这份是旧版导入的：条目顺序当年按分类重排过，不是文件里的原顺序。
+                              把同一个 .json 再导入一次就能重排（同名文件会<b>覆盖</b>这一份，不会多出一份）。
+                            </span>
+                          </div>
+                        )}
                         {presetWarnings(p).map((w, i) => (
                           <div key={i} className="flex items-start gap-1.5 text-[10px] text-amber-300/90 leading-relaxed">
                             <AlertTriangle size={11} className="mt-0.5 shrink-0" />
@@ -403,10 +431,10 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
  *  3. **超预算的条目单独标灰 + 「超预算」角标**，而不是藏起来：
  *     它内容一个字都没丢，玩家想要就自己勾上。
  */
-const KIND_META: Record<PresetEntry['kind'], { title: string; hint: string }> = {
-  rules: { title: '规则', hint: '每轮注入' },
-  style: { title: '文风', hint: '每轮注入' },
-  other: { title: '其他', hint: '只存档，不注入' },
+const KIND_META: Record<PresetEntry['kind'], { title: string; hint: string; badge: string }> = {
+  rules: { title: '规则', hint: '每轮注入', badge: 'bg-accent-lantern/15 text-accent-lantern/90 border-accent-lantern/30' },
+  style: { title: '文风', hint: '每轮注入', badge: 'bg-sky-500/15 text-sky-300/90 border-sky-500/30' },
+  other: { title: '存档', hint: '只存档，不注入', badge: 'bg-text-muted/15 text-text-muted border-text-muted/30' },
 }
 
 function PresetEntries({
@@ -435,8 +463,26 @@ function PresetEntries({
     kind: PresetEntry['kind']
   } | null>(null)
 
-  const entries = preset.entries || []
+  /**
+   * ── 一个**线性**清单，照酒馆 `prompt_order` 的原始顺序（2026-11）──
+   *
+   * 上一版按「规则 / 文风 / 存档」分三组显示，玩家原话是
+   * 「连预设的顺序都是错乱的」—— 他说得对：酒馆里那是一条序列，
+   * 分组显示等于把作者的"先说什么、后说什么"拆掉了。
+   *
+   * 现在只按 `order` 排；`kind` 退成每行一个小徽标（它还决定注入到哪儿，
+   * 但不再决定"排第几"）。
+   */
+  const entries = useMemo(
+    () => (preset.entries || [])
+      .map((e, i) => ({ e, i }))
+      .sort((a, b) => (a.e.order ?? a.i) - (b.e.order ?? b.i))
+      .map(({ e }) => e),
+    [preset.entries],
+  )
   const stats = presetEntryStats(preset)
+  const onTotal = stats.rules.on + stats.style.on + stats.other.on
+  const injectChars = stats.rules.chars + stats.style.chars
 
   const beginEdit = (e: PresetEntry) => {
     setOpenId(e.id)
@@ -459,71 +505,64 @@ function PresetEntries({
 
   return (
     <div className="space-y-2">
-      {(['rules', 'style', 'other'] as const).map(kind => {
-        const list = entries.filter(e => e.kind === kind)
-        const st = stats[kind]
-        const allOn = st.all > 0 && st.on === st.all
-        return (
-          <div key={kind} className="rounded border border-text-muted/20 bg-black/20 overflow-hidden">
-            <div className="flex items-center gap-2 px-2 py-1.5 border-b border-text-muted/15">
-              <span className="text-[10px] font-serif text-text-secondary shrink-0">{KIND_META[kind].title}</span>
-              <span className="text-[9px] text-text-muted truncate">{KIND_META[kind].hint}</span>
-              <span className="text-[9px] text-text-muted font-mono ml-auto shrink-0">
-                {st.on}/{st.all}{kind === 'other' ? '' : ` · ${st.chars} 字`}
-              </span>
-              {st.all > 0 && (
-                <button
-                  onClick={() => { void setEntries(preset.id, !allOn, kind) }}
-                  data-preset-kind={kind}
-                  aria-label={`${allOn ? '全关' : '全勾'}${KIND_META[kind].title}`}
-                  className="text-[9px] px-1.5 py-0.5 rounded border border-text-muted/30 text-text-muted hover:text-accent-lantern hover:border-accent-lantern/50 shrink-0"
-                  title={allOn ? `把${KIND_META[kind].title}全关掉` : `把${KIND_META[kind].title}全勾上`}
-                >
-                  {allOn ? '全关' : '全勾'}
-                </button>
-              )}
-            </div>
-
-            {list.length ? (
-              <div className="divide-y divide-text-muted/10">
-                {list.map(e => (
-                  <PresetEntryRow
-                    key={e.id}
-                    entry={e}
-                    open={openId === e.id}
-                    editing={draft?.id === e.id}
-                    draft={draft?.id === e.id ? draft : null}
-                    onToggle={() => { void toggleEntry(preset.id, e.id) }}
-                    onExpand={() => setOpenId(openId === e.id ? null : e.id)}
-                    onEdit={() => beginEdit(e)}
-                    onDraftChange={patch => setDraft(d => (d && d.id === e.id ? { ...d, ...patch } : d))}
-                    onSave={commitDraft}
-                    onCancel={() => setDraft(null)}
-                    onDelete={() => {
-                      void deleteEntry(preset.id, e.id)
-                      if (draft?.id === e.id) setDraft(null)
-                      onSay(`已删除「${e.name}」。`)
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="px-2 py-2 text-[10px] text-text-muted/70">这一类还没有条目。</div>
-            )}
-
+      {/* 工具条：总数、按类批量开关、顺序说明 */}
+      <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-text-muted">
+        <span className="font-mono">{onTotal}/{entries.length} 条勾选 · 每轮注入 {injectChars} 字</span>
+        {(['rules', 'style', 'other'] as const).map(kind => {
+          const st = stats[kind]
+          if (!st.all) return null
+          const allOn = st.on === st.all
+          return (
             <button
-              onClick={() => { void addOne(kind) }}
-              data-add-kind={kind}
-              className="w-full flex items-center justify-center gap-1 text-[10px] py-1.5 border-t border-text-muted/15
-                text-text-muted hover:text-accent-lantern transition-colors"
-              title={`往「${KIND_META[kind].title}」里加一条`}
+              key={kind}
+              onClick={() => { void setEntries(preset.id, !allOn, kind) }}
+              data-preset-kind={kind}
+              aria-label={`${allOn ? '全关' : '全勾'}${KIND_META[kind].title}`}
+              className={`px-1.5 py-0.5 rounded border transition-colors
+                ${KIND_META[kind].badge} hover:brightness-125`}
+              title={allOn
+                ? `把「${KIND_META[kind].title}」这一类全关掉`
+                : `把「${KIND_META[kind].title}」这一类全勾上`}
             >
-              <Plus size={11} />
-              添加一条{KIND_META[kind].title}条目
+              {KIND_META[kind].title} {st.on}/{st.all}
             </button>
-          </div>
-        )
-      })}
+          )
+        })}
+        <span className="text-[9px] text-text-muted/60 ml-auto">顺序＝酒馆里的原始顺序</span>
+      </div>
+
+      <div className="rounded border border-text-muted/20 bg-black/20 overflow-hidden divide-y divide-text-muted/10">
+        {entries.map(e => (
+          <PresetEntryRow
+            key={e.id}
+            entry={e}
+            open={openId === e.id}
+            editing={draft?.id === e.id}
+            draft={draft?.id === e.id ? draft : null}
+            onToggle={() => { void toggleEntry(preset.id, e.id) }}
+            onExpand={() => setOpenId(openId === e.id ? null : e.id)}
+            onEdit={() => beginEdit(e)}
+            onDraftChange={patch => setDraft(d => (d && d.id === e.id ? { ...d, ...patch } : d))}
+            onSave={commitDraft}
+            onCancel={() => setDraft(null)}
+            onDelete={() => {
+              void deleteEntry(preset.id, e.id)
+              if (draft?.id === e.id) setDraft(null)
+              onSay(`已删除「${e.name}」。`)
+            }}
+          />
+        ))}
+        <button
+          onClick={() => { void addOne('rules') }}
+          data-add-kind="rules"
+          className="w-full flex items-center justify-center gap-1 text-[10px] py-1.5
+            text-text-muted hover:text-accent-lantern transition-colors"
+          title="加一条（默认是「规则」，保存前可以改落点）"
+        >
+          <Plus size={11} />
+          添加一条
+        </button>
+      </div>
     </div>
   )
 }
@@ -578,6 +617,18 @@ function PresetEntryRow({
             </span>
           )}
         </button>
+
+        {/*
+          落点徽标（2026-11）：列表不再按类分组，所以「这条会不会进提示词」
+          得靠这个小标签一眼看出来 —— 规则/文风是每轮注入，存档不注入。
+        */}
+        <span
+          className={`mt-0.5 text-[9px] px-1 py-0.5 rounded border whitespace-nowrap shrink-0
+            ${KIND_META[editing && draft ? draft.kind : entry.kind].badge}`}
+          title={KIND_META[editing && draft ? draft.kind : entry.kind].hint}
+        >
+          {KIND_META[editing && draft ? draft.kind : entry.kind].title}
+        </span>
 
         {!editing && (
           <button

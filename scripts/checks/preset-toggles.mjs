@@ -126,20 +126,31 @@ check('展开之后仍然启用（点的是 chevron，不是名字）', await ev
 
 const ui = await ev(`(()=>{
   const T = document.body.innerText;
-  const boxes = document.querySelectorAll('[role="checkbox"]');
+  const boxes = [...document.querySelectorAll('[role="checkbox"]')];
   return JSON.stringify({
     boxes: boxes.length,
-    hasGroupRules: /规则/.test(T),
-    hasGroupStyle: /文风/.test(T),
-    hasGroupOther: /其他/.test(T),
+    names: boxes.map(b => b.getAttribute('aria-label')),
+    hasBadgeRules: /规则/.test(T),
+    hasBadgeStyle: /文风/.test(T),
+    hasBadgeOther: /存档/.test(T),
     count22: /2\\/2/.test(T),
-    text: T.slice(0, 400),
+    orderHint: /顺序/.test(T),
   });
 })()`)
 const u = JSON.parse(ui || '{}')
 check('每一条都有一个复选框', u.boxes === 4, `boxes=${u.boxes}`)
-check('三类分组都在（规则 / 文风 / 其他）', u.hasGroupRules && u.hasGroupStyle && u.hasGroupOther)
-check('分组标题报了「勾了几条 / 共几条」', u.count22 === true)
+/*
+  ⚠️ 2026-11：这里原来断言的是"三类分组都在（规则 / 文风 / 其他）"。
+  玩家那句「连预设的顺序都是错乱的」之后，列表改成**一条线性清单**，
+  照酒馆 prompt_order 的原始顺序排 —— 所以现在的判据是"顺序对不对"，
+  而不是"分组在不在"。分类退成每行一个小徽标（规则 / 文风 / 存档）。
+*/
+check('★ 列表顺序 = 作者顺序（不是按落点分组重排）',
+  JSON.stringify(u.names) === JSON.stringify(['规则甲', '规则乙', '文风甲', '作者说明']),
+  JSON.stringify(u.names))
+check('每行带落点徽标（规则 / 文风 / 存档）', u.hasBadgeRules && u.hasBadgeStyle && u.hasBadgeOther)
+check('工具条报了「勾了几条 / 共几条」', u.count22 === true)
+check('页面上写明"顺序＝酒馆原始顺序"', u.orderHint === true)
 await shot('preset-01-open')
 
 console.log('\n=== 3) 点掉「规则甲」：store 与界面都要跟着变 ===')
@@ -198,10 +209,10 @@ const bulk = await ev(`(async()=>{
   });
 })()`)
 const b = JSON.parse(bulk || '{}')
-check('找得到「规则」这一组的全关/全勾按钮', b.step === 'ok', b.step || '')
-check('全勾时按钮显示「全关」', b.labelBefore === '全关', b.labelBefore || '')
+check('找得到「规则」这一类的批量开关', b.step === 'ok', b.step || '')
+check('全勾时 chip 显示「规则 2/2」', b.labelBefore === '规则 2/2', b.labelBefore || '')
 check('★ 全关把这一类都关掉', b.off && b.off.r1 === false && b.off.r2 === false, JSON.stringify(b.off))
-check('全关后按钮变成「全勾」', b.labelMid === '全勾', b.labelMid || '')
+check('全关后 chip 变成「规则 0/2」', b.labelMid === '规则 0/2', b.labelMid || '')
 check('★ 全勾把它们又都勾回来', b.on && b.on.r1 === true && b.on.r2 === true, JSON.stringify(b.on))
 check('★ 勾回来之后 rules 快照恢复完整', b.rulesBack === true)
 

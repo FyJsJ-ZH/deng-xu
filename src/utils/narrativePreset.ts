@@ -44,9 +44,19 @@ function joinBlock(base: string, extra: string): string {
  * `【条目名】\n正文`，条目之间空一行 —— 与 `stPreset.ts` 的 `fill()` 一模一样。
  * 这不是巧合：勾选全部打开时，拼出来的必须与改之前**逐字相同**，
  * 否则"我什么也没动，文风却变了"。测试里钉着这件事。
+ *
+ * ## 为什么这里要按 `order` 再排一次（2026-11）
+ *
+ * 数组顺序本来就已经是作者 `prompt_order` 的顺序了，但**玩家会编辑、会新增**，
+ * 也可能从别处导入一份没有 `order` 的旧数据。显式排一次，
+ * 让"注入顺序 = 作者写的顺序"这件事不依赖任何隐含约定。
  */
 export function renderPresetEntries(preset: NarrativePreset, kind: PresetEntry['kind']): string {
-  const list = (preset.entries || []).filter(e => e.enabled && e.kind === kind && e.content.trim())
+  const list = (preset.entries || [])
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => e.enabled && e.kind === kind && e.content.trim())
+    .sort((a, b) => (a.e.order ?? a.i) - (b.e.order ?? b.i))
+    .map(({ e }) => e)
   if (!list.length) return ''
   return list.map(e => `【${e.name}】\n${e.content}`).join('\n\n')
 }

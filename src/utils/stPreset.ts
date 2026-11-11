@@ -179,6 +179,8 @@ interface StEntry {
   name: string
   content: string
   enabled: boolean
+  /** 在作者 `prompt_order` 里的位置（0 起）—— 后面拼提示词、排列表都按它 */
+  order: number
 }
 
 /**
@@ -304,6 +306,8 @@ function readEntries(raw: JsonObject): StEntry[] {
       name: asText(p.name).trim() || id.slice(0, 24),
       content,
       enabled: true,
+      // 真正的位置在下面按 order 排完才知道
+      order: -1,
     })
   }
 
@@ -326,11 +330,22 @@ function readEntries(raw: JsonObject): StEntry[] {
     for (const [id, p] of rawById) {
       const content = stripStMacros(asText(p.content).trim(), vars)
       if (!content || isStructuralMarker(content)) continue
-      ordered.push({ id, name: asText(p.name).trim() || id.slice(0, 24), content, enabled: true })
+      ordered.push({
+        id,
+        name: asText(p.name).trim() || id.slice(0, 24),
+        content,
+        enabled: true,
+        order: -1,
+      })
     }
   }
 
-  return ordered
+  /*
+    顺序在这里定死：`ordered` 现在就是**酒馆发出去的那条序列**
+    （作者方案里的先后 + 方案外的按原文件顺序），下标即 `order`。
+    后面所有环节（列表显示、三段快照、注入）都只认这个数。
+  */
+  return ordered.map((e, i) => ({ ...e, order: i }))
 }
 
 /**
@@ -500,22 +515,34 @@ export function stPresetToNarrativePreset(raw: unknown, fileName = ''): Narrativ
     kind,
     content: e.content,
     enabled: kept,
+    order: e.order,
     ...(kept ? {} : { dropped: true }),
   })
 
   /*
-    顺序：先规则、再文风、最后其他 —— 与下面三段快照的排法一致，
-    免得玩家在列表里看到的顺序和实际注入顺序对不上。
-    组内保持作者原来的顺序（`fill()` 的 `used` 是 filter 出来的，原序不变）。
+    ── 条目顺序：**照酒馆原来那条序列**（2026-11，玩家报「连预设的顺序都是错乱的」）──
+
+    上一版按「规则 → 文风 → 其他」重排，还把被预算裁掉的条目统统赶到组尾。
+    玩家看到的清单和他那份预设对不上：
+    「user → 头部破甲 → 格式要求结束 → 主提示下半 → 自定义字数 → 文风开始」
+    被拆成三段互不相干的东西；「指南（可改）」明明作者排在前头，因为超预算被甩到最后。
+
+    现在：`entries` 本来就是 `prompt_order` 的顺序（`readEntries` 已按它排好），
+    一条条 map 过去就行。`dropped` 也留在原位 —— 它只是"没勾上"，不是"搬走了"。
   */
-  const entryList: PresetEntry[] = [
-    ...rulesPart.used.map(e => toEntry(e, 'rules', true)),
-    ...rulesPart.dropped.map(e => toEntry(e, 'rules', false)),
-    ...stylePart.used.map(e => toEntry(e, 'style', true)),
-    ...stylePart.dropped.map(e => toEntry(e, 'style', false)),
-    ...lorePart.used.map(e => toEntry(e, 'other', true)),
-    ...lorePart.dropped.map(e => toEntry(e, 'other', false)),
-  ]
+  const kept = new Set([
+    ...rulesPart.used, ...stylePart.used, ...lorePart.used,
+  ].map(e => e.id))
+  const kindOf = new Map<string, PresetEntry['kind']>()
+  for (const e of rules) kindOf.set(e.id, 'rules')
+  for (const e of style) kindOf.set(e.id, 'style')
+  for (const e of world) kindOf.set(e.id, 'other')
+
+  const entryList: PresetEntry[] = entries.map(e => toEntry(
+    e,
+    kindOf.get(e.id) ?? 'other',
+    kept.has(e.id),
+  ))
 
   return {
     id: makeId('preset'),

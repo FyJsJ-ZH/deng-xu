@@ -325,6 +325,24 @@ describe('逐条勾选 · 注入只认勾着的', () => {
     expect(withNarrativePreset(world, off)).toBe(world)
   })
 
+  it('★ 注入顺序按 `order`，不按数组下标（2026-11 玩家报「顺序错乱」）', () => {
+    // 故意把数组顺序和作者顺序反过来
+    const p2 = presetWithEntries([
+      entry('b', 'rules', '第二句', { order: 1 }),
+      entry('a', 'rules', '第一句', { order: 0 }),
+      entry('c', 'rules', '第三句', { order: 2 }),
+    ])
+    expect(renderPresetEntries(p2, 'rules')).toBe('【条目a】\n第一句\n\n【条目b】\n第二句\n\n【条目c】\n第三句')
+  })
+
+  it('没有 `order` 的旧数据按数组下标兜底（不至于乱掉）', () => {
+    const p3 = presetWithEntries([
+      entry('x', 'rules', '甲'),
+      entry('y', 'rules', '乙'),
+    ])
+    expect(renderPresetEntries(p3, 'rules')).toBe('【条目x】\n甲\n\n【条目y】\n乙')
+  })
+
   it('没有 entries 的旧预设仍然走整块字符串（向后兼容）', () => {
     const out = withNarrativePreset(world, presetOf())
     expect(out.rules).toContain('不许替玩家做决定')
