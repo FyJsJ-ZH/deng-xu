@@ -19,6 +19,8 @@
  * 不猜。
  */
 
+import { isLimitFinish } from '@/utils/truncation'
+
 export interface EmptyNarrativeInfo {
   /** 流里最后一帧的 finish_reason；`length` = 撞到 max_tokens */
   finishReason?: string
@@ -38,7 +40,16 @@ export function describeEmptyNarrative(info: EmptyNarrativeInfo): string {
     ? `${Math.floor(info.maxTokens)} token`
     : '当前上限'
   const hasReasoning = !!info.reasoning?.trim()
-  const hitLimit = info.finishReason === 'length'
+  /*
+    ⚠️ **别只认小写 `length`**（2026-11，玩家连报两轮「正文回空」）。
+
+    各家对"撞到输出上限"的写法不一样：OpenAI/DeepSeek 是 `length`，
+    Gemini 与它的兼容层/中转常用 `MAX_TOKENS`。只认 `length` 的后果是：
+    额度不够那一轮被判成"没撞上限"，于是走到兜底那句
+    「模型返回了空内容，请检查模型名称与接口地址」——
+    玩家去查一个没坏的东西，真正的原因被藏起来。判据见 `isLimitFinish`。
+  */
+  const hitLimit = isLimitFinish(info.finishReason)
 
   if (hitLimit && hasReasoning) {
     return `思考链把 ${limit} 的额度用完了，正文一个字都还没开始写。`

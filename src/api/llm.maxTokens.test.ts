@@ -80,7 +80,7 @@ describe('max_tokens · 按目标字数推算额度', () => {
 
   it('★ 700 字的短篇：思考模型也要给到 6196，否则思维链把额度吃光 → 空正文', () => {
     // 700 × 3 = 2100（旧值）连实测的 2929 思考 token 都不够
-    expect(suggestMaxTokens(700, 'gemini-3.8-flash')).toBe(6196)
+    expect(suggestMaxTokens(700, 'gemini-3.8-flash')).toBe(16384)
     expect(suggestMaxTokens(700, 'gpt-4o')).toBe(1400)
   })
 

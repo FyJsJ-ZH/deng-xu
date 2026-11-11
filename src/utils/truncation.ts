@@ -50,6 +50,29 @@ const MID_PUNCT = /[，、：；,;:]\s*$/
  * @param expectedChars 该世界配置的期望字数（用于判断"明显偏短"）
  * @param finishReason  流式最后一个 chunk 的 `finish_reason`；`length` 表示撞到 token 上限
  */
+/**
+ * 服务商是不是明说「撞到输出上限了」。
+ *
+ * ## 为什么不能只认小写 `length`（2026-11，玩家连报两轮「正文回空」）
+ *
+ * 各家写这一句的方式不一样：
+ *
+ * | 服务商 | `finish_reason` |
+ * |---|---|
+ * | OpenAI / DeepSeek | `length` |
+ * | Gemini（含它的 OpenAI 兼容层、以及各种中转） | `MAX_TOKENS` |
+ * | 部分网关 | `max_output_tokens` / `max_completion_tokens` |
+ *
+ * 原来两处判断（`detectTruncation` 与 `describeEmptyNarrative`）都写死小写
+ * `'length'`。撞上限的那一轮于是被判成"没撞"：正文一个字都没有，
+ * 而归因落到兜底那句「模型返回了空内容，请检查模型名称与接口地址」——
+ * 真正的原因（额度不够）被藏起来，玩家只能去查一个没坏的东西。
+ */
+export function isLimitFinish(reason?: string): boolean {
+  return /^(length|max_tokens|max_output_tokens|max_completion_tokens|token_limit)$/i
+    .test(String(reason || '').trim())
+}
+
 export function detectTruncation(
   text: string,
   expectedChars?: number,
@@ -67,7 +90,7 @@ export function detectTruncation(
     于是文本看着完整、字数又不够，两个弱判据都不成立 —— 判定为"没截断"，
     续写逻辑也就不触发。玩家看到的就是「明明要 1800 字，它给我 900」。
   */
-  if (String(finishReason || '').toLowerCase() === 'length') {
+  if (isLimitFinish(finishReason)) {
     return {
       truncated: true,
       confidence: 'high',

@@ -128,7 +128,7 @@ describe('isGeminiLike · 认得出 Gemini', () => {
   it('★ Gemini 默认就在思考 → auto 判定为 true，额度按 3 倍', () => {
     // 实测：请求里一个字都没提 thinking，返回照样带整屏 reasoning_content
     expect(willThink('gemini-3.8-flash', 'custom', 'auto')).toBe(true)
-    expect(suggestMaxTokens(1800, 'gemini-3.8-flash')).toBe(9496)
+    expect(suggestMaxTokens(1800, 'gemini-3.8-flash')).toBe(16384)
     expect(suggestMaxTokens(1800, 'gpt-4o')).toBe(3600)
     // 玩家明确关掉时仍然听话（能不能真关上是另一回事，见下面的说明）
     expect(willThink('gemini-3.8-flash', 'custom', 'off')).toBe(false)
@@ -144,7 +144,7 @@ describe('isGeminiLike · 认得出 Gemini', () => {
  */
 describe('手填额度 · 思考模型要先垫一笔', () => {
   it('★ 填 4096 + Gemini → 实际发 8192（多了思维链那 4096）', () => {
-    expect(withThinkingReserve(4096, 'gemini-3.8-flash')).toBe(8192)
+    expect(withThinkingReserve(4096, 'gemini-3.8-flash')).toBe(16384)
     expect(withThinkingReserve(4096, 'deepseek-reasoner')).toBe(8192)
   })
 
@@ -157,10 +157,11 @@ describe('手填额度 · 思考模型要先垫一笔', () => {
     expect(withThinkingReserve(4096, 'gemini-3.8-flash', '', 'off')).toBe(4096)
   })
 
-  it('封顶 16384，脏数据当作 0', () => {
+  it('★ 封顶 16384；脏数据也照样顶满（Gemini 那边不精打细算）', () => {
     expect(withThinkingReserve(15000, 'gemini-3.8-flash')).toBe(16384)
-    expect(withThinkingReserve(Number.NaN, 'gemini-3.8-flash')).toBe(4096)
-    expect(withThinkingReserve(-1, 'gemini-3.8-flash')).toBe(4096)
+    // 填 0 / NaN / 负数 = 没填，对 Gemini 仍给满 —— 它思考量不可控，给少了就是空正文
+    expect(withThinkingReserve(Number.NaN, 'gemini-3.8-flash')).toBe(16384)
+    expect(withThinkingReserve(-1, 'gemini-3.8-flash')).toBe(16384)
   })
 })
 

@@ -35,6 +35,19 @@ describe('空正文归因', () => {
     expect(msg).not.toContain('思考链')
   })
 
+  /*
+    ⚠️ 2026-11：玩家连报两轮「正文回空」，而兜底那句让他去查模型名与地址 ——
+    两样都是好的。真正的原因是额度不够，只是**Gemini 把这件事写成了 `MAX_TOKENS`**，
+    而我们只认小写 `length`，于是判成"没撞上限"，落到兜底。
+  */
+  it('★ Gemini 的 MAX_TOKENS 也算撞上限（别因为大小写与写法不同就漏判）', () => {
+    for (const r of ['MAX_TOKENS', 'max_tokens', 'MAX_OUTPUT_TOKENS', 'max_completion_tokens']) {
+      const msg = describeEmptyNarrative({ finishReason: r, maxTokens: 6196 })
+      expect(msg, r).toContain('6196')
+      expect(msg, r).toContain('上限')
+    }
+  })
+
   it('只有思维链、没有 finish_reason（部分中转不给） → 仍然指向额度与思考模式', () => {
     const msg = describeEmptyNarrative({ reasoning: '想了一大段', thinkingLikely: true, maxTokens: 3000 })
     expect(msg).toMatch(/额度|思考模式/)

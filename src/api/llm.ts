@@ -346,17 +346,36 @@ export const MAX_OUTPUT_TOKENS_CAP = 65536
 const THINKING_RESERVE = 4096
 
 /**
+ * 给「思考量不可控」的模型直接顶到上限。
+ *
+ * ## 为什么不能按比例给（2026-11，实测数据）
+ *
+ * 同一个模型、同一份提示词，思考量可以差一倍以上：
+ *
+ * | `max_tokens` | 思考 | 正文 | 结果 |
+ * |---|---|---|---|
+ * | 6196 | 4724 字符 | 1200 字 | 成功（险） |
+ * | 16384 | 3131 字符 | 1203 字 | 成功 |
+ * | 500 | **10546 字符** | **0 字** | 撞上限，`finish_reason=length` |
+ *
+ * 第三行是关键：思考从 4724 涨到 10546（≈3000~5000 token），
+ * 而正文一个字都没开始。任何"字数 × N + 固定预留"的公式在这种波动下都会漏。
+ *
+ * 未用完的额度**不收费**，所以对这类模型不必精打细算 —— 直接给满。
+ */
+const UNBOUNDED_THINKING_CAP = 16384
+
+/**
  * 玩家手填的「单次回复上限」→ 实际发出去的额度。
  *
- * ## 为什么手填的值也要加这一笔（2026-11，玩家报「用 gemini 会返回空内容」）
+ * ## 为什么手填的值也要动（2026-11，玩家报「用 gemini 会返回空内容」）
  *
  * 玩家填这个数的本意是"别写太长"，但它在报文里是 `max_tokens` ——
- * **思维链 + 正文的总和**。Gemini 走中转时思考要吃掉 2900 左右，
- * 他填 4096，正文就只剩 1100 token 的空间（约 700 字），稍一展开就整轮空。
+ * **思维链 + 正文的总和**。Gemini 走中转时思考实测 2265~5000 token，
+ * 他填 4096，正文就只剩一点点空间，稍一展开就整轮空。
  *
- * 所以对会思考的模型，把他填的值当成"正文那头"的额度，另垫一笔给思维链。
- * 代价是实际发出去的数字比他填的大 —— 但没写完的额度本来就不收费，
- * 而"填 4096 结果永远空"是他完全无法理解的一种失败。
+ * 所以：会思考的模型把他填的值当"正文那头"，另垫一笔；
+ * 思考量不可控的（Gemini 系）直接顶到 16384 —— 见 `UNBOUNDED_THINKING_CAP`。
  */
 export function withThinkingReserve(
   configured: number,
@@ -365,8 +384,9 @@ export function withThinkingReserve(
   thinking: ThinkingMode = 'auto',
 ): number {
   const base = Math.max(0, Math.floor(Number.isFinite(configured) ? configured : 0))
+  if (isGeminiLike(model) && thinking !== 'off') return UNBOUNDED_THINKING_CAP
   const want = willThink(model, provider, thinking) ? base + THINKING_RESERVE : base
-  return Math.min(16384, want)
+  return Math.min(UNBOUNDED_THINKING_CAP, want)
 }
 
 /**
@@ -397,10 +417,16 @@ export function suggestMaxTokens(
 ): number {
   const chars = Number.isFinite(replyLength) && replyLength > 0 ? replyLength : 1800;
   const thinks = willThink(model, provider, thinking);
+  /*
+    Gemini 系（含中转）的思考量**不可控**：同一份提示词实测 4724 字符到 10546 字符，
+    任何按比例给的额度都会漏一次。未用完的额度不收费，所以直接给满 ——
+    这一条是 2026-11 玩家反复报「正文回空」之后加的，见 `UNBOUNDED_THINKING_CAP`。
+  */
+  if (thinks && isGeminiLike(model)) return UNBOUNDED_THINKING_CAP;
   const per = thinks ? 3 : 2;
   const base = Math.ceil(chars * per);
   const want = thinks ? base + THINKING_RESERVE : base;
-  return Math.min(16384, Math.max(1024, want));
+  return Math.min(UNBOUNDED_THINKING_CAP, Math.max(1024, want));
 }
 
 /**

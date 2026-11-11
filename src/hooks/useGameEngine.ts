@@ -20,7 +20,7 @@ import { factOwner } from '@/utils/facts'
 import { withNarrativePreset } from '@/utils/narrativePreset'
 import { LlmError, classifyLlmError } from '@/api/llmErrors'
 import type { LLMConfig, WorldCard } from '@/types/cards'
-import { detectTruncation } from '@/utils/truncation'
+import { detectTruncation, isLimitFinish } from '@/utils/truncation'
 import {
   needsArchive,
   isHistoryPressureHigh,
@@ -1027,6 +1027,25 @@ export function useGameEngine(): GameEngineReturn {
     // 本轮开始就把"上一轮的用量"清掉：留着它会让玩家以为本轮已经花了那么多
     useGameStore.getState().clearLastUsage()
 
+    /*
+      ── 长时间等待要有进度（2026-11）──
+
+      这个通道单轮实测 90~175 秒，而界面上只有一个转圈 ——
+      玩家会以为卡死了，然后切后台、锁屏，请求就此真正中断。
+      所以过了 20 秒就把"已经等了多久 + 别切走"说出来。
+
+      定时器在 finally 里清；`statusMessage` 会被结算阶段的提示覆盖，
+      那没问题 —— 这里只是一直往下刷同一个意思。
+    */
+    const waitStartedAt = Date.now()
+    const waitTimer = setInterval(() => {
+      const secs = Math.round((Date.now() - waitStartedAt) / 1000)
+      if (secs < 20) return
+      useUIStore.getState().setStatusMessage(
+        `等待模型回话…已 ${secs} 秒（这个模型会先思考很久，别切走页面）`,
+      )
+    }, 5000)
+
     // 摘要节流：每 6 轮压缩一次。用"已经写完的轮数"而不是组件本地的计数器 ——
     // 本地计数器在回溯时必须手动重置，一旦忘了就会按错误的节奏跑摘要
     const completedTurns = countTurns(useGameStore.getState().history)
@@ -1301,6 +1320,16 @@ export function useGameEngine(): GameEngineReturn {
         streamed: boolean
         /** 非流式的原始回包：`recordUsage` 从它里面取真实用量 */
         response?: any
+        /**
+         * 原始回包的前几百字（只在**没拿到内容**时有用）。
+         *
+         * 2026-11 玩家报「正文回空，但我这边中转只是云反代、不排队」。
+         * 本地用同一家中转、同一个模型实测三次都拿得到正文（89~175 秒），
+         * 说明服务端本身没问题 —— 那问题就在"这一次回包里到底是什么"。
+         * 没有这个字段，我们能说的只有"空"，玩家只能去猜；
+         * 有这个字段，他就能一眼看出中转回的是空壳、还是错误对象。
+         */
+        rawPreview?: string
       }
 
       const requestNarrative = async (stream: boolean): Promise<NarrativeAttempt> => {
@@ -1318,6 +1347,9 @@ export function useGameEngine(): GameEngineReturn {
           // 一次性把全文交给界面：没有流，但至少比一直空白好
           if (content) setStreamingContent(content)
           if (reasoning && config.showReasoning) setStreamingReasoning(reasoning)
+          const rawPreview = (() => {
+            try { return JSON.stringify(res).slice(0, 300) } catch { return '' }
+          })()
           return {
             text: content,
             reasoning,
@@ -1325,6 +1357,7 @@ export function useGameEngine(): GameEngineReturn {
             streamUsage: null,
             streamed: false,
             response: res,
+            rawPreview,
           }
         }
 
@@ -1436,6 +1469,22 @@ export function useGameEngine(): GameEngineReturn {
         attempt = await requestNarrative(false)
       }
 
+      /*
+        ── 整段返回也是空壳时，再给一次（2026-11）──
+
+        区分两种"空"，处理方式相反：
+
+        - **撞上限**（`MAX_TOKENS` / `length`）→ 重试没意义，同样的额度还是同样的结果，
+          该做的是把原因说出来（见 `describeEmptyNarrative`）；
+        - **回了一个空壳**（连 finish_reason 都没有）→ 多半是中转/反代那一次没转成功，
+          立刻再要一次往往就有了。实测这个通道正常时一次要 90~175 秒，
+          而"空壳"是立刻回来的，所以这一次重试几乎不花时间。
+      */
+      if (!attempt.text.trim() && !isLimitFinish(attempt.finishReason)) {
+        useUIStore.getState().setStatusMessage('服务商这次回了空包，正在重试…')
+        attempt = await requestNarrative(false)
+      }
+
       const fullNarrative = attempt.text
       const fullReasoning = attempt.reasoning
       const streamFinishReason = attempt.finishReason
@@ -1455,12 +1504,25 @@ export function useGameEngine(): GameEngineReturn {
         "两条路都没拿到内容"的意思（见 engineErrors 里的措辞）。
       */
       if (!fullNarrative.trim()) {
-        throw new Error(describeEmptyNarrative({
+        const explanation = describeEmptyNarrative({
           finishReason: streamFinishReason,
           reasoning: fullReasoning,
           maxTokens: narrativeMaxTokens,
           thinkingLikely: willThink(config.narrativeModel, config.provider, config.thinking ?? 'auto'),
-        }))
+        })
+        /*
+          把**原始回包**一起交出来（2026-11）。
+
+          玩家说「链接有效、正文回空、我的中转只是云反代不会排队」——
+          这种情况下"空"这个字对他没有任何帮助：他不知道是中转回了空壳、
+          回了错误对象、还是回了别家格式。附上前 300 字，他一眼就能判断，
+          也能原样发给中转方。这段只在失败路径上出现，正常玩看不到。
+        */
+        throw new Error(
+          attempt.rawPreview
+            ? `${explanation}\n服务商原始回包（前 300 字）：${attempt.rawPreview}`
+            : explanation,
+        )
       }
 
       /*
@@ -1796,6 +1858,7 @@ export function useGameEngine(): GameEngineReturn {
       setLastError(formatEngineError(error))
       setIsAnalyzingData(false)
     } finally {
+      clearInterval(waitTimer)
       setIsProcessing(false)
       setStreamingContent(null)
       setStreamingReasoning(null)
