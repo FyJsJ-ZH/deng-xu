@@ -1030,21 +1030,21 @@ export function useGameEngine(): GameEngineReturn {
     /*
       ── 长时间等待要有进度（2026-11）──
 
-      这个通道单轮实测 90~175 秒，而界面上只有一个转圈 ——
+      这个通道单轮实测 54~175 秒，而界面上只有一个转圈 ——
       玩家会以为卡死了，然后切后台、锁屏，请求就此真正中断。
-      所以过了 20 秒就把"已经等了多久 + 别切走"说出来。
 
-      定时器在 finally 里清；`statusMessage` 会被结算阶段的提示覆盖，
-      那没问题 —— 这里只是一直往下刷同一个意思。
+      节奏是**一分钟刷一次**：秒数一直在变的那种提示看着像在催，
+      而这里真正要说的只有一句"还活着、别切走"，一分钟说一遍正好。
+
+      定时器在 finally 里清。
     */
     const waitStartedAt = Date.now()
     const waitTimer = setInterval(() => {
       const secs = Math.round((Date.now() - waitStartedAt) / 1000)
-      if (secs < 20) return
       useUIStore.getState().setStatusMessage(
         `等待模型回话…已 ${secs} 秒（这个模型会先思考很久，别切走页面）`,
       )
-    }, 5000)
+    }, 60_000)
 
     // 摘要节流：每 6 轮压缩一次。用"已经写完的轮数"而不是组件本地的计数器 ——
     // 本地计数器在回溯时必须手动重置，一旦忘了就会按错误的节奏跑摘要
