@@ -366,6 +366,41 @@ const THINKING_RESERVE = 4096
 const UNBOUNDED_THINKING_CAP = 16384
 
 /**
+ * Gemini 系（含中转）叙事一轮到底给多少 —— **给满**。
+ *
+ * ## 为什么 16384 也不是安全线（2026-11，第二次实测）
+ *
+ * 上一轮把 Gemini 顶到 16384 之后玩家又报了一次「成功输出一次，重试就空」，
+ * 而他截下来的原始回包是这样的：
+ *
+ * ```json
+ * {"choices":[{"index":0,"message":{"role":"assistant","content":""},
+ *              "finish_reason":"stop"}]}
+ * ```
+ *
+ * 注意 `finish_reason` 是 `stop` 而不是 `length`：服务商认为这一轮**正常结束**了，
+ * 只是 `content` 是空字符串。翻译过来是「它一直在想，想到自己觉得该收尾，
+ * 一个字都没落笔」。
+ *
+ * 也就是说，对这类模型**不存在一个"够用"的数**：16384 有时够（思考 3076 字符），
+ * 有时一次就吃光（500 额度那次实测思考 10546 字符）。额度越大，它反而越早收敛
+ * （16384 时思考量比 6196 时还少），所以唯一稳的做法是把抽屉全拉开。
+ *
+ * 65536 是 Gemini 官方这一档的 `maxOutputTokens` 上限，未用完的额度不收费；
+ * 撞到更低的中转由 `llmChat` 按报错里的真实上限自动降级重发。
+ */
+const GEMINI_OUTPUT_BUDGET = MAX_OUTPUT_TOKENS_CAP
+
+/**
+ * Gemini 系「要一份 JSON」时的额度。
+ *
+ * 结算的输出只有几百字，但它读进来的是整份状态的 JSON，思考比叙事更重
+ * （实测 `reasoning_tokens: 2929` 只是常规水平）。给 32768 而不是顶到 65536，
+ * 是因为结构化输出真写长了反而更难解析 —— 留一档余量的同时不让它跑野。
+ */
+const GEMINI_JSON_BUDGET = 32768
+
+/**
  * 玩家手填的「单次回复上限」→ 实际发出去的额度。
  *
  * ## 为什么手填的值也要动（2026-11，玩家报「用 gemini 会返回空内容」）
@@ -375,7 +410,7 @@ const UNBOUNDED_THINKING_CAP = 16384
  * 他填 4096，正文就只剩一点点空间，稍一展开就整轮空。
  *
  * 所以：会思考的模型把他填的值当"正文那头"，另垫一笔；
- * 思考量不可控的（Gemini 系）直接顶到 16384 —— 见 `UNBOUNDED_THINKING_CAP`。
+ * 思考量不可控的（Gemini 系）直接顶到 `GEMINI_OUTPUT_BUDGET`（65536）。
  */
 export function withThinkingReserve(
   configured: number,
@@ -384,7 +419,7 @@ export function withThinkingReserve(
   thinking: ThinkingMode = 'auto',
 ): number {
   const base = Math.max(0, Math.floor(Number.isFinite(configured) ? configured : 0))
-  if (isGeminiLike(model) && thinking !== 'off') return UNBOUNDED_THINKING_CAP
+  if (isGeminiLike(model) && thinking !== 'off') return GEMINI_OUTPUT_BUDGET
   const want = willThink(model, provider, thinking) ? base + THINKING_RESERVE : base
   return Math.min(UNBOUNDED_THINKING_CAP, want)
 }
@@ -406,7 +441,8 @@ export function withThinkingReserve(
  * 服务商的这个模型默认在思考（`isThinkingByDefault`，DeepSeek V4）、
  * 或者它是 Gemini 系（`isGeminiLike`，实测默认就吐 `reasoning_content`）。
  *
- * 下限 1024，上限 16384（多数服务商的单次输出上限，超了会被直接拒）。
+ * 下限 1024，上限 16384（多数服务商的单次输出上限，超了会被直接拒；
+ * Gemini 系例外，见 `GEMINI_OUTPUT_BUDGET`）。
  * 玩家在设置里填了 `maxTokens` 时以他填的为准。
  */
 export function suggestMaxTokens(
@@ -422,7 +458,7 @@ export function suggestMaxTokens(
     任何按比例给的额度都会漏一次。未用完的额度不收费，所以直接给满 ——
     这一条是 2026-11 玩家反复报「正文回空」之后加的，见 `UNBOUNDED_THINKING_CAP`。
   */
-  if (thinks && isGeminiLike(model)) return UNBOUNDED_THINKING_CAP;
+  if (thinks && isGeminiLike(model)) return GEMINI_OUTPUT_BUDGET;
   const per = thinks ? 3 : 2;
   const base = Math.ceil(chars * per);
   const want = thinks ? base + THINKING_RESERVE : base;
@@ -445,7 +481,14 @@ export function suggestJsonMaxTokens(model = '', baseUrl = '', configured?: numb
   const user = typeof configured === 'number' && Number.isFinite(configured) && configured > 0
     ? Math.floor(configured)
     : 0;
-  const thinks = isGeminiLike(model, baseUrl) || isReasonerModel(model);
+  /*
+    Gemini 系单独一档（2026-11）：它的思考量不可控，16384 都可能被吃光 ——
+    结算空回的表现是「正文写好了，但数据没结算」，比叙事空回更让人摸不着头脑。
+  */
+  if (isGeminiLike(model, baseUrl)) {
+    return Math.min(MAX_OUTPUT_TOKENS_CAP, Math.max(user, GEMINI_JSON_BUDGET));
+  }
+  const thinks = isReasonerModel(model);
   const floor = 4096 * (thinks ? 4 : 2);
   return Math.min(16384, Math.max(user, floor));
 }
@@ -606,8 +649,8 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
    * 所以请求体不能像以前那样在循环外构建一次 —— 得跟着它走。
    */
   let effectiveMaxTokens = opts.maxTokens ?? config.maxTokens;
-  /** 降级重发只做一次：压到上限还被拒，那就是别的问题了 */
-  let limitRetryLeft = 1;
+  /** 降级重发最多两次：65536 → 32768 → 16384。压到这个数还被拒，就是别的问题了 */
+  let limitRetryLeft = 2;
 
   /**
    * 把 `response_format` 摘掉重发的机会（2026-11）。
@@ -660,14 +703,24 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
       if (
         limitRetryLeft > 0
         && info.kind === 'max_tokens'
-        && info.outputLimit !== undefined
         && effectiveMaxTokens !== undefined
-        && effectiveMaxTokens > info.outputLimit
       ) {
-        limitRetryLeft -= 1;
-        effectiveMaxTokens = info.outputLimit;
-        attempt -= 1;
-        continue;
+        /*
+          优先用服务商自己写的那个数（`info.outputLimit`）。
+          报错里没带数字时（中转的 400 常常只有一句话），就**减半**再试 ——
+          给满 65536 是有代价的：不是每家都真收得了这个数，
+          而"额度被拒"和"额度不够"必须都能活下来。
+          减半两次仍被拒，才把这个错误交给玩家。
+        */
+        const next = info.outputLimit !== undefined
+          ? info.outputLimit
+          : Math.max(THINKING_RESERVE, Math.floor(effectiveMaxTokens / 2))
+        if (next < effectiveMaxTokens) {
+          limitRetryLeft -= 1
+          effectiveMaxTokens = next
+          attempt -= 1
+          continue
+        }
       }
 
       /*

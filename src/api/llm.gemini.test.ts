@@ -125,10 +125,16 @@ describe('isGeminiLike · 认得出 Gemini', () => {
     expect(isGeminiLike('gpt-4o', 'https://catiecli.sukaka.top/v1')).toBe(false)
   })
 
-  it('★ Gemini 默认就在思考 → auto 判定为 true，额度按 3 倍', () => {
+  it('★ Gemini 默认就在思考 → auto 判定为 true，额度**给满**', () => {
     // 实测：请求里一个字都没提 thinking，返回照样带整屏 reasoning_content
     expect(willThink('gemini-3.8-flash', 'custom', 'auto')).toBe(true)
-    expect(suggestMaxTokens(1800, 'gemini-3.8-flash')).toBe(16384)
+    /*
+      16384 曾经是这里的答案，直到玩家第二次报「成功一次、重试就空」——
+      抓到的回包是 `finish_reason: "stop"` + `content: ""`：
+      模型一直想、想完收尾、一个字没写。这类模型的思考量没有上限可言，
+      所以给满（65536 = `MAX_OUTPUT_TOKENS_CAP`），未用完不收费。
+    */
+    expect(suggestMaxTokens(1800, 'gemini-3.8-flash')).toBe(65536)
     expect(suggestMaxTokens(1800, 'gpt-4o')).toBe(3600)
     // 玩家明确关掉时仍然听话（能不能真关上是另一回事，见下面的说明）
     expect(willThink('gemini-3.8-flash', 'custom', 'off')).toBe(false)
@@ -143,8 +149,8 @@ describe('isGeminiLike · 认得出 Gemini', () => {
  * 稍一展开整轮就空。所以对会思考的模型，他的手填值要当成"正文那头"的额度。
  */
 describe('手填额度 · 思考模型要先垫一笔', () => {
-  it('★ 填 4096 + Gemini → 实际发 8192（多了思维链那 4096）', () => {
-    expect(withThinkingReserve(4096, 'gemini-3.8-flash')).toBe(16384)
+  it('★ 填 4096 + Gemini → 不管填多少都顶到上限', () => {
+    expect(withThinkingReserve(4096, 'gemini-3.8-flash')).toBe(65536)
     expect(withThinkingReserve(4096, 'deepseek-reasoner')).toBe(8192)
   })
 
@@ -157,11 +163,11 @@ describe('手填额度 · 思考模型要先垫一笔', () => {
     expect(withThinkingReserve(4096, 'gemini-3.8-flash', '', 'off')).toBe(4096)
   })
 
-  it('★ 封顶 16384；脏数据也照样顶满（Gemini 那边不精打细算）', () => {
-    expect(withThinkingReserve(15000, 'gemini-3.8-flash')).toBe(16384)
+  it('★ 玩家填 65536 也不会超出去（硬闸）；脏数据照样顶满', () => {
+    expect(withThinkingReserve(999999, 'gemini-3.8-flash')).toBe(65536)
     // 填 0 / NaN / 负数 = 没填，对 Gemini 仍给满 —— 它思考量不可控，给少了就是空正文
-    expect(withThinkingReserve(Number.NaN, 'gemini-3.8-flash')).toBe(16384)
-    expect(withThinkingReserve(-1, 'gemini-3.8-flash')).toBe(16384)
+    expect(withThinkingReserve(Number.NaN, 'gemini-3.8-flash')).toBe(65536)
+    expect(withThinkingReserve(-1, 'gemini-3.8-flash')).toBe(65536)
   })
 })
 

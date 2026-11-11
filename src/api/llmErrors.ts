@@ -279,6 +279,27 @@ export function classifyLlmError(
         outputLimit, raw,
       }
     }
+    /*
+      ── 提到了 max_tokens，但没给数字（2026-11）──
+
+      Gemini 系现在一律给满 65536（见 `GEMINI_OUTPUT_BUDGET`），
+      而中转的 400 常常只有一句 "max_tokens is too large" —— 没有任何数字。
+
+      这种也要归到 `max_tokens` 类，`llmChat` 才会**减半重发**
+      （65536 → 32768 → 16384）。归到通用 400 的后果是：
+      模型一个字都没开始写，玩家却拿到一句「请求被服务商拒绝」，
+      而我们明明可以自己把额度压下去。
+
+      排在上下文超长前面判：两者报错都带 token 字样，
+      但一个该压 max_tokens、一个该砍历史，判反了就白忙。
+    */
+    if (MAX_TOKENS_RE.test(body)) {
+      return {
+        kind: 'max_tokens', retryable: false, status,
+        message: serverMsg || '输出额度超出服务商允许范围',
+        hint: '把「单次回复上限」调小一些，或换一个接受更大额度的模型', raw,
+      }
+    }
     if (CONTEXT_RE.test(body)) {
       return {
         kind: 'bad_request', retryable: false, status,

@@ -53,8 +53,23 @@ describe('空正文归因', () => {
     expect(msg).toMatch(/额度|思考模式/)
   })
 
-  it('什么都没给 → 保留原来那句兜底（模型名/地址真的可能错）', () => {
-    expect(describeEmptyNarrative({})).toContain('模型返回了空内容')
+  /*
+    兜底这一条被改过两次：
+    第一版说「检查模型名称与接口地址」—— 玩家刚测通过，等于让他去查没坏的东西；
+    第二版补了「也可能这个中转在排队」—— 玩家自己说清了那家是云反代、不排队。
+
+    现在的版本只讲证据：回包里 `choices` 完整、`finish_reason` 有值、
+    `content` 是空字符串，所以不是接线问题。
+  */
+  it('★ 什么都没给 → 不再让人去查模型名/地址，也不再提排队', () => {
+    const msg = describeEmptyNarrative({})
+    expect(msg).toContain('content')
+    expect(msg).toContain('原始回包')
+    // 两个已经被证伪的归因，一句都不许留
+    expect(msg).not.toContain('排队')
+    expect(msg).not.toMatch(/请检查模型名称与接口地址/)
+    // 要给一个真能做的下一步
+    expect(msg).toMatch(/重试|换/)
   })
 
   it('没填过 max_tokens 时不编一个数字出来', () => {

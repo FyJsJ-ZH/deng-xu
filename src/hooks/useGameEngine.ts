@@ -34,6 +34,17 @@ import { computeStats, startingItemsOf } from '@/utils/runRebuild'
 import { describeEmptyNarrative } from '@/utils/engineErrors'
 
 /**
+ * 空回重试时追加给模型的那一句话（2026-11）。
+ *
+ * 只在"服务商回了个没有正文的壳"之后、**同一次重试请求里**出现：
+ * 不进 `history`、不进存档、玩家界面上看不到。写成人话而不是命令，
+ * 是因为这类模型对"被下指令"常常回得更僵 —— 让它知道发生了什么就够。
+ */
+const EMPTY_RETRY_NUDGE =
+  '（系统提示：上一次你的回复里只有思考过程，正文是空的。'
+  + '这一次请把正文写出来，落笔成段，不要停在思考里。）'
+
+/**
  * 按需把较旧的叙事归档到 IndexedDB，让 localStorage 里的热数据保持有界。
  *
  * 触发条件有三个，任一满足就动手：
@@ -1332,10 +1343,25 @@ export function useGameEngine(): GameEngineReturn {
         rawPreview?: string
       }
 
-      const requestNarrative = async (stream: boolean): Promise<NarrativeAttempt> => {
+      const requestNarrative = async (stream: boolean, nudge = false): Promise<NarrativeAttempt> => {
+        /*
+          ── `nudge`：告诉模型"上一轮你只想了，没写"（2026-11）──
+
+          玩家实测：同一份提示词，第一轮写出了正文，点「重新生成」就回了个
+          `finish_reason: stop` + `content: ""` 的空壳 —— 模型把这一轮全用来想，
+          想到自己觉得"完事"了，一个字没落笔。
+
+          额度已经给满（见 `GEMINI_OUTPUT_BUDGET`），剩下的那点不确定性只能靠
+          "再说一遍"。追加的这条是**只在这一轮请求里存在的**，
+          不进历史、不影响存档 —— 玩家看不到它，模型看得到。
+        */
+        const messages = nudge
+          ? [...narrativeMessages, { role: 'user' as const, content: EMPTY_RETRY_NUDGE }]
+          : narrativeMessages
+
         if (!stream) {
           const res = await llmChat({
-            messages: narrativeMessages,
+            messages,
             config,
             model: config.narrativeModel,
             stream: false,
@@ -1362,7 +1388,7 @@ export function useGameEngine(): GameEngineReturn {
         }
 
         const streamResponse = await llmChat({
-          messages: narrativeMessages,
+          messages,
           config,
           model: config.narrativeModel,
           stream: true,
@@ -1476,13 +1502,15 @@ export function useGameEngine(): GameEngineReturn {
 
         - **撞上限**（`MAX_TOKENS` / `length`）→ 重试没意义，同样的额度还是同样的结果，
           该做的是把原因说出来（见 `describeEmptyNarrative`）；
-        - **回了一个空壳**（连 finish_reason 都没有）→ 多半是中转/反代那一次没转成功，
-          立刻再要一次往往就有了。实测这个通道正常时一次要 90~175 秒，
-          而"空壳"是立刻回来的，所以这一次重试几乎不花时间。
+        - **其余的空** → 值得再要一次。它有两种长相，都实测过：
+          `finish_reason: stop` + `content: ""`（模型一直想、想完收尾、一个字没写），
+          或者连 `finish_reason` 都没有（中转那一次没转成功）。
+          对应的手段是把额度拉到最满（见 `GEMINI_OUTPUT_BUDGET`），
+          外加在这一次请求里补一句"上一轮你只想了没写"（`EMPTY_RETRY_NUDGE`）。
       */
       if (!attempt.text.trim() && !isLimitFinish(attempt.finishReason)) {
         useUIStore.getState().setStatusMessage('服务商这次回了空包，正在重试…')
-        attempt = await requestNarrative(false)
+        attempt = await requestNarrative(false, true)
       }
 
       const fullNarrative = attempt.text
@@ -1719,9 +1747,9 @@ export function useGameEngine(): GameEngineReturn {
                该吐的思维链照吐（实测 1675 字符），这时 4096 就更紧了。
             3. **失败之后什么都不做**，只弹一句"结算没解析出来"，让玩家自己点重试。
 
-          现在三处都改：额度走 `suggestJsonMaxTokens`（会思考的给 16384），
-          解析失败**自动放大额度再跑一次**（第二次仍失败才报错）。
-          多花一次请求，比让玩家每轮手动点重试划算得多。
+          现在三处都改：额度走 `suggestJsonMaxTokens`（Gemini 给 32768、
+           别的思考模型给 16384），解析失败**自动放大额度再跑一次**
+           （第二次仍失败才报错）。多花一次请求，比让玩家每轮手动点重试划算得多。
         */
         const analysisBudget = suggestJsonMaxTokens(config.analysisModel, config.baseUrl, config.maxTokens)
         const callAnalysis = (maxTokens: number) => llmChat({
@@ -1748,9 +1776,9 @@ export function useGameEngine(): GameEngineReturn {
           thinking: 'off',
         })
 
-        const budgets = analysisBudget >= 16384
+        const budgets = analysisBudget >= 32768
           ? [analysisBudget]
-          : [analysisBudget, Math.min(16384, analysisBudget * 2)]
+          : [analysisBudget, Math.min(65536, analysisBudget * 2)]
 
         let parsed: any = null
         let parseError: unknown = null

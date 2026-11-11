@@ -78,9 +78,9 @@ describe('max_tokens · 按目标字数推算额度', () => {
     expect(suggestMaxTokens(1800, 'deepseek-chat')).toBe(3600)
   })
 
-  it('★ 700 字的短篇：思考模型也要给到 6196，否则思维链把额度吃光 → 空正文', () => {
+  it('★ 700 字的短篇：Gemini 直接顶到上限，别的思考模型按比例给', () => {
     // 700 × 3 = 2100（旧值）连实测的 2929 思考 token 都不够
-    expect(suggestMaxTokens(700, 'gemini-3.8-flash')).toBe(16384)
+    expect(suggestMaxTokens(700, 'gemini-3.8-flash')).toBe(65536)
     expect(suggestMaxTokens(700, 'gpt-4o')).toBe(1400)
   })
 
@@ -258,8 +258,8 @@ describe('思考模式 · 请求体里到底发不发 thinking', () => {
  * 而截断的 JSON 修不回来（`parseModelJson` 补括号只能补结构，补不了被吃掉的那半句）。
  */
 describe('结算额度 · suggestJsonMaxTokens', () => {
-  it('★ 会思考的给 16384（实测光思考就 2929）', () => {
-    expect(suggestJsonMaxTokens('gemini-3.8-flash', 'https://catiecli.sukaka.top/v1')).toBe(16384)
+  it('★ Gemini 给 32768 —— 它连 16384 都可能全用在思考上', () => {
+    expect(suggestJsonMaxTokens('gemini-3.8-flash', 'https://catiecli.sukaka.top/v1')).toBe(32768)
     expect(suggestJsonMaxTokens('deepseek-reasoner')).toBe(16384)
   })
 
@@ -268,13 +268,14 @@ describe('结算额度 · suggestJsonMaxTokens', () => {
     expect(suggestJsonMaxTokens('')).toBe(8192)
   })
 
-  it('玩家填了更大的值就听他的，但仍封顶 16384', () => {
+  it('玩家填了更大的值就听他的，但仍封顶', () => {
     expect(suggestJsonMaxTokens('gpt-4o', '', 12000)).toBe(12000)
     expect(suggestJsonMaxTokens('gpt-4o', '', 999999)).toBe(16384)
+    expect(suggestJsonMaxTokens('gemini-3.8-flash', '', 999999)).toBe(65536)
   })
 
   it('★ 玩家填得比下限还小时**抬到下限** —— 填小了是静默失败，不是省钱', () => {
-    expect(suggestJsonMaxTokens('gemini-3.8-flash', '', 2048)).toBe(16384)
+    expect(suggestJsonMaxTokens('gemini-3.8-flash', '', 2048)).toBe(32768)
     expect(suggestJsonMaxTokens('gpt-4o', '', 1024)).toBe(8192)
     // 脏数据（0 / NaN / 负数）当作没填
     expect(suggestJsonMaxTokens('gpt-4o', '', 0)).toBe(8192)

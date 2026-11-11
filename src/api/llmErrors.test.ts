@@ -17,6 +17,13 @@ describe('LLM 错误分类', () => {
     ['502 网关', 502, '<html>502 Bad Gateway</html>', 'server', true],
     ['上下文超长', 400, '{"error":{"message":"maximum context length is 65536 tokens"}}', 'bad_request', false],
     ['模型名错', 400, '{"error":{"message":"The model `gpt-9` does not exist"}}', 'bad_request', false],
+    /*
+      max_tokens 类有两种：带数字和没数字，**都要归到 max_tokens**。
+      没数字的那条是 2026-11 补的 —— 中转的 400 常常只有一句
+      "max_tokens is too large"，归到通用 400 就没法自动降级重发了。
+    */
+    ['额度超范围且有数字', 400, '{"error":{"message":"max_tokens is too large. This model supports at most 8192 completion tokens"}}', 'max_tokens', false],
+    ['额度超范围但没数字', 400, '{"error":{"message":"max_tokens is too large for this model"}}', 'max_tokens', false],
   ]
 
   for (const [name, status, body, kind, retryable] of cases) {
