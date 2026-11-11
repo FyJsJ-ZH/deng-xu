@@ -549,9 +549,36 @@ export function generateCatalogAvatar(id: string, label: string, style?: string,
   return generateAvatar(id, label, style, tone, asset.variant)
 }
 
-/** 给 AI 的素材清单文本（一行一条，控制提示词长度） */
+/**
+ * 给 AI 的素材清单文本（一行一条，控制提示词长度）。
+ *
+ * ## 为什么要瘦身（2026-11，玩家报「用 gemini 时速度极慢」）
+ *
+ * 这个清单有 140 条，每条 label 是拼出来的长相（`瘦、光头、porcelain、交领衣、胡茬`）。
+ * 原样发出去是 **4256 字符**，而数据 AI 的整份提示词才 16522 字符 ——
+ * 这一个清单就占了四分之一，模型每轮都要读完它才轮到干活。
+ *
+ * 减掉两类东西，一条都不丢、挑得还是一样准：
+ *
+ * - **英文色值 key**（`porcelain` / `brown` / `deep` / `tan`）——那是渲染用的材质名，
+ *   对"挑哪一个最贴合描写"没有任何信息量；
+ * - **第 5 项以后的特征** ——四个特征足够区分 140 个头像，
+ *   而 label 平均 25 字符，砍掉一半还多。
+ *
+ * 顺手在末尾补一句说明，因为 id 是 `p01`~`p140` 这种纯编号，
+ * 不说清楚模型会以为 `p` 后面那个数字有意义。
+ */
 export function avatarCatalogPrompt(): string {
-  return AVATAR_CATALOG.map(a => `${a.id}=${a.label}`).join('；')
+  const rows = AVATAR_CATALOG.map(a => {
+    const feats = String(a.label)
+      .split('、')
+      .map(s => s.trim())
+      .filter(s => /[\u4e00-\u9fff]/.test(s))
+      .slice(0, 4)
+    const label = feats.length ? feats.join('、') : String(a.label).slice(0, 10)
+    return `${a.id}=${label}`
+  })
+  return `${rows.join('；')}\n（id 只是编号，看等号后面的长相特征挑。）`
 }
 
 /**

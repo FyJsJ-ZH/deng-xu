@@ -327,6 +327,49 @@ export function willThink(model: string, provider: string, mode: ThinkingMode = 
 export const MAX_OUTPUT_TOKENS_CAP = 65536
 
 /**
+ * 思考模式下，**给思维链预留的额度**（token）。
+ *
+ * ## 为什么必须预留（2026-11，玩家报「用 gemini 会返回空内容」）
+ *
+ * 在这之前，额度是按「正文要写多少字」算的：`字数 × 2`（思考时 ×3）。
+ * 700 字的目标 → 2100 token。而实测 Gemini 走中转时，
+ * **光是思考就吃掉 2000~3000 token**（结算那一轮实测 `reasoning_tokens: 2929`），
+ * 2100 的额度连思考都不够 —— 正文一个字都吐不出来，界面上就是「模型返回了空内容」。
+ *
+ * 结论是这条系数错在**把两件东西当成一件**：
+ * 正文长度是可估的（字数 × 2），思维链长度**不可估**（同一模型能想 200 也能想 3000）。
+ * 所以不能按比例给，得**先垫一笔固定额度**，正文再按字数算。
+ *
+ * 4096 这个数来自实测：Gemini 结算一轮 2929 token、DeepSeek V4 思考模式
+ * 常在 2000~3500 之间。垫 4096 之后，正文那头还有原来的空间。
+ */
+const THINKING_RESERVE = 4096
+
+/**
+ * 玩家手填的「单次回复上限」→ 实际发出去的额度。
+ *
+ * ## 为什么手填的值也要加这一笔（2026-11，玩家报「用 gemini 会返回空内容」）
+ *
+ * 玩家填这个数的本意是"别写太长"，但它在报文里是 `max_tokens` ——
+ * **思维链 + 正文的总和**。Gemini 走中转时思考要吃掉 2900 左右，
+ * 他填 4096，正文就只剩 1100 token 的空间（约 700 字），稍一展开就整轮空。
+ *
+ * 所以对会思考的模型，把他填的值当成"正文那头"的额度，另垫一笔给思维链。
+ * 代价是实际发出去的数字比他填的大 —— 但没写完的额度本来就不收费，
+ * 而"填 4096 结果永远空"是他完全无法理解的一种失败。
+ */
+export function withThinkingReserve(
+  configured: number,
+  model = '',
+  provider = '',
+  thinking: ThinkingMode = 'auto',
+): number {
+  const base = Math.max(0, Math.floor(Number.isFinite(configured) ? configured : 0))
+  const want = willThink(model, provider, thinking) ? base + THINKING_RESERVE : base
+  return Math.min(16384, want)
+}
+
+/**
  * 按「目标回复字数」推算该发多大的 `max_tokens`。
  *
  * ## 换算依据
@@ -336,13 +379,12 @@ export const MAX_OUTPUT_TOKENS_CAP = 65536
  * 宁可多发一点额度（没用完不花钱），也不要卡在临界点上把正文截断。
  *
  * - 普通模型：`replyLength × 2`
- * - 推理模型：`replyLength × 3` —— 思维链会和正文抢同一份额度，
- *   而它抢走的量不可预测，只能给宽一些
+ * - 思考的模型：`replyLength × 3 + THINKING_RESERVE`
+ *   —— 思维链和正文抢同一份额度，而它抢走的量不可预测
  *
- * 「是不是推理模型」现在有两条来源：名字像（`isReasonerModel`），
- * 或者这个服务商的这个模型**默认就在思考**（`isThinkingByDefault`，
- * 2026 的 DeepSeek V4 系列属于后者 —— 名字里一个 reasoner 都没有）。
- * 漏掉第二条的后果很具体：思考模式吃掉一半额度，正文在 1200 字上下被截断。
+ * 「会不会思考」现在有三条来源：名字像（`isReasonerModel`）、
+ * 服务商的这个模型默认在思考（`isThinkingByDefault`，DeepSeek V4）、
+ * 或者它是 Gemini 系（`isGeminiLike`，实测默认就吐 `reasoning_content`）。
  *
  * 下限 1024，上限 16384（多数服务商的单次输出上限，超了会被直接拒）。
  * 玩家在设置里填了 `maxTokens` 时以他填的为准。
@@ -354,8 +396,32 @@ export function suggestMaxTokens(
   thinking: ThinkingMode = 'auto',
 ): number {
   const chars = Number.isFinite(replyLength) && replyLength > 0 ? replyLength : 1800;
-  const per = willThink(model, provider, thinking) ? 3 : 2;
-  return Math.min(16384, Math.max(1024, Math.ceil(chars * per)));
+  const thinks = willThink(model, provider, thinking);
+  const per = thinks ? 3 : 2;
+  const base = Math.ceil(chars * per);
+  const want = thinks ? base + THINKING_RESERVE : base;
+  return Math.min(16384, Math.max(1024, want));
+}
+
+/**
+ * 结算 / 摘要这类「要一份 JSON」的调用该给多少额度。
+ *
+ * 与叙事不是一回事：它输出的是一份结构化清单（几百字），**但**它读进来的是
+ * 当前状态的整个 JSON，思考量比叙事更重（实测 Gemini 一轮 2929 token）。
+ * 而它原来被写死在 4096 —— 思考 2900 + JSON 700 就顶到天花板，
+ * 再长一点就被截断，于是玩家看到「这一轮的正文已经写好了，但数据结算没能解析出来」。
+ *
+ * 所以按模型给：会思考的给 4 倍（4096 → 16384），不会的给 2 倍（→ 8192）。
+ * 玩家自己填了 `maxTokens` 时尊重他，但不会低于这个下限 ——
+ * 「填小了会静默失败」比「多花一点额度」糟得多（没用完的额度不收费）。
+ */
+export function suggestJsonMaxTokens(model = '', baseUrl = '', configured?: number): number {
+  const user = typeof configured === 'number' && Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : 0;
+  const thinks = isGeminiLike(model, baseUrl) || isReasonerModel(model);
+  const floor = 4096 * (thinks ? 4 : 2);
+  return Math.min(16384, Math.max(user, floor));
 }
 
 /**

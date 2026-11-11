@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { llmChat, suggestMaxTokens, isReasonerModel, isThinkingByDefault, willThink, migrateDeepSeekModelName, parseSseLine, PROVIDER_PRESETS } from '@/api/llm'
+import { llmChat, suggestMaxTokens, suggestJsonMaxTokens, isReasonerModel, isThinkingByDefault, willThink, migrateDeepSeekModelName, parseSseLine, PROVIDER_PRESETS } from '@/api/llm'
 import type { LLMConfig } from '@/types/cards'
 
 /**
@@ -67,9 +67,21 @@ describe('max_tokens · 按目标字数推算额度', () => {
     expect(suggestMaxTokens(1800)).toBe(3600)
   })
 
-  it('★ 推理模型给三倍 —— 思维链会和正文抢同一份额度', () => {
-    expect(suggestMaxTokens(1800, 'deepseek-reasoner')).toBe(5400)
+  it('★ 推理模型：三倍正文额度 **再垫 4096 给思维链**', () => {
+    /*
+      1800 × 3 = 5400 是正文那头的；
+      思维链长度不可估（同一模型能想 200 也能想 3000），所以要固定垫一笔。
+      这一条是 2026-11 玩家报「用 gemini 会返回空内容」之后改的：
+      700 字的目标原来只给 2100，连思考都不够，正文一个字都吐不出来。
+    */
+    expect(suggestMaxTokens(1800, 'deepseek-reasoner')).toBe(9496)
     expect(suggestMaxTokens(1800, 'deepseek-chat')).toBe(3600)
+  })
+
+  it('★ 700 字的短篇：思考模型也要给到 6196，否则思维链把额度吃光 → 空正文', () => {
+    // 700 × 3 = 2100（旧值）连实测的 2929 思考 token 都不够
+    expect(suggestMaxTokens(700, 'gemini-3.8-flash')).toBe(6196)
+    expect(suggestMaxTokens(700, 'gpt-4o')).toBe(1400)
   })
 
   it('★ 有下限：目标字数很小时也不能低于 1024（否则一句都写不完）', () => {
@@ -102,8 +114,8 @@ describe('max_tokens · 按目标字数推算额度', () => {
     会漏掉 3 倍额度、还会白白发一个不生效的 temperature。
   */
   it('★ DeepSeek 2026 系列默认思考 → 三倍额度（名字里没有 reasoner）', () => {
-    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek')).toBe(5400)
-    expect(suggestMaxTokens(1800, 'deepseek-v4-pro', 'deepseek')).toBe(5400)
+    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek')).toBe(9496)
+    expect(suggestMaxTokens(1800, 'deepseek-v4-pro', 'deepseek')).toBe(9496)
     // 同名挂在别的服务商上不算 —— 中转站很可能给的是非思考版
     expect(suggestMaxTokens(1800, 'deepseek-flash', 'siliconflow')).toBe(3600)
     expect(suggestMaxTokens(1800, 'deepseek-flash')).toBe(3600)
@@ -223,10 +235,10 @@ describe('思考模式 · 请求体里到底发不发 thinking', () => {
 
   it('off 压得住"名字像推理模型"：llm 不再按 3 倍给额度', () => {
     expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek', 'off')).toBe(3600)
-    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek', 'on')).toBe(5400)
-    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek', 'auto')).toBe(5400)
+    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek', 'on')).toBe(9496)
+    expect(suggestMaxTokens(1800, 'deepseek-flash', 'deepseek', 'auto')).toBe(9496)
     // 普通模型开着思考也要 3 倍 —— 玩家选的就是"想"
-    expect(suggestMaxTokens(1800, 'gpt-4o', 'openai', 'on')).toBe(5400)
+    expect(suggestMaxTokens(1800, 'gpt-4o', 'openai', 'on')).toBe(9496)
   })
 
   it('willThink：三档语义（auto 才去看名字）', () => {
@@ -237,8 +249,40 @@ describe('思考模式 · 请求体里到底发不发 thinking', () => {
   })
 })
 
-describe('max_tokens · 必须真的出现在请求体里', () => {
-  it('★ opts.maxTokens 被写进请求体', async () => {
+/**
+ * 结算额度（2026-11，玩家报「用 gemini 经常性结算不了」）。
+ *
+ * 原来结算写死 `Math.min(4096, config.maxTokens ?? 4096)`。
+ * 实测同一家中转的 Gemini 结算一轮 `reasoning_tokens: 2929`，
+ * 再加 JSON 本体 700 左右就顶到 4096 —— 剧情稍复杂就被截断，
+ * 而截断的 JSON 修不回来（`parseModelJson` 补括号只能补结构，补不了被吃掉的那半句）。
+ */
+describe('结算额度 · suggestJsonMaxTokens', () => {
+  it('★ 会思考的给 16384（实测光思考就 2929）', () => {
+    expect(suggestJsonMaxTokens('gemini-3.8-flash', 'https://catiecli.sukaka.top/v1')).toBe(16384)
+    expect(suggestJsonMaxTokens('deepseek-reasoner')).toBe(16384)
+  })
+
+  it('普通模型给 8192 —— 4096 那次就是这么被截断的', () => {
+    expect(suggestJsonMaxTokens('gpt-4o')).toBe(8192)
+    expect(suggestJsonMaxTokens('')).toBe(8192)
+  })
+
+  it('玩家填了更大的值就听他的，但仍封顶 16384', () => {
+    expect(suggestJsonMaxTokens('gpt-4o', '', 12000)).toBe(12000)
+    expect(suggestJsonMaxTokens('gpt-4o', '', 999999)).toBe(16384)
+  })
+
+  it('★ 玩家填得比下限还小时**抬到下限** —— 填小了是静默失败，不是省钱', () => {
+    expect(suggestJsonMaxTokens('gemini-3.8-flash', '', 2048)).toBe(16384)
+    expect(suggestJsonMaxTokens('gpt-4o', '', 1024)).toBe(8192)
+    // 脏数据（0 / NaN / 负数）当作没填
+    expect(suggestJsonMaxTokens('gpt-4o', '', 0)).toBe(8192)
+    expect(suggestJsonMaxTokens('gpt-4o', '', Number.NaN)).toBe(8192)
+  })
+})
+
+describe('max_tokens · 必须真的出现在请求体里', () => {  it('★ opts.maxTokens 被写进请求体', async () => {
     const { m, config } = await start()
     await llmChat({
       messages: [{ role: 'user', content: 'hi' }],

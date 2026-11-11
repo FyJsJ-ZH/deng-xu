@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import {
-  llmChat, isGeminiLike, suggestMaxTokens, willThink,
+  llmChat, isGeminiLike, suggestMaxTokens, willThink, withThinkingReserve,
 } from '@/api/llm'
 import { classifyLlmError } from '@/api/llmErrors'
 import type { LLMConfig } from '@/types/cards'
@@ -128,15 +128,43 @@ describe('isGeminiLike · 认得出 Gemini', () => {
   it('★ Gemini 默认就在思考 → auto 判定为 true，额度按 3 倍', () => {
     // 实测：请求里一个字都没提 thinking，返回照样带整屏 reasoning_content
     expect(willThink('gemini-3.8-flash', 'custom', 'auto')).toBe(true)
-    expect(suggestMaxTokens(1800, 'gemini-3.8-flash')).toBe(5400)
+    expect(suggestMaxTokens(1800, 'gemini-3.8-flash')).toBe(9496)
     expect(suggestMaxTokens(1800, 'gpt-4o')).toBe(3600)
     // 玩家明确关掉时仍然听话（能不能真关上是另一回事，见下面的说明）
     expect(willThink('gemini-3.8-flash', 'custom', 'off')).toBe(false)
   })
 })
 
-describe('请求体 · Gemini 走纯文本模式', () => {
-  it('★ jsonMode + Gemini → response_format 是 text，不是 json_object', async () => {
+/**
+ * 玩家手填的「单次回复上限」（2026-11，玩家报「用 gemini 会返回空内容」）。
+ *
+ * 那个数在报文里是 `max_tokens` —— 思维链 + 正文的总和。
+ * Gemini 走中转实测思考吃掉 2900 左右；玩家填 4096，正文就只剩 1100 token，
+ * 稍一展开整轮就空。所以对会思考的模型，他的手填值要当成"正文那头"的额度。
+ */
+describe('手填额度 · 思考模型要先垫一笔', () => {
+  it('★ 填 4096 + Gemini → 实际发 8192（多了思维链那 4096）', () => {
+    expect(withThinkingReserve(4096, 'gemini-3.8-flash')).toBe(8192)
+    expect(withThinkingReserve(4096, 'deepseek-reasoner')).toBe(8192)
+  })
+
+  it('普通模型不动他的选择', () => {
+    expect(withThinkingReserve(4096, 'gpt-4o')).toBe(4096)
+    expect(withThinkingReserve(2048, 'deepseek-chat')).toBe(2048)
+  })
+
+  it('玩家明确关掉思考时不垫（那时他填的就是全部）', () => {
+    expect(withThinkingReserve(4096, 'gemini-3.8-flash', '', 'off')).toBe(4096)
+  })
+
+  it('封顶 16384，脏数据当作 0', () => {
+    expect(withThinkingReserve(15000, 'gemini-3.8-flash')).toBe(16384)
+    expect(withThinkingReserve(Number.NaN, 'gemini-3.8-flash')).toBe(4096)
+    expect(withThinkingReserve(-1, 'gemini-3.8-flash')).toBe(4096)
+  })
+})
+
+describe('请求体 · Gemini 走纯文本模式', () => {  it('★ jsonMode + Gemini → response_format 是 text，不是 json_object', async () => {
     const { m, config } = await start()
     await llmChat({
       messages: [{ role: 'user', content: 'hi' }],

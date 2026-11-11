@@ -3,7 +3,7 @@ import { useGameStore, countTurns, type GameState, type TokenUsage } from '@/sto
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useMetaStore } from '@/stores/meta'
-import { llmChat, extractContent, parseSseLine, suggestMaxTokens, isReasonerModel, isThinkingByDefault, willThink, type ChatMessage } from '@/api/llm'
+import { llmChat, extractContent, parseSseLine, suggestMaxTokens, suggestJsonMaxTokens, withThinkingReserve, isReasonerModel, isThinkingByDefault, willThink, type ChatMessage } from '@/api/llm'
 import { parseModelJson } from '@/api/jsonRepair'
 import {
   buildNarrativeSystemPrompt,
@@ -1249,8 +1249,16 @@ export function useGameEngine(): GameEngineReturn {
         提到外面存一份：下面判断"为什么正文是空的"要用到**这一次实际发了多少**。
         玩家手填的值优先 —— 也正因为他手填得小才会撞上额度问题。
       */
-      const narrativeMaxTokens = config.maxTokens
-        ?? suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel, config.provider, config.thinking ?? 'auto')
+      /*
+        ⚠️ 玩家手填的值要**先垫上思考额度**（2026-11，玩家报「用 gemini 会返回空内容」）。
+
+        `config.maxTokens` 在报文里是 `max_tokens`，也就是"思维链 + 正文"的总和。
+        Gemini 走中转时思考实测吃掉 2900 左右，玩家填 4096 的话正文只剩 1100 token
+        （约 700 字）—— 稍一展开就整轮空。见 `withThinkingReserve` 的说明。
+      */
+      const narrativeMaxTokens = typeof config.maxTokens === 'number' && config.maxTokens > 0
+        ? withThinkingReserve(config.maxTokens, config.narrativeModel, config.provider, config.thinking ?? 'auto')
+        : suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel, config.provider, config.thinking ?? 'auto')
 
       const streamResponse = await llmChat({
         messages: narrativeMessages,
@@ -1514,42 +1522,79 @@ export function useGameEngine(): GameEngineReturn {
           { role: 'user', content: dataAnalysisContext }
         ]
 
-        const dataResponse = await llmChat({
+        /*
+          ── 结算调用：额度按模型给，解析失败自动放大重试一次（2026-11）──
+
+          玩家原话：「使用 gemini 时速度极慢，会返回空内容，就算输出了也经常性结算不了。」
+
+          原来这里是写死的 `Math.min(4096, config.maxTokens ?? 4096)`，
+          三条独立的坏处叠在一起：
+
+            1. **4096 装不下"思考 + JSON"**。实测这个中转的 Gemini 结算一轮
+               `reasoning_tokens: 2929`，再加 JSON 本体 700 左右就顶到天花板 ——
+               剧情稍复杂一点就被截断，而截断的 JSON 修不回来
+               （`parseModelJson` 补括号只能补结构，补不了被吃掉的那半句）。
+            2. **`thinking: 'off'` 对它无效**。Gemini 的 OpenAI 兼容层不认这个字段，
+               该吐的思维链照吐（实测 1675 字符），这时 4096 就更紧了。
+            3. **失败之后什么都不做**，只弹一句"结算没解析出来"，让玩家自己点重试。
+
+          现在三处都改：额度走 `suggestJsonMaxTokens`（会思考的给 16384），
+          解析失败**自动放大额度再跑一次**（第二次仍失败才报错）。
+          多花一次请求，比让玩家每轮手动点重试划算得多。
+        */
+        const analysisBudget = suggestJsonMaxTokens(config.analysisModel, config.baseUrl, config.maxTokens)
+        const callAnalysis = (maxTokens: number) => llmChat({
           messages: dataMessages,
           config,
           model: config.analysisModel,
           stream: false,
           temperature: 0.2,
           jsonMode: true,
-          // 结算 JSON 比摘要长（动作列表），但也不需要叙事那么多
-          maxTokens: Math.min(4096, config.maxTokens ?? 4096),
+          maxTokens,
           /*
-            ⚠️ **必须关掉思考模式**（2026-11 玩家实测：报「数据结算返回的内容无法
-            解析为 JSON（已重试截断解析）」）。
+            ⚠️ **仍然传 `thinking: 'off'`**（2026-11 玩家实测：报「数据结算返回的
+            内容无法解析为 JSON」）。
 
-            两条链叠在一起就崩：
-              1. 思考模式下 `buildBody` 不往报文里放 `response_format` ——
-                 模型于是没有"必须输出纯 JSON"的硬约束；
-              2. 思维链还要从这 4096 token 里先吃掉一大截。
+            对认这个字段的服务商（DeepSeek 官方那套），思考模式下 `buildBody`
+            不会放 `response_format`，模型于是没有"必须输出纯 JSON"的硬约束，
+            思维链还要从额度里先吃掉一大截 —— 结果是"一段带思考痕迹的半截 JSON"，
+            而 `parseModelJson` 那四道修复策略修的是格式，救不了
+            "模型压根没打算只输出 JSON"。
 
-            结果是"一段带思考痕迹的半截 JSON"，而 `parseModelJson` 那四道
-            修复策略（原样 / 剥散文 / 字符级修复 / 补括号）全都救不回来 ——
-            因为它们修的是格式，救不了"模型压根没打算只输出 JSON"。
-            玩家的思考模式是给写小说开的，不该拖累结算。
+            对不认它的服务商（Gemini 系）它是个空操作 —— 那边由额度与重试兜着，
+            见上面 `analysisBudget` 的说明。
           */
           thinking: 'off',
         })
 
-        const dataContent = extractContent(dataResponse)
-        setDebugDataOutput(dataContent)
-        recordUsage(dataResponse, dataMessages, dataContent)
+        const budgets = analysisBudget >= 16384
+          ? [analysisBudget]
+          : [analysisBudget, Math.min(16384, analysisBudget * 2)]
 
         let parsed: any = null
-        try {
-          parsed = parseModelJson(dataContent).value as any
-          if (!parsed || typeof parsed !== 'object') {
-            throw new Error('解析结果不是对象')
+        let parseError: unknown = null
+        for (let i = 0; i < budgets.length; i++) {
+          const dataResponse = await callAnalysis(budgets[i])
+          const dataContent = extractContent(dataResponse)
+          setDebugDataOutput(dataContent)
+          recordUsage(dataResponse, dataMessages, dataContent)
+          try {
+            const value = parseModelJson(dataContent).value as any
+            if (!value || typeof value !== 'object') throw new Error('解析结果不是对象')
+            parsed = value
+            break
+          } catch (e) {
+            parseError = e
+            console.warn(
+              `数据结算解析失败（第 ${i + 1} 次，max_tokens=${budgets[i]}）`
+              + (i + 1 < budgets.length ? '，放大额度重试' : '，已到额度上限'),
+              e,
+            )
           }
+        }
+
+        try {
+          if (!parsed) throw parseError || new Error('结算结果为空')
 
           // 章节卡的关键选项按拖延程度注入
           if (pendingKeyOptions.length > 0) {

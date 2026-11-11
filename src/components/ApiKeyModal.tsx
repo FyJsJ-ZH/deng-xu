@@ -320,8 +320,12 @@ export function ApiKeyModal() {
               <>
                 当前模型是 <span className="font-mono">Gemini</span> 系的：它 <b>默认就思考</b>，
                 而且不认 <span className="font-mono">thinking</span> 字段 —— 实测关不掉，
-                该吐的思维链照吐。所以这个开关对它会<b>失效</b>（报文里干脆不发，免得让你以为已经关上了）。
-                代价是首字更慢、额度按 3 倍给；不想等就换一个非 Gemini 的模型。
+                该吐的思维链照吐（我试过 <span className="font-mono">reasoning_effort</span>、
+                <span className="font-mono">thinking_budget</span> 四种写法，一种都没用）。
+                所以这个开关对它会<b>失效</b>（报文里干脆不发，免得让你以为已经关上了）。
+                代价是首字更慢、额度按 3 倍给 + 4096 的思考余量；
+                「单次回复上限」<b>建议留空</b>，填小了会连思考都不够、正文一个字都出不来。
+                结算那一轮读进来的状态更大、更慢，可以把下面的「结算模型」单独换成一个不想事的模型。
               </>
             ) : (draft.thinking ?? 'auto') === 'auto'
               ? '不发送 thinking 字段，各家按自己的默认走。DeepSeek 的 V4 系列默认是开着的。'

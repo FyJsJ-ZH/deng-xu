@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { describeEmptyNarrative, THINKING_MIN_MAX_TOKENS } from '@/utils/engineErrors'
+import { describeEmptyNarrative } from '@/utils/engineErrors'
 
 /**
  * 「模型给了空正文」的归因。
@@ -21,7 +21,8 @@ describe('空正文归因', () => {
     })
     expect(msg).toContain('思考链')
     expect(msg).toContain('2048')
-    expect(msg).toContain(String(THINKING_MIN_MAX_TOKENS))
+    // 第一改法：留空让程序推算（它会自动给思考垫 4096 的余量）
+    expect(msg).toContain('留空')
     expect(msg).toMatch(/思考模式/)
     // 绝不能再说"检查模型名称与接口地址"——那是让它去查没坏的东西
     expect(msg).not.toContain('接口地址')

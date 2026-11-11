@@ -42,18 +42,18 @@ export function describeEmptyNarrative(info: EmptyNarrativeInfo): string {
 
   if (hitLimit && hasReasoning) {
     return `思考链把 ${limit} 的额度用完了，正文一个字都还没开始写。`
-      + `把「单次回复上限」调到 ${THINKING_MIN_MAX_TOKENS} 以上（建议 5400），`
+      + '把「单次回复上限」留空（让程序按篇幅推算，它会自动给思考留出余量），'
       + '或者在模型设置里把「思考模式」改成「关闭」。'
   }
 
   if (hitLimit) {
     return `这一轮撞到了 ${limit} 的输出上限，正文还没写出来就被切断了。`
-      + '把「单次回复上限」调大一些。'
+      + '把「单次回复上限」调大一些（或者直接留空）。'
   }
 
   if (hasReasoning && info.thinkingLikely) {
     return '模型只回了思考过程，没有落笔。多半是额度太紧 —— '
-      + `把「单次回复上限」调到 ${THINKING_MIN_MAX_TOKENS} 以上，或把「思考模式」关掉再试。`
+      + `把「单次回复上限」留空，或调到 ${THINKING_MIN_MAX_TOKENS} 以上，或把「思考模式」关掉再试。`
   }
 
   return '模型返回了空内容，请检查模型名称与接口地址。'
