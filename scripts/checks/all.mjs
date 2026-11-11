@@ -175,7 +175,7 @@ for (const c of todo) {
     p.on('exit', code => res(code === 0))
   })
   const secs = ((Date.now() - t0) / 1000).toFixed(1)
-  results.push({ ...c, ok, secs })
+  results.push({ ...c, ok, secs, tail })
   if (!ok) {
     console.log(`✗ ${c.name} 未通过（${secs}s）`)
     /*
@@ -211,7 +211,17 @@ console.log(`  截图目录：${OUT}`)
   所以在这里**再补一遍**，且只写一行、放在最末，保证一定被截取到。
 */
 if (failed.length) {
-  const detail = failed.map(r => r.name).join('、')
+  /*
+    把**具体挂在哪条断言**一起写进注解。
+
+    2026-11 有一轮 CI 只留下「走查未通过（1/14）：返回键层级」这一句 ——
+    知道是哪一套，但不知道挂在哪一步，而 artifact 里的完整日志要登录才看得到。
+    所以这里把该套尾巴里的断言失败行也摘出来，一行说清。
+  */
+  const detail = failed.map(r => {
+    const bad = (r.tail || []).filter(l => l.includes('✗')).slice(0, 2).join(' ')
+    return bad ? `${r.name}（${bad.replace(/::/g, ':')}）` : r.name
+  }).join('；')
   console.log(`::error::走查未通过（${failed.length}/${results.length}）：${detail}`)
 }
 

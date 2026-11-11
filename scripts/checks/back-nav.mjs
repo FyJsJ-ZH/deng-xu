@@ -30,7 +30,17 @@ const EDGE = (() => {
   throw new Error('找不到 Edge / Chrome，可用 EDGE_PATH 指定')
 })()
 const PORT = Number(process.env.CDP_PORT || 9860)
-const sleep = ms => new Promise(r => setTimeout(r, ms))
+/*
+  ⚠️ CI 上慢一倍多，而这一套全是**固定 sleep**（不像别的套件用 `waitFor` 轮询条件）。
+
+  Windows runner 的冷启动 + Edge 首启 + 空 IndexedDB 播种 14 张内置卡，
+  每一步都比本地慢；固定等待一旦不够，表现就是**偶发**挂在某一条断言上 ——
+  本地连跑三次全过、CI 挂一次，2026-11 已经这样浪费过一轮排查。
+
+  所以在 CI 里把每次等待乘 1.8（本地不变）。纯加时间，不改判据。
+*/
+const SLOW = process.env.CI ? 1.8 : 1
+const sleep = ms => new Promise(r => setTimeout(r, Math.round(ms * SLOW)))
 const getJson = u => new Promise((res, rej) => {
   http.get(u, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => { try { res(JSON.parse(d)) } catch (e) { rej(e) } }) }).on('error', rej)
 })
