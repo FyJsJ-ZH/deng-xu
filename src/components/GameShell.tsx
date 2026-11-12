@@ -14,7 +14,7 @@ import { RelationshipPanel } from '@/components/RelationshipPanel'
 import { DebugPanel } from '@/components/DebugPanel'
 import { StatusBar } from '@/components/StatusBar'
 import { ChapterOverlay } from '@/components/ChapterOverlay'
-import { useGameStore, MAX_TURN_SNAPSHOTS, type TokenUsage } from '@/stores/game'
+import { useGameStore, MAX_TURN_SNAPSHOTS, type TokenUsage, type PromptParts } from '@/stores/game'
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useGameEngine } from '@/hooks/useGameEngine'
@@ -89,15 +89,33 @@ function tokenTooltip(
   label: string,
   provider: string,
   model: string,
+  parts?: PromptParts | null,
 ): string {
-  if (!u || (!u.promptTokens && !u.completionTokens)) return `${label}：暂无记录`
+  /*
+    ── 输入构成的拆解（2026-11）──
+
+    玩家问「我的世界书、卡、预设加起来根本没有十万，输入怎么会有 163 KB」。
+    这一行就是答案：把输入拆成**世界书 / 历史 / 记忆 / 这一轮的行动**四块，
+    谁是大头一眼看得出。字节数按 UTF-8 算 —— 中文一个字三字节，
+    所以 5 万字在网关面板上会显示成 150 KB，这本身就是个容易误会的换算。
+  */
+  const breakdown = parts
+    ? `\n输入构成：世界书+骨架 ${Math.round(parts.system / 100) / 10}k 字`
+      + ` / 历史 ${Math.round(parts.history / 100) / 10}k 字`
+      + ` / 记忆 ${Math.round(parts.memory / 100) / 10}k 字`
+      + ` / 本轮行动 ${parts.user} 字`
+      + `\n合计 ${Math.round(parts.total / 100) / 10}k 字符 ≈ ${(parts.bytes / 1024).toFixed(0)} KB（UTF-8，中文 1 字 = 3 字节）`
+    : ''
+  if (!u || (!u.promptTokens && !u.completionTokens)) {
+    return `${label}：暂无记录${breakdown}`
+  }
   const src = u.estimated
     ? '接口未返回 usage，数字按字符数估算（含思维链）—— 只能看个量级，别拿去对账'
     : '取自接口返回的 usage'
   const hit = u.cacheHitTokens
     ? `\n其中缓存命中 ${u.cacheHitTokens} tok（命中价比未命中便宜得多）`
     : ''
-  return `${label}\n输入 ${u.promptTokens} tok / 输出 ${u.completionTokens} tok${hit}\n`
+  return `${label}\n输入 ${u.promptTokens} tok / 输出 ${u.completionTokens} tok${hit}${breakdown}\n`
     + `${priceSourceNote(provider, model)}\n${src}\n金额是**按官方价目折算的参考值**，不是账单。`
 }
 
@@ -125,7 +143,7 @@ const MAX_TURN_SNAPSHOTS_UI = MAX_TURN_SNAPSHOTS
  * 一旦共用，Rollup 会把它提到主包，拆了等于没拆。
  */
 export function GameShell() {
-  const { history, resources, resourceDefs, playerName, location, lastUsage, sessionUsage } = useGameStore()
+  const { history, resources, resourceDefs, playerName, location, lastUsage, sessionUsage, lastPromptParts } = useGameStore()
   const syncWorldDefs = useGameStore(s => s.syncWorldDefs)
   const { llm } = useUIStore()
   /*
@@ -441,7 +459,7 @@ export function GameShell() {
           而不是常驻铺开。
         */}
         <div className="flex items-center gap-2 px-3 py-1 text-[10px] font-mono text-text-muted border-b border-text-muted/20 flex-wrap">
-          <span title={tokenTooltip(lastUsage, '上一轮（叙事 + 数据结算两次调用）', llm.provider, llm.narrativeModel)}>
+          <span title={tokenTooltip(lastUsage, '上一轮（叙事 + 数据结算两次调用；下面是叙事那一次的输入构成）', llm.provider, llm.narrativeModel, lastPromptParts)}>
             本轮 <span className="text-text-secondary">{formatUsage(lastUsage, llm.provider, llm.narrativeModel)}</span>
             {/*
               **单独把"输出"拎出来显示**（2026-11）。

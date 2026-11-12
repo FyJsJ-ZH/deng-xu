@@ -136,6 +136,28 @@ export interface LocationInfo {
 }
 
 /**
+ * 一次叙事请求的**构成明细**（2026-11）。
+ *
+ * 网关面板上那一行 `输入 163.4 KB` 回答不了"为什么这么大"。
+ * 这里按区块拆开，单位是**字符数**（中文按 1 个字符算，
+ * 而网关多半按 UTF-8 字节显示 —— 所以还要给一个 `bytes`）。
+ */
+export interface PromptParts {
+  /** 叙事 system prompt（世界书 + 骨架 + 角色卡 + 预设） */
+  system: number
+  /** 带进去的历史消息 */
+  history: number
+  /** 前情摘要 + 三层记忆 + 卷宗 + 已知信息这些附加块 */
+  memory: number
+  /** 最后那条 user 消息（玩家行动 + 本轮情境） */
+  user: number
+  /** 全部消息的字符总数 */
+  total: number
+  /** 全部消息按 UTF-8 序列化后的字节数（与网关面板的口径接近） */
+  bytes: number
+}
+
+/**
  * 一次 LLM 调用的用量（C9）
  *
  * `estimated` 是**必须**有的字段：很多 OpenAI 兼容端点（尤其是第三方中转与
@@ -599,6 +621,18 @@ export interface GameState {
   /** 清零累计（玩家开始新一局或想重新观察时用） */
   resetSessionUsage: () => void
   /**
+   * 上一轮叙事请求的**构成**（字数 / 字节）。
+   *
+   * ## 为什么单独记（2026-11，玩家问「怎么会有十万输入」）
+   *
+   * 他看到网关面板上 `输入 163.4 KB`，而自己的世界书、卡、预设加起来远没这么多。
+   * 光看总数回答不了这个问题 —— 得能拆开：**世界书占多少、历史占多少、记忆占多少**。
+   * 这三个数是查"摘要器是不是漏了""历史是不是没裁"的唯一入口，
+   * 而它们只有构建 messages 的那一刻才知道。
+   */
+  lastPromptParts: PromptParts | null
+  setPromptParts: (parts: PromptParts | null) => void
+  /**
    * 服务端回包里那个 `model` 字段（**实际**提供服务的模型名）。
    *
    * 为什么要单独存它：我们在配置里写的是别名 —— `deepseek-flash` 背后是
@@ -1023,6 +1057,7 @@ const INITIAL_STATE = {
   lastStateSnapshot: null,
   turnSnapshots: [],
   lastUsage: null,
+  lastPromptParts: null,
   sessionUsage: EMPTY_USAGE,
   lastResponseModel: '',
   story: {
@@ -1428,6 +1463,7 @@ export const useGameStore = create<GameState>()(
         sessionUsage: addUsage(state.sessionUsage || EMPTY_USAGE, { ...usage, at: usage.at ?? Date.now() }),
       })),
       clearLastUsage: () => set({ lastUsage: null }),
+      setPromptParts: (parts) => set({ lastPromptParts: parts }),
       recordResponseModel: (model) => set({ lastResponseModel: String(model || '') }),
       // 复制一份而不是直接写 EMPTY_USAGE：共享同一个对象引用时，
       // 任何一处误改都会污染"零值"这个全局常量
@@ -1620,7 +1656,7 @@ export const useGameStore = create<GameState>()(
         // 连同 lastStateSnapshot 一起排除；sessionUsage / memory / turnSnapshots
         // 则必须落盘 —— 它们就是存档本身的一部分。
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { isGameStarted, lastStateSnapshot, lastUsage, ...rest } = state
+        const { isGameStarted, lastStateSnapshot, lastUsage, lastPromptParts, ...rest } = state
         return rest
       }
     }

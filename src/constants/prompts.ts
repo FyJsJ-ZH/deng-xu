@@ -165,7 +165,7 @@ export interface TurnBriefing {
    */
   context?: string
   /**
-   * 本轮世界书正文的汉字预算。不给就用 `digestLore` 的默认值（12000）。
+   * 本轮世界书正文的汉字预算。不给就用 `digestLore` 的默认值（9000）。
    * 开局那一轮值得给大一些：第一幕要立住整个世界，之后每轮再收窄。
    */
   loreBudget?: number

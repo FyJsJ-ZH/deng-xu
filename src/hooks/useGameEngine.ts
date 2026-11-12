@@ -1282,6 +1282,39 @@ export function useGameEngine(): GameEngineReturn {
       ]
 
       /*
+        ── 记下这一轮请求的**构成**（2026-11）──
+
+        玩家在网关面板上看到「输入 163.4 KB」，问「我的世界书、卡、预设加起来
+        根本没有十万」。光看总数回答不了这个问题 —— 必须能拆开看：
+        是**世界书**（摘要器漏了）、**历史**（没裁干净），还是**记忆**（摘要越滚越大）。
+
+        单位是字符数；另外算一个 UTF-8 字节数，因为网关面板通常按字节显示，
+        而中文一个字是三个字节 —— 这就是"明明只有五万字，面板写 160 KB"的来源。
+        这段只在本地做一次字符串遍历，成本可以忽略。
+      */
+      {
+        const last = narrativeMessages.length - 1
+        let historyChars = 0
+        let memoryChars = 0
+        for (let i = 1; i < last; i++) {
+          const m = narrativeMessages[i]
+          if (m.role === 'system') memoryChars += m.content.length
+          else historyChars += m.content.length
+        }
+        const systemChars = narrativeMessages[0]?.content.length ?? 0
+        const userChars = narrativeMessages[last]?.content.length ?? 0
+        useGameStore.getState().setPromptParts({
+          system: systemChars,
+          history: historyChars,
+          memory: memoryChars,
+          user: userChars,
+          total: systemChars + historyChars + memoryChars + userChars,
+          // JSON 序列化后的字节数 —— 与我们实际发出去的请求体最接近
+          bytes: new TextEncoder().encode(JSON.stringify(narrativeMessages)).length,
+        })
+      }
+
+      /*
         ⚠️ 这一行是「字数不达标」的真正解（2026-11，玩家第四次报同一件事）。
 
         在这之前从没发过 max_tokens，长度由服务商默认值决定 ——

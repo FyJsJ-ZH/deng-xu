@@ -71,9 +71,46 @@ export function splitLore(lore: string): LoreSection[] {
   return out.filter(s => s.title || s.body.trim())
 }
 
+/**
+ * 没分章的世界书 → **伪章节**（按空行切）。
+ *
+ * 标题写成「片段 N」而不是首句：首句常常是半句话，当检索键会误命中
+ * （「他推开门」这种句子在正文里到处都是）。
+ */
+function pseudoSections(lore: string): LoreSection[] {
+  return String(lore || '')
+    .split(/\n{2,}/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map((body, i) => ({ title: `片段 ${i + 1}`, body }))
+}
+
 /** 汉字数（用来卡预算 —— 与 check-worlds.mjs 用同一个量纲） */
 function cjkLen(s: string): number {
   return (String(s || '').match(/[\u4e00-\u9fff]/g) || []).length
+}
+
+/**
+ * 按汉字数截断一段文本（2026-11）。
+ *
+ * ## 为什么必须加上这一刀
+ *
+ * 玩家报「输入 163.4 KB，可我的世界书加预设根本没有十万」。
+ * 查下来，摘要器有三个口子是**完全不设防**的：
+ *
+ *   1. **总纲**（第一个 `**标题**` 之前的内容）原样全量返回；
+ *   2. **前两章**（`alwaysInclude`）绕过预算直接塞；
+ *   3. **落选章节的索引**有多少列多少。
+ *
+ * 前两条在"世界书没有分章"时尤其致命 —— 那样整本书都是总纲。
+ * 第三条在世界书有上千条时能把提示词撑成一张目录。
+ */
+function clipCjk(s: string, max: number): string {
+  const n = cjkLen(s)
+  if (n <= max) return s
+  const ratio = max / n
+  const cut = s.slice(0, Math.max(1, Math.floor(s.length * ratio)))
+  return `${cut}…（原文约 ${n} 字，已按篇幅截断）`
 }
 
 /** 一节的一句话提要（首句，截断） */
@@ -217,6 +254,14 @@ export interface LoreDigestOptions {
   budget?: number
   /** 无条件保留靠前几节（不含总纲）。默认 2。 */
   alwaysInclude?: number
+  /**
+   * 落选章节索引**最多列几条**（默认 60）。
+   *
+   * 索引的用处是让模型知道"世界还有这些侧面，别乱编"，
+   * 列 60 条已经足够表达这件事；列 600 条就变成一张占满上下文的地名目录，
+   * 而真正有用的是正文那几千字。
+   */
+  restLimit?: number
 }
 
 /**
@@ -244,12 +289,14 @@ export interface LoreChunk {
 }
 
 export interface LoreDigest {
-  /** 常驻的总纲（可能为空串） */
+  /** 常驻的总纲（可能为空串；**已限长**，见 `clipCjk`） */
   preamble: string
   /** 本轮展开的**段落**（已按原文顺序排好） */
   picked: LoreChunk[]
   /** 其余章节的索引（仍是**章**级 —— 索引再细下去自己就膨胀了） */
   rest: { title: string; gist: string }[]
+  /** 索引**本来有**多少条（`rest` 被 `restLimit` 截过，靠它告诉模型"还有多少没列"） */
+  restTotal: number
   /** 诊断用：本轮命中的专名 */
   hits: string[]
 }
@@ -303,14 +350,32 @@ export function splitParagraphs(body: string): string[] {
 export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
   const budget = Math.max(1000, opts.budget ?? 9000)
   const always = Math.max(0, opts.alwaysInclude ?? 2)
-  const sections = splitLore(lore)
+  /*
+    ── 没分章的世界书要**造**出章节（2026-11）──
 
-  if (!sections.length) return { preamble: '', picked: [], rest: [], hits: [] }
+    ST 世界书转来的 lore 常常没有 `**标题**` 分章 —— 那样 `splitLore` 会把
+    **整本书**当成"总纲"，而总纲是常驻的，摘要器等于没起作用（玩家看到的
+    输入 163.4 KB 大半来自这里）。
+
+    简单地"把总纲截到 1500 字"是坏结果：他剩下九成的设定从此永远不进提示词。
+    所以先按空行切成**伪章节**（标题用「片段 N」），让打分与挑选照常工作；
+    标题检索键会退化成"只能靠正文地名命中"，但那至少是**按需**的。
+  */
+  let sections = splitLore(lore)
+  if (sections.length && !sections.some(s => s.title)) {
+    sections = pseudoSections(lore)
+  }
+
+  if (!sections.length) return { preamble: '', picked: [], rest: [], restTotal: 0, hits: [] }
 
   // 总纲可能不止一节（第一个标题之前的全部内容）
   const preambleSec = sections.find(s => !s.title)
   const chapters = sections.filter(s => s.title)
-  const preamble = preambleSec?.body.trim() || ''
+  /*
+    ⚠️ 总纲原来**原样全量**返回。现在给它一个上限：1500 字足够交代纪年与基本法则。
+    伪章节那一步之后，走到这里的大多是"真有总纲但写太长"的情况。
+  */
+  const preamble = clipCjk(preambleSec?.body.trim() || '', 1500)
 
   // ── 所有段落，带上位置 ──
   const chunks: LoreChunk[] = []
@@ -384,21 +449,53 @@ export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
   const pickedIdx = new Set<number>()
   let used = 0
 
+  /*
+    ── 强制章节也要吃预算（2026-11）──
+
+    `alwaysInclude` 的用意是"前两章是舆图与势力这类底子，宁可贵一点也要给"。
+    但它原来写成 `if (!isForced && used + len > budget) continue` ——
+    **强制项完全不看预算**：世界书头两章若各五千字，光这两章就是一万字，
+    比整个预算还大，后面的打分挑选全被挤死。
+
+    现在给它们一个独立上限（预算的 45%）：够把"这条河从哪流到哪"说清楚，
+    又不至于让两章独吞。剩下的 55% 留给真正命中本轮的段落。
+  */
+  const forcedCap = Math.floor(budget * 0.45)
+  let forcedUsed = 0
+
   for (const x of ordered) {
     const isForced = forced.has(x.index)
-    // 非强制项：分数为 0 就不放了（放进来只会白占额度）
-    if (!isForced && x.score === 0) continue
     const len = cjkLen(x.chunk.body)
-    if (!isForced && used + len > budget) continue
+    if (isForced) {
+      if (forcedUsed + len > forcedCap) continue
+      pickedIdx.add(x.index)
+      forcedUsed += len
+      used += len
+      continue
+    }
+    // 非强制项：分数为 0 就不放了（放进来只会白占额度）
+    if (x.score === 0) continue
+    if (used + len > budget) continue
     pickedIdx.add(x.index)
     used += len
   }
 
-  // 保底：一段都没挑出来时（上下文里一个专名都没命中），
-  // 至少给最靠前那章的段落，免得模型手里完全没有世界
+  /*
+    保底：一段都没挑出来时（上下文里一个专名都没命中），
+    至少给最靠前那章的段落，免得模型手里完全没有世界。
+
+    ⚠️ 这条**也要吃预算**（2026-11）：原来是无条件把第 0 章**全部**段落塞进来，
+    而"整章"在没分章的世界书里就是"整本书" —— 一个专名都没命中的那种轮次
+    （玩家在自言自语、或者刚开局）会一次性把几万字灌进去。
+  */
   if (!pickedIdx.size) {
-    for (const x of scored.filter(x => x.chunk.chapterIndex === 0)) pickedIdx.add(x.index)
-    if (!pickedIdx.size) for (const x of scored.slice(0, 1)) pickedIdx.add(x.index)
+    for (const x of scored.filter(x => x.chunk.chapterIndex === 0)) {
+      const len = cjkLen(x.chunk.body)
+      if (used + len > budget) break
+      pickedIdx.add(x.index)
+      used += len
+    }
+    if (!pickedIdx.size && scored.length) pickedIdx.add(scored[0].index)
   }
 
   /*
@@ -428,11 +525,17 @@ export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
     .map(i => scored[i].chunk)
 
   const pickedChapters = new Set(picked.map(p => p.chapterIndex))
-  const rest = chapters
+  const restAll = chapters
     .filter((_, i) => !pickedChapters.has(i))
     .map(s => ({ title: s.title, gist: gistOf(s.body) }))
+  /*
+    索引也要有上限（2026-11）：世界书上千条时，一行一条能把提示词撑成目录。
+    列 60 条足够表达"还有这些侧面，别乱编"；剩下的只说个数。
+  */
+  const restLimit = Math.max(0, opts.restLimit ?? 60)
+  const rest = restAll.slice(0, restLimit)
 
-  return { preamble, picked, rest, hits: allHits }
+  return { preamble, picked, rest, restTotal: restAll.length, hits: allHits }
 }
 
 /**
@@ -471,8 +574,11 @@ export function renderLoreDigest(digest: LoreDigest, worldTitle: string): string
   }
 
   if (digest.rest.length) {
+    const more = digest.restTotal > digest.rest.length
+      ? `（另有 ${digest.restTotal - digest.rest.length} 章未列出）`
+      : ''
     parts.push(
-      `### 世界书的其他章节（**本轮未展开**）\n\n` +
+      `### 世界书的其他章节（**本轮未展开**）${more}\n\n` +
       digest.rest.map(r => `- **${r.title}**：${r.gist}`).join('\n') +
       `\n\n⚠️ 上面这些只有标题与一句话提要。**不要凭空断言**它们的具体设定` +
       `（具体数字、具体官职、具体地名）—— 需要用到时，用与《${worldTitle}》既有正文` +
