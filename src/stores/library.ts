@@ -6,7 +6,7 @@ import { createKVStore, isIdbAvailable } from '@/utils/idb';
 import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds, retireBuiltinWorlds } from '@/data/builtinWorldIds';
 import { BUILTIN_STAMP } from '@/data/builtinStamp';
 import { normalizeWorldCard } from '@/utils/worldCard';
-import { syncPresetSnapshot, reviveBudgetDroppedEntries } from '@/utils/narrativePreset';
+import { syncPresetSnapshot, reviveBudgetDroppedEntries, dedupePresetsBySource } from '@/utils/narrativePreset';
 
 /**
  * 卡片库为什么落在 IndexedDB 而不是 localStorage：
@@ -450,24 +450,51 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
         }
 
         /*
-          ── 迁移：把旧预算下被丢掉的条目勾回来（2026-11）──
+          ── 迁移一：合并同一份文件被导入多次留下的副本（2026-11）──
+
+          "同文件覆盖"判据写错过一次，于是每次导入都多存一份。两个同名预设
+          并排躺在同一个展开区里，`activeId` 只指向其中一份 —— 玩家在另一份里
+          改了半天没反应，报上来的现象是「预设时有时无」。
+          这里按 source 只留最近更新的那份，并把 activeId 改指过去。
+        */
+        let presetsDirty = false
+        try {
+          const deduped = dedupePresetsBySource(narrativePresets, activeNarrativePresetId)
+          if (deduped.removed > 0) {
+            narrativePresets = deduped.presets
+            activeNarrativePresetId = deduped.activeId
+            presetsDirty = true
+          }
+        } catch {
+          // 合并失败不影响读取：最差就是继续带着几份副本
+        }
+
+        /*
+          ── 迁移二：把旧预算下被丢掉的条目勾回来（2026-11）──
 
           玩家原话：「我要预设完完整整的生效」。导入预算从 2600 抬到 20000 之后，
           **已经躺在库里的那份预设不会自己变** —— 那些条目还是"没勾"的状态。
-          这里在读到的那一刻统一唤醒一次，然后立刻写回（只写一次，之后没有变化就不写）。
         */
         try {
           const revived = reviveBudgetDroppedEntries(narrativePresets)
           if (revived.changed) {
             narrativePresets = revived.presets
+            presetsDirty = true
+          }
+        } catch {
+          // 同上：失败不影响正常读取
+        }
+
+        if (presetsDirty) {
+          try {
             await kv.set(NARRATIVE_PRESETS_KEY, JSON.stringify({
               presets: narrativePresets,
               activeId: activeNarrativePresetId,
               style: styleChoice,
             }))
+          } catch {
+            // 写回失败也照常进游戏，下次再迁
           }
-        } catch {
-          // 迁移失败不影响正常读取：最差也就是这一局少几条，下次再迁
         }
         if (activeNarrativePresetId && !narrativePresets.some(p => p.id === activeNarrativePresetId)) {
           activeNarrativePresetId = '';
@@ -818,22 +845,33 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
       const now = Date.now();
       const list = get().narrativePresets;
       /*
-        ── 同一个文件重新导入 = **更新**，不是再存一份（2026-11）──
+        ── 同一个文件重新导入 = **更新**，不是再存一份（2026-11，改过一次判据）──
 
         玩家报「预设导入得七零八落、顺序错乱」。修好解析之后他需要重新导入一次，
         而旧逻辑每次都会多存一份副本 —— 列表很快变成
         「Izumi 1029 (1)、Izumi 1029 (1) (1)、…」，越修越乱。
 
-        判据只用 `source`（原文件名）：同一个 .json 再拖进来就是同一份预设，
-        复用它的 id 与 createdAt。真想留旧版的话，改个文件名再导 —— 那本来就是两份文件。
+        ⚠️ 第一版判据写的是 `preset.id ? undefined : 查 source`，**永远走不到查 source**
+        —— 因为 `stPresetToNarrativePreset` 生成的对象自带一个 `makeId('preset')`。
+        于是"同一个文件导两次"仍然产出两份，而界面上明明写着"已更新"。
+        两份同名预设，activeId 指着其中一份，玩家在另一份里改了半天没反应，
+        报上来的现象就是「**预设时有时无**」。
+
+        现在的判据：
+          · 传了 id 且库里**确实有**这一份 → 就地替换；
+          · 传了 id 但库里没有（= 新导入）→ 看 source 有没有同名的，有就**复用它的 id**；
+          · 都没有 → 新增。
+        真想留两份：把文件改个名再导 —— 那本来就是两份文件。
       */
-      const sameFile = preset.id
-        ? undefined
-        : list.find((p) => p.source && p.source === preset.source);
+      const byId = preset.id ? list.find((p) => p.id === preset.id) : undefined;
+      const bySource = !byId && preset.source
+        ? list.find((p) => p.source && p.source === preset.source)
+        : undefined;
+      const resolvedId = byId?.id || bySource?.id || preset.id || makeId('preset');
       const next: NarrativePreset = {
         ...deepClone(preset),
-        id: preset.id || sameFile?.id || makeId('preset'),
-        createdAt: preset.createdAt || sameFile?.createdAt || now,
+        id: resolvedId,
+        createdAt: byId?.createdAt || bySource?.createdAt || preset.createdAt || now,
         updatedAt: now,
       };
       const index = list.findIndex((p) => p.id === next.id);

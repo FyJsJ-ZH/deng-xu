@@ -160,6 +160,49 @@ export function reviveBudgetDroppedEntries(presets: NarrativePreset[]): {
 }
 
 /**
+ * 合并**同一份文件被导入多次**留下的副本（2026-11）。
+ *
+ * ## 它们是怎么来的
+ *
+ * `saveNarrativePreset` 的"同文件覆盖"判据写错过一次（`preset.id ? undefined : …`，
+ * 而导入器生成的对象总是带 id），于是每次导入都多存一份。
+ * 玩家库里于是躺着「Izumi 1029 (1)」「Izumi 1029 (1) (2)」这样的东西。
+ *
+ * ## 为什么这份副本会造成"预设时有时无"
+ *
+ * `activeNarrativePresetId` 只指向**其中一份**。玩家在另一份里改字、改勾选，
+ * 改的是一份没启用的预设 —— 界面上它就在同一个展开区里，看起来完全一样。
+ * 他报上来的现象因此是「同一个预设，有时生效有时不生效」。
+ *
+ * 处理：同一个 `source` 只留 `updatedAt` 最新的那一份；
+ * 若 `activeId` 指向被合并掉的那份，改指到留下的那份（而不是变成"没启用"）。
+ */
+export function dedupePresetsBySource(
+  presets: NarrativePreset[],
+  activeId: string,
+): { presets: NarrativePreset[]; activeId: string; removed: number } {
+  const best = new Map<string, NarrativePreset>()
+  for (const p of presets) {
+    const key = String(p.source || '').trim()
+    if (!key) continue
+    const cur = best.get(key)
+    if (!cur || (p.updatedAt || 0) > (cur.updatedAt || 0)) best.set(key, p)
+  }
+  const kept = presets.filter(p => {
+    const key = String(p.source || '').trim()
+    if (!key) return true
+    return best.get(key)?.id === p.id
+  })
+  let nextActive = activeId
+  if (activeId && !kept.some(p => p.id === activeId)) {
+    const dropped = presets.find(p => p.id === activeId)
+    const key = String(dropped?.source || '').trim()
+    nextActive = (key && best.get(key)?.id) || ''
+  }
+  return { presets: kept, activeId: nextActive, removed: presets.length - kept.length }
+}
+
+/**
  * 把预设与文风叠到世界上，返回**新的** world 对象（原对象不变）。
  *
  * 三层，从下到上：

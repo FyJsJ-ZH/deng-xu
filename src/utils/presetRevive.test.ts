@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { reviveBudgetDroppedEntries, withNarrativePreset, renderPresetEntries } from '@/utils/narrativePreset'
+import {
+  reviveBudgetDroppedEntries, withNarrativePreset, renderPresetEntries, dedupePresetsBySource,
+} from '@/utils/narrativePreset'
 import type { NarrativePreset, PresetEntry, WorldCard } from '@/types/cards'
 
 /**
@@ -62,5 +64,50 @@ describe('唤醒被预算丢掉的条目', () => {
     expect(renderPresetEntries(presets[0], 'rules')).toContain('【条目b】')
     const world = { narrative: { customStyle: '' }, rules: '' } as unknown as WorldCard
     expect(withNarrativePreset(world, presets[0]).rules).toContain('内容b')
+  })
+})
+
+/**
+ * 同一份文件被导入多次留下的副本（2026-11，玩家报「预设时有时无」）。
+ *
+ * `saveNarrativePreset` 的"同文件覆盖"判据写错过一次，每次导入都多存一份。
+ * 两个同名预设并排躺在同一个展开区里，`activeId` 只指向其中一份 ——
+ * 玩家在另一份里改了半天没反应，而他看起来完全一样。
+ */
+describe('合并重复导入的副本', () => {
+  const p = (id: string, source: string, updatedAt: number, content: string): NarrativePreset => ({
+    id, name: 'Izumi 1029', source,
+    rules: '', style: '', lore: '',
+    entries: [entry('a', { content })],
+    counts: { total: 1, rules: 1, style: 0, other: 0, dropped: [] },
+    createdAt: 1, updatedAt,
+  })
+
+  it('★ 同 source 只留最近更新的那份', () => {
+    const { presets, removed } = dedupePresetsBySource(
+      [p('x1', 'Izumi.json', 100, '旧内容'), p('x2', 'Izumi.json', 200, '新内容')],
+      '',
+    )
+    expect(removed).toBe(1)
+    expect(presets).toHaveLength(1)
+    expect(presets[0].id).toBe('x2')
+    expect(presets[0].entries![0].content).toBe('新内容')
+  })
+
+  it('★ activeId 指着被合并掉的那份 → 改指到留下的，而不是变成"没启用"', () => {
+    const { activeId } = dedupePresetsBySource(
+      [p('x1', 'Izumi.json', 100, '旧'), p('x2', 'Izumi.json', 200, '新')],
+      'x1',
+    )
+    expect(activeId).toBe('x2')
+  })
+
+  it('不同文件、或没有 source 的，一份都不动', () => {
+    const { presets, removed } = dedupePresetsBySource(
+      [p('a', 'A.json', 1, '甲'), p('b', 'B.json', 2, '乙'), p('c', '', 3, '丙')],
+      'a',
+    )
+    expect(removed).toBe(0)
+    expect(presets).toHaveLength(3)
   })
 })
