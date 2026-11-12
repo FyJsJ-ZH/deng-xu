@@ -322,6 +322,25 @@ check('★ 字数滑块改完立刻写进 session.world（下一轮生效）', s
   `${stylePanel.before} → ${stylePanel.after}`)
 check('面板里写了这一项对 token 额度的影响', stylePanel.hint === true)
 
+/*
+  防降级加固面板（2026-11，从酒馆脚本「卢克之光」移植）。
+  它在同一个「笔」面板里，验的是"按钮点了真的写进配置"——
+  这类纯前端开关最常见的坏法就是点了没反应。
+*/
+const anti = JSON.parse(await ev(`(async()=>{
+  const wait = ms => new Promise(r=>setTimeout(r,ms));
+  const btn = document.querySelector('[data-anti="know"]');
+  if (!btn) return JSON.stringify({ step:'no-button' });
+  const before = window.__uiStore.getState().llm.antiRoute;
+  btn.click(); await wait(350);
+  const after = window.__uiStore.getState().llm.antiRoute;
+  // 恢复：开着会让后面那一轮真的注入防全知文案，污染字数断言
+  window.__uiStore.getState().setLlm({ antiRoute: before });
+  return JSON.stringify({ step:'ok', before: before && before.know ? before.know : 'none', after: after && after.know ? after.know : 'none' });
+})()`))
+check('局内能打开防降级面板', anti.step === 'ok', anti.step || '')
+check('★ 点一下「防全知」真的写进配置', anti.after !== anti.before, `${anti.before} → ${anti.after}`)
+
 console.log('\n=== 6) 返回标题 → 继续 ===')
 await click('返回标题')
 await sleep(900)

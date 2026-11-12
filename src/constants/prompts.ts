@@ -8,6 +8,8 @@
  */
 
 import { resolveReplyLength } from '@/types/cards'
+import { renderAntiRoute } from '@/utils/antiRoute'
+import type { AntiRouteConfig } from '@/utils/antiRoute'
 import type { AttributeDef, CharacterCard, LLMConfig, PlayerCard, ResourceDef, WorldCard } from '@/types/cards';
 import { avatarCatalogPrompt } from '@/utils/avatarArt';
 import { aiLookCatalogPrompt } from '@/utils/lookSpec';
@@ -195,6 +197,20 @@ export interface TurnBriefing {
    * 开局那一轮值得给大一些：第一幕要立住整个世界，之后每轮再收窄。
    */
   loreBudget?: number
+  /**
+   * 防降级加固层（2026-11）。
+   *
+   * 由 `utils/antiRoute.ts` 渲染，追加在 system prompt 的**最末尾** ——
+   * 那里是模型最敏感的位置，也是前缀缓存能保住的位置（见该模块的说明）。
+   */
+  antiRoute?: AntiRouteConfig
+  /**
+   * 这一轮的种子（传轮次编号）。
+   *
+   * 防路由的随机标记用它当种子：同一轮重发必须拿到同一份，
+   * 否则"重试"本身就成了新的指纹。
+   */
+  turnSeed?: string
 }
 
 
@@ -462,6 +478,20 @@ ${customStyle}`);
 - 不要输出任何 JSON。
 - 不要输出任何元数据。
 - 篇幅：这一段正文约 ${resolveReplyLength(world.narrative)} 字，上下浮动不超过 200 字。`);
+
+  /*
+    ── 防降级加固层（2026-11）──
+
+    放在**最后**：模型对越靠后的指令越敏感，而这几段是"这一轮必须照做"的硬约束，
+    理应在世界卡与预设之后。渲染失败时返回空串，一个字都不会多出来。
+  */
+  const anti = renderAntiRoute(briefing.antiRoute, {
+    userName: player.name,
+    cast: activeCharacters.map(c => c.name),
+    replyLength: resolveReplyLength(world.narrative),
+    seed: briefing.turnSeed || '',
+  });
+  if (anti) sections.push(anti);
 
   return sections.join('\n\n');
 }

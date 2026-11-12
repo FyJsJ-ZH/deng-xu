@@ -1,6 +1,7 @@
 import { useLibraryStore } from '@/stores/library'
 import { useSessionStore } from '@/stores/session'
 import { StyleChooser } from '@/components/StyleChooser'
+import { AntiRoutePanel } from '@/components/AntiRoutePanel'
 import { Sparkles, ScrollText, Info, Type } from 'lucide-react'
 
 /**
@@ -162,6 +163,9 @@ export function NarrativeControls() {
 
       {/* ── 文风（StyleChooser 自己读写 store，外壳也是它自己的）── */}
       <StyleChooser />
+
+      {/* ── 防降级加固（2026-11，从酒馆脚本「卢克之光」移植）── */}
+      <AntiRoutePanel />
 
       {/* ── 一句总述 ── */}
       <p className="flex items-start gap-1.5 text-[10px] text-text-muted leading-relaxed px-1">

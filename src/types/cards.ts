@@ -259,6 +259,8 @@ export interface CharacterCard {
   extensions?: Record<string, unknown>;
 }
 
+import type { AntiRouteConfig } from '@/utils/antiRoute';
+
 export type NarrativePov = 'second' | 'first' | 'third';
 export type NarrativeTense = 'past' | 'present';
 
@@ -617,6 +619,17 @@ export interface LLMConfig {
    * 只有当服务商单次上限偏低（某些中转封 4096）时才需要手动调。
    */
   maxTokens?: number;
+  /**
+   * 防降级加固层（2026-11，从酒馆脚本「卢克之光」移植）。
+   *
+   * 五层独立开关：防路由 / 防全知 / 去媚 / 抗截断 / 反 OOC。
+   * **默认全关**——强档一轮多花六七百 token，而且防全知会禁止写内心话，
+   * 那对想看细腻心理的玩家是减分项。谁觉得被降级了谁开。
+   *
+   * 存在这里（而不是世界卡里）是因为它跟着**模型和渠道**走：
+   * 换个中转可能就不需要了，换个世界则完全无关。
+   */
+  antiRoute?: AntiRouteConfig;
 }
 
 export interface CardBundle {

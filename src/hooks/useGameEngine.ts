@@ -1267,6 +1267,15 @@ export function useGameEngine(): GameEngineReturn {
             ].filter(Boolean).join('\n'),
             // 开局那一轮给双倍预算：第一幕要把整个世界立住，之后才收窄
             ...(isOpening ? { loreBudget: 24000 } : {}),
+            /*
+              ── 防降级加固层（2026-11）──
+
+              `turnSeed` 用"轮次 + 世界"而不是 `Math.random()`：
+              同一轮里流式失败后整段重发，必须拿到**同一份**提示词，
+              否则"重试"本身又变成一次新的指纹 —— 那等于把加固层变成噪声源。
+            */
+            antiRoute: config.antiRoute,
+            turnSeed: `t${turnNumber}|${activeWorld.id}`,
           }),
         },
         /*
