@@ -56,6 +56,24 @@ function resourceLine(r: ResourceDef): string {
   return `- \`${r.id}\`（${r.name}）_(${bits.join('，')})_${desc ? `：${desc}` : ''}`;
 }
 
+/**
+ * 按字符数截断一段外部输入。
+ *
+ * ## 为什么角色卡也要限长（2026-11）
+ *
+ * 玩家问「还有哪些地方在吃输入」。查下来 `formatCharacter` 是**唯一没有任何上限**
+ * 的一块：设定、性格、情境、对话示例、专属指令、附加要求，六个字段原样拼进去。
+ *
+ * 从 SillyTavern 转来的角色卡里，`systemPrompt` 与 `messageExamples` 动辄几千字
+ * （那边是把整段破限串塞在角色卡里的）。在场三个人就是上万字 ——
+ * 而模型这一轮真正需要知道的，是这个人的**脾性、此刻的状态、说话的样子**。
+ */
+function clipChars(s: string, max: number): string {
+  const t = String(s || '').trim()
+  if (t.length <= max) return t
+  return `${t.slice(0, max)}…（原文 ${t.length} 字，已按篇幅截断）`
+}
+
 /** 把角色卡拼成给叙事 AI 读的人物档案 */
 export function formatCharacter(card: CharacterCard): string {
   const blocks: string[] = [];
@@ -80,16 +98,23 @@ export function formatCharacter(card: CharacterCard): string {
     手改过的 JSON、第三方打包的世界包都可能少写一栏。直接 `.trim()`
     会让整轮生成在第一个角色身上炸掉，而错误信息是
     `Cannot read properties of undefined (reading 'trim')`，玩家完全无从下手。
+
+    每个字段还各自有上限（见 `clipChars`）：卡是别人写的，几千字的
+    `systemPrompt` 在 ST 那边很常见，在这里却只是每轮重复付费的噪音。
   */
   const s = (v: unknown) => (typeof v === 'string' ? v : '')
-  if (s(card.description).trim()) blocks.push(`**设定**：${card.description.trim()}`);
-  if (s(card.personality).trim()) blocks.push(`**性格**：${card.personality.trim()}`);
-  if (s(card.scenario).trim()) blocks.push(`**相关情境**：${card.scenario.trim()}`);
-  if (s(card.messageExamples).trim()) blocks.push(`**对话示例**（模仿其语气与用词）：\n${card.messageExamples.trim()}`);
-  if (s(card.systemPrompt).trim()) blocks.push(`**该角色的专属指令**：${card.systemPrompt.trim()}`);
-  if (s(card.postHistoryInstructions).trim()) blocks.push(`**附加要求**：${card.postHistoryInstructions.trim()}`);
+  if (s(card.description).trim()) blocks.push(`**设定**：${clipChars(card.description, 700)}`);
+  if (s(card.personality).trim()) blocks.push(`**性格**：${clipChars(card.personality, 400)}`);
+  if (s(card.scenario).trim()) blocks.push(`**相关情境**：${clipChars(card.scenario, 400)}`);
+  if (s(card.messageExamples).trim()) blocks.push(`**对话示例**（模仿其语气与用词）：\n${clipChars(card.messageExamples, 900)}`);
+  if (s(card.systemPrompt).trim()) blocks.push(`**该角色的专属指令**：${clipChars(card.systemPrompt, 600)}`);
+  if (s(card.postHistoryInstructions).trim()) blocks.push(`**附加要求**：${clipChars(card.postHistoryInstructions, 300)}`);
 
-  return blocks.join('\n');
+  /*
+    每人再兜一道总闸（1800 字）：上面每个字段都限了，但六个加起来仍可能 3300。
+    三个在场角色就是一万字，而模型这一轮真正需要的没那么多。
+  */
+  return clipChars(blocks.join('\n'), 1800);
 }
 
 export function formatPlayer(player: PlayerCard): string {
@@ -255,7 +280,7 @@ export function buildNarrativeSystemPrompt(
   sections.push(`### 世界观设定 (World Setting)
 
 1. **${world.title}**${mood ? `（核心氛围：${mood}）` : ''}
-${atmo ? `\n${atmo}\n` : ''}
+${atmo ? `\n${clipChars(atmo, 1500)}\n` : ''}
 ${loreBlock}`);
 
   // ── 人物设定：字段与原作 `playerState.profile.*` 一一对应 ──
@@ -286,9 +311,23 @@ ${profileLines.join('\n')}`);
    - 保持人物性格的一致性。如果 \`relationship\` 是 "Superior"，主角应保持敬畏或服从。
    - 下面这几位此刻可能在场。他们的性格是自己长出来的，不是围着主角转的：
 
-${activeCharacters.length
-    ? activeCharacters.map(formatCharacter).join('\n\n')
-    : '（暂无登记在册的关系人。）'}`);
+${(() => {
+    if (!activeCharacters.length) return '（暂无登记在册的关系人。）'
+    /*
+      ── 在场人物也封顶（2026-11）──
+
+      `activeCharacterIds` 是玩家在人物面板里勾的，**没有上限**。
+      每人档案 1800 字（见 `formatCharacter`），勾十几个人就是两万字 ——
+      而模型这一轮真正能顾上的也就三五个。
+      最多列 6 位、合计 6000 字，多出来的只用一句话交代"还有谁在场"。
+    */
+    const shown = activeCharacters.slice(0, 6)
+    let out = shown.map(formatCharacter).join('\n\n')
+    if (activeCharacters.length > shown.length) {
+      out += `\n\n（另有 ${activeCharacters.length - shown.length} 位在场人物未列出。）`
+    }
+    return clipChars(out, 6000)
+  })()}`);
 
   sections.push(`4. **知识系统 (Knowledge System)**：
    - **动态记忆**：主角的认知应基于 \`knownFacts\`、\`readBooks\` 和 \`masteredLores\`。
@@ -302,10 +341,14 @@ ${activeCharacters.length
 
   const rulesText = str(world.rules);
   if (rulesText) {
+    /*
+      世界规则同样限长（2026-11）。实测大晟只有 475 字符，但这是**外部输入**：
+      从 ST 世界书或别处搬来的卡，rules 里塞几千字很常见。
+    */
     sections.push(`5. **世界规则（硬性约束）**：
    以下优先级高于一切文风偏好，必须严格遵守。
 
-${rulesText}`);
+${clipChars(rulesText, 3000)}`);
   }
 
   // ── 核心原则 ──
@@ -396,7 +439,17 @@ ${guide ? `- **写作要求**：${guide}` : ''}
   sections.push(`### 叙述人称与时态
 ${povInstruction(world)}`);
 
-  const customStyle = str(world.narrative.customStyle);
+  /*
+    ── 文风要求：**这一块也要限长**（2026-11）──
+
+    它是 `world.narrative.customStyle`，而预设的「文风」段会被叠进来
+    （`withNarrativePreset` 拼的就是这里），两段加起来可以到六七千字符 ——
+    实测 veil 那张卡这一块 2743 字符、大晟 2822，都超过世界书展开的任何一章。
+
+    2400 字符对"告诉模型怎么写"已经绰绰有余；再长的话，后半段基本是在
+    重复同一个意思，而模型对长段落尾部的注意力本来就会衰减。
+  */
+  const customStyle = clipChars(str(world.narrative.customStyle), 2400);
   if (customStyle) {
     sections.push(`### 本世界的文风要求
 ${customStyle}`);

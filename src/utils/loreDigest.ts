@@ -255,11 +255,13 @@ export interface LoreDigestOptions {
   /** 无条件保留靠前几节（不含总纲）。默认 2。 */
   alwaysInclude?: number
   /**
-   * 落选章节索引**最多列几条**（默认 60）。
+   * 落选章节索引**最多列几条**（默认 30）。
    *
    * 索引的用处是让模型知道"世界还有这些侧面，别乱编"，
-   * 列 60 条已经足够表达这件事；列 600 条就变成一张占满上下文的地名目录，
+   * 列 30 条已经足够表达这件事；列 600 条就变成一张占满上下文的地名目录，
    * 而真正有用的是正文那几千字。
+   *
+   * 实测：60 条时，大晟那张卡光是索引就占 3392 字符 —— 比它展开的任何一章都长。
    */
   restLimit?: number
 }
@@ -527,12 +529,12 @@ export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
   const pickedChapters = new Set(picked.map(p => p.chapterIndex))
   const restAll = chapters
     .filter((_, i) => !pickedChapters.has(i))
-    .map(s => ({ title: s.title, gist: gistOf(s.body) }))
+    .map(s => ({ title: s.title, gist: gistOf(s.body, 34) }))
   /*
     索引也要有上限（2026-11）：世界书上千条时，一行一条能把提示词撑成目录。
     列 60 条足够表达"还有这些侧面，别乱编"；剩下的只说个数。
   */
-  const restLimit = Math.max(0, opts.restLimit ?? 60)
+  const restLimit = Math.max(0, opts.restLimit ?? 20)
   const rest = restAll.slice(0, restLimit)
 
   return { preamble, picked, rest, restTotal: restAll.length, hits: allHits }

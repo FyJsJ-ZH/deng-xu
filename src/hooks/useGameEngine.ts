@@ -45,6 +45,28 @@ const EMPTY_RETRY_NUDGE =
   + '这一次请把正文写出来，落笔成段，不要停在思考里。）'
 
 /**
+ * 单条历史进提示词时的字数上限（2026-11）。
+ *
+ * 历史是**唯一没有单条上限**的一块：带最近 6 条，而每条的长度由
+ * `replyLength` 决定、没有任何裁剪。正文目标一调大（比如 3000 字），
+ * 6 条就是 1.8 万字 ≈ 54 KB —— **加长输出会同时加长下一次的输入**，
+ * 这件事玩家通常想不到。
+ *
+ * 2400 字足够把"刚才发生了什么"讲清楚；再长的话，早先的情节本来就该
+ * 由 `summary` 与记忆里的 timeline 兜着。
+ */
+const HISTORY_TURN_MAX = 2400
+
+/** 留头留尾地截断一条历史 —— 结尾往往是这一轮的结果，模型下一轮要接的就是它 */
+function clipTurn(text: string): string {
+  const t = String(text || '')
+  if (t.length <= HISTORY_TURN_MAX) return t
+  const headLen = Math.floor(HISTORY_TURN_MAX * 0.65)
+  const tailLen = HISTORY_TURN_MAX - headLen
+  return `${t.slice(0, headLen)}\n……（中段 ${t.length - headLen - tailLen} 字略）……\n${t.slice(-tailLen)}`
+}
+
+/**
  * 按需把较旧的叙事归档到 IndexedDB，让 localStorage 里的热数据保持有界。
  *
  * 触发条件有三个，任一满足就动手：
@@ -1213,8 +1235,19 @@ export function useGameEngine(): GameEngineReturn {
           content: buildNarrativeSystemPrompt(
             (() => {
               const lib = useLibraryStore.getState()
-              // 三层：世界卡 → 叙事预设 → 玩家现拨的文风开关（最后的最强）
-              return withNarrativePreset(activeWorld, lib.getActiveNarrativePreset(), lib.styleChoice)
+              const merged = withNarrativePreset(activeWorld, lib.getActiveNarrativePreset(), lib.styleChoice)
+              /*
+                ── 「每轮正文目标字数」的局内覆盖（2026-11）──
+
+                玩家原话：「增大输出正文的上限」。长度受两道闸管：提示词里那句
+                「约 N 字」、以及按它推算的 `max_tokens`。而 N 一直来自世界卡，
+                他想要长一点就得去卡编辑器里改 —— 那不是"这局想写细一点"该付的代价。
+
+                这里只换传给提示词的那份 world，**一个字都不写回卡**。
+              */
+              const override = config.replyLengthOverride
+              if (typeof override !== 'number' || !Number.isFinite(override) || override <= 0) return merged
+              return { ...merged, narrative: { ...merged.narrative, replyLength: override } }
             })(),
             activeCharacters,
             player,
@@ -1277,7 +1310,11 @@ export function useGameEngine(): GameEngineReturn {
         ...updatedStore.history
           .slice(-6)
           .filter(h => h.role !== 'system')
-          .map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
+          .map(h => ({
+            role: h.role as 'user' | 'assistant',
+            // 单条上限见 `clipTurn`：正文目标调大时，输入不该跟着失控
+            content: clipTurn(h.content),
+          })),
         { role: 'user', content: context }
       ]
 
@@ -1332,9 +1369,23 @@ export function useGameEngine(): GameEngineReturn {
         Gemini 走中转时思考实测吃掉 2900 左右，玩家填 4096 的话正文只剩 1100 token
         （约 700 字）—— 稍一展开就整轮空。见 `withThinkingReserve` 的说明。
       */
+      /*
+        ── 这一轮实际要写多长（2026-11）──
+
+        `replyLengthOverride` 是玩家在设置里调的"每轮正文目标字数"，
+        它同时决定两件事：提示词里那句「约 N 字」，以及下面按它推算的 `max_tokens`。
+        留空 = 跟随世界卡（内置卡多为 1800）。
+      */
+      const targetReplyLength = (() => {
+        const o = config.replyLengthOverride
+        return typeof o === 'number' && Number.isFinite(o) && o > 0
+          ? Math.round(o)
+          : activeWorld.narrative.replyLength
+      })()
+
       const narrativeMaxTokens = typeof config.maxTokens === 'number' && config.maxTokens > 0
         ? withThinkingReserve(config.maxTokens, config.narrativeModel, config.provider, config.thinking ?? 'auto')
-        : suggestMaxTokens(activeWorld.narrative.replyLength, config.narrativeModel, config.provider, config.thinking ?? 'auto')
+        : suggestMaxTokens(targetReplyLength, config.narrativeModel, config.provider, config.thinking ?? 'auto')
 
       /*
         ── 叙事请求：先流式，拿不到内容就整段返回重试一次（2026-11）──
@@ -1627,7 +1678,7 @@ export function useGameEngine(): GameEngineReturn {
       */
       let finalNarrative = fullNarrative
       // `finishReason` 是最硬的证据：接口说撞上限了，就一定是撞了
-      let trunc = detectTruncation(finalNarrative, activeWorld?.narrative?.replyLength, streamFinishReason)
+      let trunc = detectTruncation(finalNarrative, targetReplyLength, streamFinishReason)
       if (trunc.truncated) {
         const continued = await tryContinueNarrative(finalNarrative, config, activeWorld)
         if (continued) {
@@ -1637,7 +1688,7 @@ export function useGameEngine(): GameEngineReturn {
             不记的话，玩家越是被截断，账面上越是看不见。
           */
           recordUsage(continued.response, continued.messages, continued.raw)
-          trunc = detectTruncation(finalNarrative, activeWorld?.narrative?.replyLength)
+          trunc = detectTruncation(finalNarrative, targetReplyLength)
           if (!trunc.truncated) {
             // 续写成功：明确告诉玩家发生了什么，而不是静默拼上
             useUIStore.getState().setStatusMessage('这段叙事曾被截断，已自动补全')
