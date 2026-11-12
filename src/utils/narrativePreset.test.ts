@@ -91,9 +91,15 @@ describe('withNarrativePreset', () => {
     expect(withNarrativePreset(world, presetOf({ rules: '', style: '' }))).toBe(world)
   })
 
-  it('超长内容被截断（每轮全量注入，不能无限膨胀）', () => {
-    const out = withNarrativePreset(world, presetOf({ rules: '规'.repeat(9000) }))
-    expect(out.rules.length).toBeLessThan(6000)
+  it('★ 一万字的预设**原样**接进来（2026-11：玩家要"完完整整的生效"）', () => {
+    const body = '规'.repeat(9000)
+    const out = withNarrativePreset(world, presetOf({ rules: body }))
+    expect(out.rules).toContain(body)
+  })
+
+  it('安全闸还在：病态长度（十万字）会被切，并写明为什么', () => {
+    const out = withNarrativePreset(world, presetOf({ rules: '规'.repeat(120000) }))
+    expect(out.rules.length).toBeLessThan(21000)
   })
 
   it('世界自己没规则时，预设段不会以空行开头', () => {

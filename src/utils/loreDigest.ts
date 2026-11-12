@@ -350,7 +350,7 @@ export function splitParagraphs(body: string): string[] {
  * 而中文段落之间常常靠「所以」「至于」这类词衔接，砍掉邻段就读不通了。
  */
 export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
-  const budget = Math.max(1000, opts.budget ?? 9000)
+  const budget = Math.max(1000, opts.budget ?? 16000)
   const always = Math.max(0, opts.alwaysInclude ?? 2)
   /*
     ── 没分章的世界书要**造**出章节（2026-11）──
@@ -377,7 +377,7 @@ export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
     ⚠️ 总纲原来**原样全量**返回。现在给它一个上限：1500 字足够交代纪年与基本法则。
     伪章节那一步之后，走到这里的大多是"真有总纲但写太长"的情况。
   */
-  const preamble = clipCjk(preambleSec?.body.trim() || '', 1500)
+  const preamble = clipCjk(preambleSec?.body.trim() || '', 6000)
 
   // ── 所有段落，带上位置 ──
   const chunks: LoreChunk[] = []
@@ -462,7 +462,7 @@ export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
     现在给它们一个独立上限（预算的 45%）：够把"这条河从哪流到哪"说清楚，
     又不至于让两章独吞。剩下的 55% 留给真正命中本轮的段落。
   */
-  const forcedCap = Math.floor(budget * 0.45)
+  const forcedCap = Math.floor(budget * 0.7)
   let forcedUsed = 0
 
   for (const x of ordered) {
@@ -534,7 +534,7 @@ export function digestLore(lore: string, opts: LoreDigestOptions): LoreDigest {
     索引也要有上限（2026-11）：世界书上千条时，一行一条能把提示词撑成目录。
     列 60 条足够表达"还有这些侧面，别乱编"；剩下的只说个数。
   */
-  const restLimit = Math.max(0, opts.restLimit ?? 20)
+  const restLimit = Math.max(0, opts.restLimit ?? 80)
   const rest = restAll.slice(0, restLimit)
 
   return { preamble, picked, rest, restTotal: restAll.length, hits: allHits }

@@ -6,7 +6,7 @@ import { createKVStore, isIdbAvailable } from '@/utils/idb';
 import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds, retireBuiltinWorlds } from '@/data/builtinWorldIds';
 import { BUILTIN_STAMP } from '@/data/builtinStamp';
 import { normalizeWorldCard } from '@/utils/worldCard';
-import { syncPresetSnapshot } from '@/utils/narrativePreset';
+import { syncPresetSnapshot, reviveBudgetDroppedEntries } from '@/utils/narrativePreset';
 
 /**
  * 卡片库为什么落在 IndexedDB 而不是 localStorage：
@@ -447,6 +447,27 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           }
         } catch {
           // 同主角预设：读不出来就当没有，不影响开游戏
+        }
+
+        /*
+          ── 迁移：把旧预算下被丢掉的条目勾回来（2026-11）──
+
+          玩家原话：「我要预设完完整整的生效」。导入预算从 2600 抬到 20000 之后，
+          **已经躺在库里的那份预设不会自己变** —— 那些条目还是"没勾"的状态。
+          这里在读到的那一刻统一唤醒一次，然后立刻写回（只写一次，之后没有变化就不写）。
+        */
+        try {
+          const revived = reviveBudgetDroppedEntries(narrativePresets)
+          if (revived.changed) {
+            narrativePresets = revived.presets
+            await kv.set(NARRATIVE_PRESETS_KEY, JSON.stringify({
+              presets: narrativePresets,
+              activeId: activeNarrativePresetId,
+              style: styleChoice,
+            }))
+          }
+        } catch {
+          // 迁移失败不影响正常读取：最差也就是这一局少几条，下次再迁
         }
         if (activeNarrativePresetId && !narrativePresets.some(p => p.id === activeNarrativePresetId)) {
           activeNarrativePresetId = '';

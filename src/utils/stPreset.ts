@@ -50,12 +50,27 @@ function asText(value: unknown): string {
   return ''
 }
 
-/** `rules` 每轮全量注入，上限按"读得完"定，不是按"装得下"定 */
-const RULES_BUDGET = 2600
+/*
+  ── 导入预算：**不再为了省钱丢条目**（2026-11）──
+
+  玩家原话：「我要预设完完整整的生效」。
+
+  这三个数原来是 2600 / 2600 / 12000，按"每轮全量注入读不读得完"定的 ——
+  于是导入一份大预设时，`fill()` 会从**最长的条目**开始丢，把名字塞进
+  `counts.dropped`，界面上标个「超预算」角标，默认不勾。
+  玩家看到的是"我明明导入了一整套，怎么少了几条"。
+
+  现在改成"只挡病态数据"：20k / 20k / 40k。正常的酒馆预设（一两万字）
+  一条都不会掉；真有人塞一份十万字的东西进来，也不会把提示词撑爆。
+
+  代价说清楚：预设越大，每轮输入越大、越贵、模型越容易"快点收尾"。
+  面板上「每轮注入 N 字」就是给这件事看的。
+*/
+const RULES_BUDGET = 20000
 /** `customStyle` 同上 */
-const STYLE_BUDGET = 2600
-/** `worldLore` 会被检索，可以宽一点（与 stLorebook 的 WORLD_LORE_MAX 同量级） */
-const LORE_BUDGET = 12000
+const STYLE_BUDGET = 20000
+/** `worldLore` 会被检索，比另两块宽一档 */
+const LORE_BUDGET = 40000
 
 /** 这条像不像"文风 / 笔法"要求 */
 function looksLikeStyle(name: string, content: string): boolean {

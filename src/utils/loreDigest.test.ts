@@ -37,10 +37,10 @@ describe('世界书摘要 · 篇幅上限', () => {
     expect(d.restTotal).toBeGreaterThan(0)
   })
 
-  it('★ 真有一段总纲且写得极长 → 截到 1500 字并写明', () => {
-    const lore = '这座城的街道总是很安静。'.repeat(300) + '\n\n**第一章**\n\n正文。'
+  it('★ 真有一段总纲且写得极长 → 截到 6000 字并写明', () => {
+    const lore = '这座城的街道总是很安静。'.repeat(1000) + '\n\n**第一章**\n\n正文。'
     const d = digestLore(lore, { context: '他走进酒馆', nouns: [] })
-    expect(cjk(d.preamble)).toBeLessThanOrEqual(1600)
+    expect(cjk(d.preamble)).toBeLessThanOrEqual(6100)
     expect(d.preamble).toContain('已按篇幅截断')
   })
 
@@ -50,10 +50,10 @@ describe('世界书摘要 · 篇幅上限', () => {
     expect(d.preamble).toBe('')
   })
 
-  it('★ 上千章：索引最多列 60 条，并告诉模型还有多少没列', () => {
+  it('★ 上千章：索引最多列 80 条，并告诉模型还有多少没列', () => {
     const lore = Array.from({ length: 300 }, (_, i) => `**第${i}节**\n\n这是第 ${i} 节。`).join('\n\n')
     const d = digestLore(lore, { context: '一个专名都没提到的句子', nouns: [] })
-    expect(d.rest.length).toBeLessThanOrEqual(60)
+    expect(d.rest.length).toBeLessThanOrEqual(80)
     expect(d.restTotal).toBeGreaterThan(200)
     const text = renderLoreDigest(d, '测试世界')
     expect(text).toContain('未列出')

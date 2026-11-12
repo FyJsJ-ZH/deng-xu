@@ -45,21 +45,30 @@ function character(id: string, over: Partial<CharacterCard> = {}): CharacterCard
   } as unknown as CharacterCard
 }
 
-describe('角色档案的篇幅上限', () => {
-  it('★ 单个字段超长会被截断，并写明原文有多长', () => {
-    const long = '设定'.repeat(2000)   // 4000 字
+describe('角色档案的篇幅上限（只挡病态数据）', () => {
+  it('★ 病态超长的单个字段才截，并写明原文有多长', () => {
+    const long = '设定'.repeat(5000)   // 10000 字
     const text = formatCharacter(character('a', { description: long }))
-    expect(text.length).toBeLessThan(2000)
     expect(text).toContain('已按篇幅截断')
+    expect(text).toContain('原文 10000 字')
   })
 
-  it('★ 六个字段都超长时，整份档案仍封在 1800 字', () => {
-    const long = '内容'.repeat(1500)
+  it('★ 六个字段都写到 4000 时，整份档案仍封在 12000 字', () => {
+    const long = '内容'.repeat(2000)   // 每个 4000 字
     const text = formatCharacter(character('a', {
       description: long, personality: long, scenario: long,
       messageExamples: long, systemPrompt: long, postHistoryInstructions: long,
     }))
-    expect(text.length).toBeLessThanOrEqual(1900)
+    expect(text.length).toBeLessThanOrEqual(12500)
+  })
+
+  it('★ 正常写厚一点的角色卡（每字段两三千字）**一个字都不砍**', () => {
+    const thick = '设'.repeat(2500)
+    const text = formatCharacter(character('a', {
+      description: thick, personality: thick, messageExamples: thick,
+    }))
+    expect(text).not.toContain('截断')
+    expect(text).toContain('设'.repeat(2500))
   })
 
   it('正常长度的卡一个字都不砍', () => {
@@ -70,39 +79,57 @@ describe('角色档案的篇幅上限', () => {
 })
 
 describe('在场人物数量上限', () => {
-  it('★ 勾了 9 个人 → 只列 6 位，其余用一句话交代', () => {
-    const chars = Array.from({ length: 9 }, (_, i) => character(String(i)))
+  it('★ 勾了 15 个人 → 列 12 位，其余用一句话交代', () => {
+    const chars = Array.from({ length: 15 }, (_, i) => character(String(i)))
     const prompt = buildNarrativeSystemPrompt(world(), chars, player)
     expect(prompt).toContain('另有 3 位在场人物未列出')
-    // 第 7 位之后的详细档案不该出现
-    expect(prompt).not.toContain('### 角色6')
+    expect(prompt).toContain('### 角色11')
+    expect(prompt).not.toContain('### 角色12')
   })
 })
 
 describe('其它外部字段的上限', () => {
-  it('★ 文风要求封在 2400 字符（预设的 style 段也叠在这里）', () => {
+  /*
+    ⚠️ 这两个上限是**拼接体**的闸，不是世界卡自己的闸（2026-11 修过一次）。
+
+    `world.rules` 在这里已经含「预设的 rules 段」，`customStyle` 更是叠了三层
+    （卡自己的 + 预设的文风段 + 玩家现拨的文风选择）。所以闸必须开在
+    "三层之和"之上 —— 否则被切掉的是**排在最后的那几条预设**，
+    而玩家看到的现象是"预设好像没生效"（他原话：「输出格式直接不见了」）。
+  */
+  it('★ 文风要求的安全闸是 40000 字符（正常预设一条都不该掉）', () => {
     const prompt = buildNarrativeSystemPrompt(
-      world({ narrative: { pov: 'third', tense: 'past', replyLength: 1800, customStyle: '文'.repeat(9000) } }),
+      world({ narrative: { pov: 'third', tense: 'past', customStyle: '文'.repeat(120000) } }),
       [], player,
     )
     expect(prompt).toContain('已按篇幅截断')
     const block = prompt.slice(prompt.indexOf('### 本世界的文风要求'))
-    expect(block.length).toBeLessThan(2600)
+    expect(block.length).toBeLessThan(40500)
   })
 
-  it('★ 世界规则封在 3000 字符', () => {
-    const prompt = buildNarrativeSystemPrompt(world({ rules: '规'.repeat(9000) }), [], player)
+  it('★ 世界规则的安全闸是 40000 字符（卡 + 预设合并后的合计）', () => {
+    const prompt = buildNarrativeSystemPrompt(world({ rules: '规'.repeat(120000) }), [], player)
     const block = prompt.slice(prompt.indexOf('5. **世界规则'), prompt.indexOf('### 核心原则'))
-    expect(block.length).toBeLessThan(3300)
+    expect(block.length).toBeLessThan(40500)
     expect(block).toContain('已按篇幅截断')
   })
 
-  it('★ 世界氛围封在 1500 字符', () => {
+  it('正常体量的规则（一万字）**不该**出现截断提示', () => {
+    const prompt = buildNarrativeSystemPrompt(world({ rules: '规'.repeat(10000) }), [], player)
+    expect(prompt).not.toContain('已按篇幅截断')
+  })
+
+  it('★ 世界氛围的安全闸是 8000 字符；正常写的氛围一点不砍', () => {
     const w = world()
     ;(w.story as { atmosphere: string }).atmosphere = '雾'.repeat(6000)
     const prompt = buildNarrativeSystemPrompt(w, [], player)
-    const start = prompt.indexOf('### 世界观设定')
-    const end = prompt.indexOf('2. **人物设定')
-    expect(prompt.slice(start, end).length).toBeLessThan(1800)
+    // 6000 字在闸下，原样保留
+    expect(prompt).toContain('雾'.repeat(6000))
+    expect(prompt).not.toContain('已按篇幅截断')
+
+    const huge = world()
+    ;(huge.story as { atmosphere: string }).atmosphere = '雾'.repeat(30000)
+    const p2 = buildNarrativeSystemPrompt(huge, [], player)
+    expect(p2).toContain('已按篇幅截断')
   })
 })

@@ -567,9 +567,14 @@ describe('clipSummary：前情摘要必须封顶', () => {
   })
 
   it('摘要预算要显著小于它该压住的正文量，否则等于没封顶', () => {
-    // 一轮 1800 字。上限应当只值几轮的体量，而不是几十轮
-    expect(SUMMARY_LIMIT).toBeLessThanOrEqual(1800 * 3)
-    expect(SUMMARY_LIMIT).toBeGreaterThan(1800)
+    /*
+      2026-11：上限从 3600 抬到 6000（玩家：「恢复到不影响游玩的最佳状态」）。
+      它要压住"二三十轮"的经过，而不是几轮 —— 3600 在六十轮之后只剩一个梗概，
+      玩家问起三十轮前那个人说过什么，模型手里没有。
+      但仍然要**显著小于**它压住的正文总量（几十轮 × 1800 字），否则等于没封顶。
+    */
+    expect(SUMMARY_LIMIT).toBeLessThanOrEqual(1800 * 5)
+    expect(SUMMARY_LIMIT).toBeGreaterThan(1800 * 2)
   })
 })
 

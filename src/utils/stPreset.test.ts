@@ -114,9 +114,16 @@ describe('分类落点', () => {
   })
 })
 
-describe('预算：超了要如实说，不能悄悄吃', () => {
-  it('★ 超长条目被丢，名字写在段末（玩家得知道少了什么）', () => {
-    const huge = { identifier: 'big', name: '超长规则说明', content: '很'.repeat(4000) }
+describe('预算：只挡病态数据（2026-11 从 2600 抬到 20000）', () => {
+  /*
+    玩家原话：「我要预设完完整整的生效」。
+
+    原来的 2600 会让导入时**从最长的条目开始丢**，界面上标「超预算」、
+    默认不勾 —— 而正常的酒馆预设本来就有一两万字。现在预算只挡
+    "有人塞了一份十万字的东西"，下面这几条用的是**远超阈值**的内容。
+  */
+  it('★ 真正超长的条目才会被丢，名字写在段末（玩家得知道少了什么）', () => {
+    const huge = { identifier: 'big', name: '超长规则说明', content: '很'.repeat(30000) }
     const raw = preset([huge, { identifier: 'r', name: '规则', content: '不许抢话' }])
     const w = fromSillyTavernPreset(raw, 't.json')!
     expect(w.rules).toContain('不许抢话')
@@ -127,12 +134,21 @@ describe('预算：超了要如实说，不能悄悄吃', () => {
 
   it('丢的是**最长**的，短规则留下（短的往往是硬规矩）', () => {
     // 两条都在规则桶里才比得出"按长度丢"——名字带「规则」，别让它们掉进 worldLore
-    const long = { identifier: 'l', name: '长规则条目', content: '甲'.repeat(3000) }
+    const long = { identifier: 'l', name: '长规则条目', content: '甲'.repeat(25000) }
     const short = { identifier: 's', name: '短规则', content: '乙'.repeat(50) }
     const raw = preset([long, short])
     const w = fromSillyTavernPreset(raw, 't.json')!
     expect(w.rules).toContain('乙'.repeat(50))
     expect(w.rules).not.toContain('甲'.repeat(500))
+  })
+
+  it('★ 一万字的预设一条都不丢（这才是玩家的常态）', () => {
+    const entries = Array.from({ length: 10 }, (_, i) => ({
+      identifier: `r${i}`, name: `规则${i}`, content: `${'规'.repeat(1000)}-E${i}-`,
+    }))
+    const w = fromSillyTavernPreset(preset(entries), 't.json')!
+    for (let i = 0; i < 10; i++) expect(w.rules, `第 ${i} 条`).toContain(`-E${i}-`)
+    expect(w.rules).not.toContain('未并入')
   })
 })
 
@@ -400,7 +416,7 @@ describe('逐条清单 · entries', () => {
   })
 
   it('★ 被预算裁掉的条目也留在原位（只是没勾上，不是被搬到组尾）', () => {
-    const big = '长'.repeat(3000)
+    const big = '长'.repeat(25000)
     const raw3 = {
       temperature: 1,
       prompts: [
@@ -430,7 +446,7 @@ describe('逐条清单 · entries', () => {
   })
 
   it('★ 超预算而被丢掉的条目也在清单里，标记 dropped 且默认不勾（玩家能自己勾回来）', () => {
-    const huge = '文'.repeat(3000)
+    const huge = '文'.repeat(25000)
     const p = stPresetToNarrativePreset(preset([
       { identifier: 'r', name: '✅基础创作准则', content: '不许替玩家做决定' },
       { identifier: 's1', name: '文风甲', content: huge },
@@ -440,11 +456,11 @@ describe('逐条清单 · entries', () => {
     expect(s1.dropped).toBe(true)
     // 它不在快照的正体里（默认注入时不出现），但内容一个字没丢
     expect(p.style).not.toContain('文文文')
-    expect(s1.content).toHaveLength(3000)
+    expect(s1.content).toHaveLength(25000)
   })
 
   it('counts.total 数的是"默认勾了几条"，不是"文件里有几条"', () => {
-    const huge = '文'.repeat(3000)
+    const huge = '文'.repeat(25000)
     const p = stPresetToNarrativePreset(preset([
       { identifier: 'r', name: '✅基础创作准则', content: '不许替玩家做决定' },
       { identifier: 's1', name: '文风甲', content: huge },

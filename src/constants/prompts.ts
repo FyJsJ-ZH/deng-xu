@@ -62,14 +62,16 @@ function resourceLine(r: ResourceDef): string {
 /**
  * 按字符数截断一段外部输入。
  *
- * ## 为什么角色卡也要限长（2026-11）
+ * ## 这道闸的**唯一职责是挡病态数据**（2026-11 定稿）
  *
- * 玩家问「还有哪些地方在吃输入」。查下来 `formatCharacter` 是**唯一没有任何上限**
- * 的一块：设定、性格、情境、对话示例、专属指令、附加要求，六个字段原样拼进去。
+ * 玩家原话：「把所有的世界书，角色，预设，提示词什么的都恢复到不影响游玩的最佳状态」。
  *
- * 从 SillyTavern 转来的角色卡里，`systemPrompt` 与 `messageExamples` 动辄几千字
- * （那边是把整段破限串塞在角色卡里的）。在场三个人就是上万字 ——
- * 而模型这一轮真正需要知道的，是这个人的**脾性、此刻的状态、说话的样子**。
+ * 上一版为了压输入体积把这里压得很紧（角色设 700 字、情境 400 字），
+ * 结果**正常写厚一点的角色卡被截了** —— 截断提示混进提示词里，
+ * 模型读到"（原文 3200 字，已按篇幅截断）"这种句子，反而更容易跑偏。
+ *
+ * 现在的原则：**正常输入一个字节都不动，只挡十万字级的病态数据**。
+ * 真嫌 token 贵，该调的是「每轮目标字数」和防降级那几档，不是偷偷切内容。
  */
 function clipChars(s: string, max: number): string {
   const t = String(s || '').trim()
@@ -106,18 +108,21 @@ export function formatCharacter(card: CharacterCard): string {
     `systemPrompt` 在 ST 那边很常见，在这里却只是每轮重复付费的噪音。
   */
   const s = (v: unknown) => (typeof v === 'string' ? v : '')
-  if (s(card.description).trim()) blocks.push(`**设定**：${clipChars(card.description, 700)}`);
-  if (s(card.personality).trim()) blocks.push(`**性格**：${clipChars(card.personality, 400)}`);
-  if (s(card.scenario).trim()) blocks.push(`**相关情境**：${clipChars(card.scenario, 400)}`);
-  if (s(card.messageExamples).trim()) blocks.push(`**对话示例**（模仿其语气与用词）：\n${clipChars(card.messageExamples, 900)}`);
-  if (s(card.systemPrompt).trim()) blocks.push(`**该角色的专属指令**：${clipChars(card.systemPrompt, 600)}`);
-  if (s(card.postHistoryInstructions).trim()) blocks.push(`**附加要求**：${clipChars(card.postHistoryInstructions, 300)}`);
+  /*
+    每个字段 4000 字符：**正常角色卡碰不到这条线**（实测内置卡最大的字段一千出头），
+    只有真有人把一整篇设定塞进 `systemPrompt` 才会触发。见 `clipChars` 的说明。
+  */
+  if (s(card.description).trim()) blocks.push(`**设定**：${clipChars(card.description, 4000)}`);
+  if (s(card.personality).trim()) blocks.push(`**性格**：${clipChars(card.personality, 4000)}`);
+  if (s(card.scenario).trim()) blocks.push(`**相关情境**：${clipChars(card.scenario, 4000)}`);
+  if (s(card.messageExamples).trim()) blocks.push(`**对话示例**（模仿其语气与用词）：\n${clipChars(card.messageExamples, 4000)}`);
+  if (s(card.systemPrompt).trim()) blocks.push(`**该角色的专属指令**：${clipChars(card.systemPrompt, 4000)}`);
+  if (s(card.postHistoryInstructions).trim()) blocks.push(`**附加要求**：${clipChars(card.postHistoryInstructions, 4000)}`);
 
   /*
-    每人再兜一道总闸（1800 字）：上面每个字段都限了，但六个加起来仍可能 3300。
-    三个在场角色就是一万字，而模型这一轮真正需要的没那么多。
+    每人再兜一道总闸（12000 字符）。六个字段都写满才会碰到 —— 那不是卡，是一本书。
   */
-  return clipChars(blocks.join('\n'), 1800);
+  return clipChars(blocks.join('\n'), 12000);
 }
 
 export function formatPlayer(player: PlayerCard): string {
@@ -297,7 +302,7 @@ export function buildNarrativeSystemPrompt(
   sections.push(`### 世界观设定 (World Setting)
 
 1. **${world.title}**${mood ? `（核心氛围：${mood}）` : ''}
-${atmo ? `\n${clipChars(atmo, 1500)}\n` : ''}
+${atmo ? `\n${clipChars(atmo, 8000)}\n` : ''}
 ${loreBlock}`);
 
   // ── 人物设定：字段与原作 `playerState.profile.*` 一一对应 ──
@@ -331,19 +336,20 @@ ${profileLines.join('\n')}`);
 ${(() => {
     if (!activeCharacters.length) return '（暂无登记在册的关系人。）'
     /*
-      ── 在场人物也封顶（2026-11）──
+      ── 在场人物：数量与合计都放回"正常游玩够用"（2026-11）──
 
-      `activeCharacterIds` 是玩家在人物面板里勾的，**没有上限**。
-      每人档案 1800 字（见 `formatCharacter`），勾十几个人就是两万字 ——
-      而模型这一轮真正能顾上的也就三五个。
-      最多列 6 位、合计 6000 字，多出来的只用一句话交代"还有谁在场"。
+      上一版卡在 6 位 / 6000 字符，理由是"模型顾不上那么多"。
+      但玩法上常常是一次出场七八个人（朝堂、酒馆、宴会），
+      砍掉的那几位**在正文里就真的不存在了** —— 玩家会觉得"我明明勾了他"。
+
+      现在 12 位 / 24000 字符：正常一局碰不到，只挡"把整本人物志塞进来"。
     */
-    const shown = activeCharacters.slice(0, 6)
+    const shown = activeCharacters.slice(0, 12)
     let out = shown.map(formatCharacter).join('\n\n')
     if (activeCharacters.length > shown.length) {
       out += `\n\n（另有 ${activeCharacters.length - shown.length} 位在场人物未列出。）`
     }
-    return clipChars(out, 6000)
+    return clipChars(out, 24000)
   })()}`);
 
   sections.push(`4. **知识系统 (Knowledge System)**：
@@ -359,13 +365,22 @@ ${(() => {
   const rulesText = str(world.rules);
   if (rulesText) {
     /*
-      世界规则同样限长（2026-11）。实测大晟只有 475 字符，但这是**外部输入**：
-      从 ST 世界书或别处搬来的卡，rules 里塞几千字很常见。
+      ── 世界规则的上限（2026-11，改了两次）──
+
+      这道闸的**唯一职责是挡病态数据**，不是省 token。它踩过两次坑：
+
+      1. 取 3000 时，忘了 `world.rules` 在这里**已经不是世界卡自己那一份**：
+         `withNarrativePreset()` 把「预设的 rules 段」接在后面。
+         于是被切掉的是**排在最后的预设条目**（输出格式、字数要求、收尾规矩）。
+      2. 抬到 8000 仍然不够 —— 玩家的预设本来就有上万字的。
+
+      玩家原话：「我要预设完完整整的生效」。所以这里放到 40000，
+      只挡"有人塞了一份十万字的东西"。正常预设一条都不会掉。
     */
     sections.push(`5. **世界规则（硬性约束）**：
    以下优先级高于一切文风偏好，必须严格遵守。
 
-${clipChars(rulesText, 3000)}`);
+${clipChars(rulesText, 40000)}`);
   }
 
   // ── 核心原则 ──
@@ -457,16 +472,16 @@ ${guide ? `- **写作要求**：${guide}` : ''}
 ${povInstruction(world)}`);
 
   /*
-    ── 文风要求：**这一块也要限长**（2026-11）──
+    ── 文风要求：同样是**只挡病态数据**（2026-11）──
 
-    它是 `world.narrative.customStyle`，而预设的「文风」段会被叠进来
-    （`withNarrativePreset` 拼的就是这里），两段加起来可以到六七千字符 ——
-    实测 veil 那张卡这一块 2743 字符、大晟 2822，都超过世界书展开的任何一章。
+    这一块已经被拼过两层：`withNarrativePreset` 先把预设的「文风」段接在
+    卡自己的后面，再把玩家现拨的文风选择接在最后。原来取 2400，
+    实际砍的是"三层之和"—— 实测把预设里排在最后的「结尾规矩」整条切掉，
+    玩家报「预设的输出格式不见了」。
 
-    2400 字符对"告诉模型怎么写"已经绰绰有余；再长的话，后半段基本是在
-    重复同一个意思，而模型对长段落尾部的注意力本来就会衰减。
+    现在 40000：正常预设（一两万字）一条都不会掉。
   */
-  const customStyle = clipChars(str(world.narrative.customStyle), 2400);
+  const customStyle = clipChars(str(world.narrative.customStyle), 40000);
   if (customStyle) {
     sections.push(`### 本世界的文风要求
 ${customStyle}`);

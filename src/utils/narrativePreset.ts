@@ -23,9 +23,22 @@
 import type { NarrativePreset, PresetEntry, WorldCard } from '@/types/cards'
 import { chosenStyleIds, styleById, type StyleChoice } from '@/data/narrativeStyles'
 
-/** 预设两段各自的上限（字）。与 `stPreset.ts` 的预算一致，防止手动粘贴超长 */
-const PRESET_RULES_MAX = 4000
-const PRESET_STYLE_MAX = 4000
+/**
+ * 预设两段各自的上限（字符）。
+ *
+ * ## 为什么从 4000 抬到 20000（2026-11）
+ *
+ * 玩家原话：「我要预设完完整整的生效」。
+ *
+ * 4000 这道闸当初是防"手动粘贴超长"，但它实际做的是**静默截断已勾选的条目** ——
+ * 面板上五条都打着勾，注入到提示词里的却是被切掉尾巴的一大段。
+ * 这比"预算不够时默认不勾"更糟：后者至少界面上看得出来。
+ *
+ * 现在抬到 20000，只挡病态数据（真有人塞十万字）。与 `stPreset.ts` 的
+ * `RULES_BUDGET` / `STYLE_BUDGET` 保持同一量级。
+ */
+const PRESET_RULES_MAX = 20000
+const PRESET_STYLE_MAX = 20000
 
 /** 段与段之间留一行空，模型才不会读成同一句 */
 function joinBlock(base: string, extra: string): string {
@@ -104,6 +117,46 @@ export function syncPresetSnapshot(preset: NarrativePreset): NarrativePreset {
       other: stats.other.on,
     },
   }
+}
+
+/**
+ * 把**旧预算下被丢掉的条目**勾回来（2026-11）。
+ *
+ * ## 为什么需要一次迁移
+ *
+ * 导入预算原来只有 2600 字符/类，超出的条目会被标 `dropped: true` 且默认不勾
+ * （界面上是「超预算」角标）。玩家明确要求"预设完完整整的生效"之后，
+ * 预算抬到了 20000 —— 但**已经躺在库里的那份预设不会自己变**，
+ * 那些条目仍然是"没勾"的状态。
+ *
+ * 判据只认 `dropped === true`：玩家自己手动关掉的条目没有这个标记，
+ * 不该被这次迁移重新打开。
+ *
+ * `dropped` 标记同时清掉 —— 预算已经不是它当初被丢的理由了，
+ * 留着会让界面上出现"勾着却标着超预算"的矛盾状态。
+ */
+export function reviveBudgetDroppedEntries(presets: NarrativePreset[]): {
+  presets: NarrativePreset[]
+  changed: boolean
+} {
+  let changed = false
+  const out = presets.map(p => {
+    if (!p.entries?.length) return p
+    if (!p.entries.some(e => e.dropped === true && e.enabled === false)) return p
+    changed = true
+    const entries = p.entries.map(e => (
+      e.dropped === true && e.enabled === false
+        ? { ...e, enabled: true, dropped: false }
+        : e
+    ))
+    const synced = syncPresetSnapshot({ ...p, entries })
+    return {
+      ...synced,
+      counts: { ...synced.counts, dropped: [] },
+      updatedAt: Date.now(),
+    }
+  })
+  return { presets: out, changed }
 }
 
 /**

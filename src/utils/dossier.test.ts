@@ -120,10 +120,20 @@ describe('角色卷宗 · 存全、渲染短（2026-11 第二十三轮）', () =
   })
 
   it('★ 渲染要截断（提示词只要提醒，不要原文）', () => {
-    const m = mergeMemory(emptyMemory(), { dossiers: { 诺姆: [long] } })
+    /*
+      2026-11：渲染上限从 40 抬到 90（玩家：「恢复到不影响游玩的最佳状态」）——
+      40 字在中文里常常砍在半句话上。所以这里用一条 150 字的来验截断，
+      而 `long`（52 字）现在是**原样渲染**的。
+    */
+    const mid = '乙'.repeat(150)
+    const m = mergeMemory(emptyMemory(), { dossiers: { 诺姆: [mid] } })
     const text = renderDossiersForPrompt(m, ['诺姆'])
-    expect(text).toContain('秤钩巷')
-    expect(text).not.toContain('草席')
+    expect(text).toContain('乙'.repeat(80))
+    expect(text).not.toContain('乙'.repeat(120))
+
+    // 正常长度（一句完整的经历）不截
+    const normal = mergeMemory(emptyMemory(), { dossiers: { 诺姆: [long] } })
+    expect(renderDossiersForPrompt(normal, ['诺姆'])).toContain('草席')
   })
 
   it('超过存储上限（200 字）才截，并留一个省略号', () => {

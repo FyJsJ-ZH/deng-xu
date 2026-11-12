@@ -262,13 +262,16 @@ export const EARLIER_SUMMARY_LIMIT = 200
  * 一轮正文约 1800 字，摘要要能压住"二十来轮"的经过（时间线另有十二拍兜底），
  * 3600 字约合 2400 token，与历史（5600）同一个量级，不再喧宾夺主。
  *
- * ## 截断策略：保头保尾，掐中段
+ * ## 2026-11 第二次数值：3600 → 6000
  *
- * 直接 `slice(-limit)` 会丢掉"他为什么走到这儿"，而那正是摘要最该保住的东西；
- * 直接 `slice(0, limit)` 又会把最近的处境切掉。所以两头都留，中段换成一个记号 ——
- * 中间那些经过本来就该由 `timeline`（每轮一句话）承接。
+ * 玩家原话：「把所有的世界书，角色，预设，提示词什么的都恢复到不影响游玩的最佳状态」。
+ *
+ * 3600 是在"摘要疯长到十几万"那场病里定的，当时只求止血。但它同时让
+ * 六十轮以后的剧情只能留下一个梗概 —— 玩家问起三十轮前那个人说过什么，
+ * 模型手里没有。6000 约合 4000 token，仍与历史同一个量级，
+ * 却能压住更长的一段经过。
  */
-export const SUMMARY_LIMIT = 3600
+export const SUMMARY_LIMIT = 6000
 
 /**
  * 把摘要裁进预算。**保头保尾、掐中段**，并在切口留下记号，
@@ -328,8 +331,15 @@ export const KNOWN_FACT_CHARS = 30
  * 和 `knownBy` 同量级，同样**不进主记忆预算**。
  */
 export const DOSSIER_PER_CHARACTER = 8
-/** **渲染**上限：写进提示词时单条截到这么长 */
-export const DOSSIER_FACT_CHARS = 40
+/**
+ * **渲染**上限：写进提示词时单条截到这么长。
+ *
+ * 2026-11 从 40 抬到 90（玩家：「恢复到不影响游玩的最佳状态」）。
+ * 40 字在中文里常常**砍在半句话上** ——「他爷爷上月死了，临终把表给他，
+ * 他住」—— 模型读到的是一句没说完的话，反而更容易写歪。
+ * 90 字足够装下完整的一句经历。
+ */
+export const DOSSIER_FACT_CHARS = 90
 /**
  * **存储**上限（2026-11 第二十三轮）。
  *
@@ -357,16 +367,27 @@ export const AFFINITY_LIMIT = 14
 export const PLACE_LIMIT = 40
 export const INVENTORY_LIMIT = 24
 
-/** 渲染时每层最多输出几行（比存储上限严得多：它们要挤进 900 字预算） */
-const MAX_AFFINITY_LINES = 5
-const MAX_PLACE_LINES = 9
-const MAX_INVENTORY_LINES = 6
+/**
+ * 渲染时每层最多输出几行。
+ *
+ * ## 2026-11 调宽（玩家：「恢复到不影响游玩的最佳状态」）
+ *
+ * 这几个数原来按"三层合计挤进 900 字预算"定的（5 / 9 / 6 行）。
+ * 但实际游玩里，地点与物件是玩家最常问起的东西（"我住哪""东西寄在哪"），
+ * 只给 9 行等于跑到十几轮就看不见早先的记录 —— 模型于是开始瞎编。
+ *
+ * 现在按"这一局真正会攒到多少"来定：跑三十轮也就二十来个地点。
+ * 行数上限仍然在，但设在**正常游玩碰不到**的地方。
+ */
+const MAX_AFFINITY_LINES = 12
+const MAX_PLACE_LINES = 28
+const MAX_INVENTORY_LINES = 16
 /** 这三层的单行裁剪长度 */
 const MAX_WORD_CHARS = 22
 
 /** 渲染时每层最多输出几行 */
-const MAX_BOND_LINES = 8
-const MAX_THREAD_LINES = 8
+const MAX_BOND_LINES = 16
+const MAX_THREAD_LINES = 16
 /** 单行裁剪长度（超长关系/线索对模型没有额外价值，只吃预算） */
 const MAX_BOND_CHARS = 34
 const MAX_THREAD_CHARS = 30
