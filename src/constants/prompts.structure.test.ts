@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildNarrativeSystemPrompt } from '@/constants/prompts'
 import { BUILTIN_WORLDS } from '@/data/builtinWorlds'
+import { DEFAULT_REPLY_LENGTH } from '@/types/cards'
 import type { PlayerCard, WorldCard } from '@/types/cards'
 
 /**
@@ -298,45 +299,32 @@ describe('反向 · 我们自己加的东西不许长回来', () => {
   })
 })
 
-describe('十二张内置卡 · 目标字数照常生效', () => {
-  it('★ 每张卡的目标字数都不低于 700（不许哪一张被改回去）', () => {
+describe('十二张内置卡 · 目标字数（2026-11 改由局内滑块决定）', () => {
+  /*
+    玩家原话：「那就直接删掉世界书里自带单次回复字数，毕竟没用了」。
+
+    于是卡里不再写这个字段，`NarrativeStyle.replyLength` 变成可选，
+    读取一律走 `resolveReplyLength`（缺 → 1800）。这一组钉三件事：
+    卡里真的没有了、没有时用兜底、旧卡带着值也照常工作。
+  */
+  it('★ 卡里不再写 replyLength —— 那个开关在局内「笔」面板', () => {
     for (const w of BUILTIN_WORLDS) {
-      expect(w.narrative.replyLength, `《${w.title}》`).toBeGreaterThanOrEqual(700)
+      expect(w.narrative.replyLength, `《${w.title}》还留着 replyLength`).toBeUndefined()
     }
   })
 
-  it('★ 世界卡文风里写的字数，必须等于它自己的 replyLength', () => {
-    /*
-      ## 为什么改成「比对」而不是「查旧值」
-
-      这一段原来是一条查旧数字的正则。它在 800→1800 和 1800→2400 各改过一次，
-      **每次都要重写一遍正则**，而漏改一次就会让测试和实现互相打脸 ——
-      而这条测试存在的本意恰恰是"防止两边打架"。
-
-      所以判据换成本质的那一条：**文风里只要点了字数，就必须等于 `replyLength`**。
-      改参数不改文风、或改文风不改参数，都会红，且不需要维护任何"旧值清单"。
-
-      历史旧值（供参考）：八百 / 一千八百 / 两千四百 —— 下一个值是什么都不重要。
-    */
-    const STATED = [
-      { n: 800, re: /(?<!千)八百(?:五十)?字|(?<!\d)80[05]\s*字/ },
-      { n: 1100, re: /一千一百字|(?<!\d)1100\s*字/ },
-      { n: 1800, re: /一千八百字|(?<!\d)1800\s*字/ },
-      { n: 2400, re: /两千四百字|(?<!\d)2400\s*字/ },
-    ]
+  it('★ 没有这个字段时，提示词用兜底值', () => {
     for (const w of BUILTIN_WORLDS) {
-      const text = `${w.narrative.customStyle}\n${w.rules}`
-      for (const { n, re } of STATED) {
-        if (!re.test(text)) continue
-        expect(n, `《${w.title}》文风里写的是 ${n} 字，但 replyLength 是 ${w.narrative.replyLength}`)
-          .toBe(w.narrative.replyLength)
-      }
+      expect(buildNarrativeSystemPrompt(w, [], player(), {}))
+        .toContain(`约 ${DEFAULT_REPLY_LENGTH} 字`)
     }
   })
 
-  it('每张卡生成的提示词都带上了自己的目标字数', () => {
-    for (const w of BUILTIN_WORLDS) {
-      expect(buildNarrativeSystemPrompt(w, [], player(), {})).toContain(`约 ${w.narrative.replyLength} 字`)
-    }
+  it('旧卡（带着 replyLength）照常生效 —— 这次删除不需要任何迁移', () => {
+    const base = BUILTIN_WORLDS[0]
+    const w = { ...base, narrative: { ...base.narrative, replyLength: 900 } }
+    const sys = buildNarrativeSystemPrompt(w, [], player(), {})
+    expect(sys).toContain('约 900 字')
+    expect(sys).not.toContain(`约 ${DEFAULT_REPLY_LENGTH} 字`)
   })
 })

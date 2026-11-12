@@ -932,7 +932,6 @@ export const veil: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'present',
-    replyLength: 1100,
     customStyle: `皇家勘验局
 现场记录誊写须知
 （内务署特别第五科·勘验组　制）

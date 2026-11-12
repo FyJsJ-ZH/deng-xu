@@ -299,7 +299,8 @@ const stylePanel = JSON.parse(await ev(`(async()=>{
   if (!btn) return JSON.stringify({ step:'no-button' });
   btn.click(); await wait(450);
   const slider = document.querySelector('input[aria-label="每轮正文目标字数"]');
-  const get = () => window.__sessionStore.getState().world?.narrative?.replyLength;
+  // 2026-11：卡里不再写 replyLength（改由局内滑块决定），所以这里也要兜底
+  const get = () => window.__sessionStore.getState().world?.narrative?.replyLength ?? 1800;
   const before = get();
   if (!slider) return JSON.stringify({ step:'no-slider', before });
   const setVal = (v) => {

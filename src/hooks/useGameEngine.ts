@@ -19,6 +19,7 @@ import { renderMemoryForPrompt, renderKnownByForPrompt, renderDossiersForPrompt,
 import { factOwner } from '@/utils/facts'
 import { withNarrativePreset } from '@/utils/narrativePreset'
 import { LlmError, classifyLlmError } from '@/api/llmErrors'
+import { resolveReplyLength } from '@/types/cards'
 import type { LLMConfig, WorldCard } from '@/types/cards'
 import { detectTruncation, isLimitFinish } from '@/utils/truncation'
 import {
@@ -1366,7 +1367,7 @@ export function useGameEngine(): GameEngineReturn {
         所以这里读 `activeWorld` 就够了 —— 不要再另立一个"覆盖项"，
         两处字数设置并存只会让玩家不知道哪个说了算。
       */
-      const targetReplyLength = activeWorld.narrative.replyLength
+      const targetReplyLength = resolveReplyLength(activeWorld.narrative)
 
       const narrativeMaxTokens = typeof config.maxTokens === 'number' && config.maxTokens > 0
         ? withThinkingReserve(config.maxTokens, config.narrativeModel, config.provider, config.thinking ?? 'auto')

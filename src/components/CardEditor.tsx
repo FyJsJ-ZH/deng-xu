@@ -95,7 +95,7 @@ export function createEmptyWorld(): WorldCard {
       // 与内置世界卡的规范一致：第三人称、过去时（2026-10 用户要求）
       pov: 'third',
       tense: 'past',
-      replyLength: 600,
+      // 目标字数不再写进卡里（2026-11）：局内「笔」面板可随时调，卡里只留兜底
       customStyle: ''
     },
     characters: [],
@@ -1154,16 +1154,18 @@ export function CardEditor() {
               </div>
 
               {/*
-                ⚠️ 上限曾是 1500，而内置卡有 1800（大延侠客行）。
-                滑块够不到当前值时，浏览器会把滑块头停在 max 上 ——
-                玩家一动它，1800 就被悄悄改成了 1500，而他只是想看看。
-                上限必须盖住所有内置卡能取的值。
+                ── 「单次回复目标字数」这一项**删掉了**（2026-11）──
+
+                玩家原话：「那就直接删掉世界书里自带单次回复字数，毕竟没用了」。
+
+                他说得对：真正的开关在**局内「笔」面板**（`NarrativeControls`）——
+                那是玩家此刻的口味，改完下一轮生效，只影响这一局。
+                卡里再存一个数只会在两处互相打架（上一轮我就撞过：
+                模型设置里又加了一个，结果三个地方各有一个字数）。
+
+                旧卡/旧存档里带着这个值仍然照常读（`resolveReplyLength`），
+                所以这次删除不需要任何迁移。
               */}
-              <Field label={`单次回复目标字数：${draft.narrative.replyLength}`} hint="太短会显得敷衍，太长会拖慢节奏并更贵">
-                <input type="range" min={150} max={3000} step={50} value={draft.narrative.replyLength}
-                  onChange={e => patchNarrative({ replyLength: Number(e.target.value) })}
-                  className="w-full accent-yellow-500" />
-              </Field>
 
               <Field label="额外文风要求" hint="例如「文风阴冷克制，避免华丽辞藻」「多用短句与对话」">
                 {/*

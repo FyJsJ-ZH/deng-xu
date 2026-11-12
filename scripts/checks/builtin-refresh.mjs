@@ -20,10 +20,15 @@
  *
  * ## 这一套在验什么
  *
- * 1. 首次进入，库里是新的（1100）；
- * 2. 把 IndexedDB 里的库**改回老玩家的样子**（那张卡退回 800、抹掉指纹）；
+ * 1. 首次进入，库里是源码里的那一版；
+ * 2. 把 IndexedDB 里的库**改回老玩家的样子**（那张卡的标语退回旧文案、抹掉指纹）；
  * 3. 刷新页面；
- * 4. 卡**必须**变回 1100，指纹**必须**写回去，卡片的顺序**不许**变。
+ * 4. 卡**必须**换回源码那一版，指纹**必须**写回去，卡片的顺序**不许**变。
+ *
+ * ⚠️ 2026-11：探针字段从 `narrative.replyLength` 换成了 `tagline`。
+ * 目标字数已经不在卡里了（玩家：「直接删掉世界书里自带单次回复字数」，
+ * 现在由局内「笔」面板的滑块决定），拿它当探针会永远拿到 `undefined`，
+ * 那几条断言会变成"两边都是 undefined 所以相等"的假绿。
  */
 
 import './_ws-shim.mjs'
@@ -91,13 +96,13 @@ if (!ready) {
   await close(); removeProfile(PROFILE); process.exit(1)
 }
 
-const readLen = `__libraryStore.getState().worlds.find(w=>w.id===${JSON.stringify(CARD)})?.narrative.replyLength`
-const beforeLen = await ev(readLen)
+const readTag = `__libraryStore.getState().worlds.find(w=>w.id===${JSON.stringify(CARD)})?.tagline`
+const beforeTag = await ev(readTag)
 const beforeIds = await ev(`__libraryStore.getState().worlds.map(w=>w.id).join('|')`)
 check('库里十二张内置卡都在', (beforeIds || '').split('|').length >= 9, `${(beforeIds || '').split('|').length} 张`)
-check('★ 首次拿到的是源码里的篇幅（1100）', beforeLen === 1100, String(beforeLen))
+check('★ 首次拿到的是源码里的标语', typeof beforeTag === 'string' && beforeTag.length > 10, String(beforeTag).slice(0, 30))
 
-console.log('\n=== 2) 把库改成「老玩家」的样子：那张卡退回 800、抹掉指纹 ===')
+console.log('\n=== 2) 把库改成「老玩家」的样子：那张卡的标语退回旧文案、抹掉指纹 ===')
 const seeded = await ev(`(async () => {${IDB_HELPERS}
   const db = await openDb()
   try {
@@ -106,7 +111,7 @@ const seeded = await ev(`(async () => {${IDB_HELPERS}
     const arr = JSON.parse(raw)
     const w = arr.find(x => x.id === ${JSON.stringify(CARD)})
     if (!w) return 'no-card'
-    w.narrative.replyLength = 800
+    w.tagline = '旧版的标语'
     await write(db, 'worlds', JSON.stringify(arr))
     await write(db, 'builtinStamp', undefined)
     return 'ok'
@@ -122,8 +127,8 @@ await ev(`(()=>{try{const u=__uiStore.getState();u.setApiKeyModalOpen&&u.setApiK
 const ready2 = await waitFor(`typeof __libraryStore!=='undefined' && __libraryStore.getState().loaded`, 30000)
 check('刷新后卡片库加载完成', ready2)
 
-const afterLen = await ev(readLen)
-check('★ 旧卡被换成了 1100（这一条就是玩家等了三轮的那个修复）', afterLen === 1100, String(afterLen))
+const afterTag = await ev(readTag)
+check('★ 旧卡被换成了源码里的那一版（这一条就是玩家等了三轮的那个修复）', afterTag === beforeTag, String(afterTag).slice(0, 30))
 
 const afterIds = await ev(`__libraryStore.getState().worlds.map(w=>w.id).join('|')`)
 check('★ 卡片顺序没有被打乱（刷新是就地替换）', afterIds === beforeIds, afterIds === beforeIds ? '一致' : '顺序变了')
@@ -140,8 +145,8 @@ await sleep(1600)
 await ev(`(()=>{try{const u=__uiStore.getState();u.setApiKeyModalOpen&&u.setApiKeyModalOpen(false);
   u.setShowTutorial&&u.setShowTutorial(false);}catch(e){}return 1})()`)
 await waitFor(`typeof __libraryStore!=='undefined' && __libraryStore.getState().loaded`, 30000)
-const len3 = await ev(readLen)
-check('★ 第二次刷新后仍然是 1100', len3 === 1100, String(len3))
+const tag3 = await ev(readTag)
+check('★ 第二次刷新后仍然是源码那一版（指纹一致就不再动它）', tag3 === beforeTag, String(tag3).slice(0, 30))
 
 const failed = fail
 console.log(`\n=== 汇总 ===\n  通过 ${pass}/${pass + fail}`)

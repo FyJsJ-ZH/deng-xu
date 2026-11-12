@@ -102,7 +102,6 @@ export const albion: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'past',
-    replyLength: 700,
     customStyle: `中魔西幻 · 奇观白描 · 八条
 
 一 先给奇观，再给日常

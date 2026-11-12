@@ -1919,7 +1919,6 @@ NPC 不会主动解释设定。所有世界观信息都必须通过具体物件�
   narrative: {
     pov: 'third',
     tense: 'present',
-    replyLength: 1100,
     customStyle: `
 深核集团　科研发展部
 《叙事文本生成规范》

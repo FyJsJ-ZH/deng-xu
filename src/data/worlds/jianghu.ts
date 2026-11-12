@@ -96,7 +96,6 @@ export const jianghu: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'past',
-    replyLength: 700,
     customStyle: `硬派武侠 · 八条
 
 一 先给重量，再给场面

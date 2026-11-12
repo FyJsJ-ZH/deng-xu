@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { X, Send, Sparkles, Copy, Check, Loader2, Wand2 } from 'lucide-react'
 import { llmChat, extractContent, suggestMaxTokens } from '@/api/llm'
+import { resolveReplyLength } from '@/types/cards'
 import { useSessionStore } from '@/stores/session'
 import { useGameStore } from '@/stores/game'
 import { useUIStore } from '@/stores/ui'
@@ -89,7 +90,7 @@ export function SideOracle({ open, onClose }: { open: boolean; onClose: () => vo
         stream: false,
         temperature: mode === 'polish' ? llm.temperature : 0.3,
         maxTokens: mode === 'polish'
-          ? suggestMaxTokens(world.narrative.replyLength, llm.narrativeModel, llm.provider, llm.thinking ?? 'auto')
+          ? suggestMaxTokens(resolveReplyLength(world.narrative), llm.narrativeModel, llm.provider, llm.thinking ?? 'auto')
           : 2048,
       })
 

@@ -7,6 +7,7 @@
  * 所有题材相关内容一律由 WorldCard / CharacterCard / PlayerCard 注入。
  */
 
+import { resolveReplyLength } from '@/types/cards'
 import type { AttributeDef, CharacterCard, LLMConfig, PlayerCard, ResourceDef, WorldCard } from '@/types/cards';
 import { avatarCatalogPrompt } from '@/utils/avatarArt';
 import { aiLookCatalogPrompt } from '@/utils/lookSpec';
@@ -460,7 +461,7 @@ ${customStyle}`);
 - 仅输出纯文本剧情。
 - 不要输出任何 JSON。
 - 不要输出任何元数据。
-- 篇幅：这一段正文约 ${world.narrative.replyLength} 字，上下浮动不超过 200 字。`);
+- 篇幅：这一段正文约 ${resolveReplyLength(world.narrative)} 字，上下浮动不超过 200 字。`);
 
   return sections.join('\n\n');
 }

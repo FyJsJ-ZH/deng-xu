@@ -1222,7 +1222,6 @@ export const ximeng: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'present',
-    replyLength: 1100,
     customStyle: `风物志编纂所 · 条目撰写凡例
 第三修本　所内用纸，不出门
 

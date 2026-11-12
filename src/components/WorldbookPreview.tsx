@@ -4,6 +4,7 @@ import {
   ChevronLeft, ChevronDown, ChevronRight, Pencil, Play, Users, Boxes, MapPin, ScrollText,
   Sparkles, Compass, BookOpen, Swords, Package, Settings as Settings2, Search, Library,
 } from 'lucide-react'
+import { resolveReplyLength } from '@/types/cards'
 import type { WorldCard } from '@/types/cards'
 import { CharacterSprite } from '@/components/CharacterSprite'
 
@@ -292,7 +293,11 @@ export function WorldbookPreview({
             <div className="text-[11px] text-text-muted font-mono space-y-0.5">
               <div>人称：{world.narrative?.pov === 'second' ? '第二人称' : world.narrative?.pov === 'first' ? '第一人称' : '第三人称'}</div>
               <div>时态：{world.narrative?.tense === 'present' ? '现在时' : '过去时'}</div>
-              <div>期望篇幅：约 {world.narrative?.replyLength || 500} 字</div>
+              {/*
+                2026-11：`replyLength` 不再是卡里的必填项（改由局内「笔」面板调），
+                所以这里不能写 `|| 500` 那种猜法 —— 统一走 `resolveReplyLength`。
+              */}
+              <div>期望篇幅：约 {resolveReplyLength(world.narrative)} 字</div>
               <div>机制层：{world.enableMechanics ? '开启' : '关闭'}</div>
               <div>章节卡事件：{world.story?.enableStages ? '开启' : '关闭'}</div>
             </div>

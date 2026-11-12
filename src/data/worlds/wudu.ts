@@ -86,7 +86,6 @@ export const wudu: WorldCard = {
   narrative: {
     pov: 'third',
     tense: 'past',
-    replyLength: 700,
     customStyle: `密教/克苏鲁风 · 心理暗黑 · 八条
 一 气氛重于一切。描写那种黏稠的、令人不安的静谧。煤气灯的光晕、墙角的霉菌、空气里的腐败甜味。
 二 不可名状的恐惧。不要直接描绘怪物，要写人看到怪物时的反应——极度的战栗、语言功能的丧失、或者是某种病态的痴迷。

@@ -1229,7 +1229,6 @@ export const dayan: WorldCard = {
       注意这个数只是**目标**：`buildLengthSection` 把下限卡在七成，
       也就是实际不会少于 770 字。局内「文风与预设」里可以再调（只影响当前这一局）。
     */
-    replyLength: 1100,
     customStyle: `江湖话本 · 说书人教徒弟的十七条
 
 先说一句：这东西不是给你念的，是给你照着讲的。念错了听客会走，讲错了听客会骂。

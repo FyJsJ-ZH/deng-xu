@@ -290,13 +290,6 @@ const GATE = {
     并有一组单测盯着（`prompts.length.test.ts`）。
   */
   /*
-    **单次回复的目标字数下限**（2026-11 第三轮：1100 → 1000）。
-    冰山三卡定的是 1000 —— 奇观密集的西幻、刀刀到肉的武侠、黏稠压抑的伦敦，
-    一轮 1000 字读完正好，再多就开始滑手机。深度卡仍是 1100 / 1800 不等。
-    这条只挡"被人改回短得没内容"，不是推荐值。
-  */
-  minReplyLength: 700,
-  /*
     角色数门槛从 6 提到 8。
     实测三个世界各有 9 / 10 / 13 张，6 这个门槛等于没约束；
     而"关系面板一开局就有内容"是这个字段存在的理由，
@@ -514,11 +507,13 @@ for (const exp of EXPECTED) {
   if (rulesCjk < L.rulesCjk) fail(exp.label, 'rules 不足', `${rulesCjk} < ${L.rulesCjk}`)
   if (styleCjk < L.customStyleCjk) fail(exp.label, 'customStyle 不足', `${styleCjk} < ${L.customStyleCjk}`)
 
-  // 单次回复的目标字数：太短装不下一个场景，玩家演起来就像在挤牙膏
-  const replyLen = Number(w.narrative?.replyLength)
-  if (!Number.isFinite(replyLen) || replyLen < L.minReplyLength) {
-    fail(exp.label, '回复篇幅太短', `replyLength ${w.narrative?.replyLength} < ${L.minReplyLength}（一次回复要装得下一个完整场景）`)
-  }
+  /*
+    ⚠️ 2026-11：**「单次回复目标字数」这条校验删掉了**。
+
+    字段本身也从卡里删了（玩家：「直接删掉世界书里自带单次回复字数，毕竟没用了」）。
+    现在这个数由局内「笔」面板的滑块决定，卡里没有、也不该有 ——
+    再校验它就是在校验一个不存在的东西。
+  */
 
   /*
     ⚠️ `story.opening` 的长度门槛**必须分情况**。

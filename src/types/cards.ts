@@ -267,10 +267,37 @@ export interface NarrativeStyle {
   pov: NarrativePov;
   /** 时态 */
   tense: NarrativeTense;
-  /** 单次回复目标字数 */
-  replyLength: number;
+  /**
+   * 每轮目标字数 —— **可选**（2026-11）。
+   *
+   * ## 为什么从必填改成可选
+   *
+   * 玩家原话：「直接删掉世界书里自带单次回复字数，毕竟没用了」。
+   *
+   * 它对：真正的开关在**局内「笔」面板**（`NarrativeControls`）—— 那是玩家的
+   * 即时口味，改完下一轮就生效，只影响这一局。卡里这个数只是"开局时的起始值"，
+   * 而一个起始值不值得占一个编辑器的字段、还要在 13 张内置卡里各写一遍。
+   *
+   * 缺失时按 `DEFAULT_REPLY_LENGTH`（1800）算，见 `resolveReplyLength`。
+   * 旧存档/旧卡里带着这个值也照常读 —— 读者不必为此做迁移。
+   */
+  replyLength?: number;
   /** 自由补充的文风要求 */
   customStyle: string;
+}
+
+/**
+ * 每轮目标字数的**兜底值**。
+ *
+ * 卡里没写、存档是旧格式、玩家没拖过滑块 —— 这三种情况都落到这里。
+ * 1800 是"两屏能读完、又够铺开一个场景"的量级。
+ */
+export const DEFAULT_REPLY_LENGTH = 1800;
+
+/** 统一取值：卡里的数（若有）→ 兜底值。所有要读「目标字数」的地方都走它 */
+export function resolveReplyLength(style?: Pick<NarrativeStyle, 'replyLength'> | null): number {
+  const n = style?.replyLength;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : DEFAULT_REPLY_LENGTH;
 }
 
 export interface StorySettings {
