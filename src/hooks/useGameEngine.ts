@@ -1235,19 +1235,8 @@ export function useGameEngine(): GameEngineReturn {
           content: buildNarrativeSystemPrompt(
             (() => {
               const lib = useLibraryStore.getState()
-              const merged = withNarrativePreset(activeWorld, lib.getActiveNarrativePreset(), lib.styleChoice)
-              /*
-                ── 「每轮正文目标字数」的局内覆盖（2026-11）──
-
-                玩家原话：「增大输出正文的上限」。长度受两道闸管：提示词里那句
-                「约 N 字」、以及按它推算的 `max_tokens`。而 N 一直来自世界卡，
-                他想要长一点就得去卡编辑器里改 —— 那不是"这局想写细一点"该付的代价。
-
-                这里只换传给提示词的那份 world，**一个字都不写回卡**。
-              */
-              const override = config.replyLengthOverride
-              if (typeof override !== 'number' || !Number.isFinite(override) || override <= 0) return merged
-              return { ...merged, narrative: { ...merged.narrative, replyLength: override } }
+              // 三层：世界卡 → 叙事预设 → 玩家现拨的文风开关（最后的最强）
+              return withNarrativePreset(activeWorld, lib.getActiveNarrativePreset(), lib.styleChoice)
             })(),
             activeCharacters,
             player,
@@ -1372,16 +1361,12 @@ export function useGameEngine(): GameEngineReturn {
       /*
         ── 这一轮实际要写多长（2026-11）──
 
-        `replyLengthOverride` 是玩家在设置里调的"每轮正文目标字数"，
-        它同时决定两件事：提示词里那句「约 N 字」，以及下面按它推算的 `max_tokens`。
-        留空 = 跟随世界卡（内置卡多为 1800）。
+        就一个来源：**局内「笔 → 每章字数」那个滑块**。它改的是 `session.world`
+        的副本（`NarrativeControls` 里 `patchWorld`），不动卡片库里的原卡。
+        所以这里读 `activeWorld` 就够了 —— 不要再另立一个"覆盖项"，
+        两处字数设置并存只会让玩家不知道哪个说了算。
       */
-      const targetReplyLength = (() => {
-        const o = config.replyLengthOverride
-        return typeof o === 'number' && Number.isFinite(o) && o > 0
-          ? Math.round(o)
-          : activeWorld.narrative.replyLength
-      })()
+      const targetReplyLength = activeWorld.narrative.replyLength
 
       const narrativeMaxTokens = typeof config.maxTokens === 'number' && config.maxTokens > 0
         ? withThinkingReserve(config.maxTokens, config.narrativeModel, config.provider, config.thinking ?? 'auto')

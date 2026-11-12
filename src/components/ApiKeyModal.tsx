@@ -305,31 +305,6 @@ export function ApiKeyModal() {
             )}
         </div>
 
-        {/* 每轮正文目标字数（2026-11，玩家：「增大输出正文的上限」） */}
-        <div>
-          <label className={labelClass} htmlFor="llm-reply-length">每轮正文目标字数</label>
-          <input
-            id="llm-reply-length"
-            type="number"
-            min={400}
-            max={6000}
-            step={100}
-            value={draft.replyLengthOverride ?? ''}
-            onChange={(e) => {
-              const v = e.target.value.trim()
-              patch({ replyLengthOverride: v === '' ? undefined : Number(v) })
-            }}
-            placeholder="留空 = 跟随世界卡（内置卡多为 1800）"
-            className={`${inputClass} font-mono`}
-          />
-          <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
-            它决定提示词里那句「<b>约 N 字</b>」，也决定按它推算的 max_tokens。
-            想写长一点就填 2500~3000。代价有两面：输出更贵更慢，
-            而且这些正文下一轮会作为历史<b>再读一遍</b>（单条已封在 2400 字，
-            所以不会无限滚）。
-          </p>
-        </div>
-
         {/* 思考模式（2026-11） */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">

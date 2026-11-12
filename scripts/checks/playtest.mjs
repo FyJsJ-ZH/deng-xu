@@ -284,6 +284,43 @@ check('状态栏显示主角名', mid.showsName)
 check('状态栏显示资源', mid.showsResources)
 check('状态栏显示属性', mid.showsAttributes)
 
+/*
+  局内「笔 → 每轮正文目标字数」（2026-11）。
+
+  玩家原话：「文风预设和模型一下有两个期望字数了，整合进局内菜单方便随时调整」。
+  整合之后**只剩这一处**，所以它必须真的接上 store —— 滑块在、拖了没反应，
+  是这类控件最常见的坏法（React range 的 onChange 走的是 input 事件）。
+
+  改完立刻改回去：后面还要真实生成一轮，字数变了会污染那条断言。
+*/
+const stylePanel = JSON.parse(await ev(`(async()=>{
+  const wait = ms => new Promise(r=>setTimeout(r,ms));
+  const btn = [...document.querySelectorAll('button')].find(b => (b.textContent||'').trim() === '笔');
+  if (!btn) return JSON.stringify({ step:'no-button' });
+  btn.click(); await wait(450);
+  const slider = document.querySelector('input[aria-label="每轮正文目标字数"]');
+  const get = () => window.__sessionStore.getState().world?.narrative?.replyLength;
+  const before = get();
+  if (!slider) return JSON.stringify({ step:'no-slider', before });
+  const setVal = (v) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(slider, String(v));
+    slider.dispatchEvent(new Event('input',{bubbles:true}));
+    slider.dispatchEvent(new Event('change',{bubbles:true}));
+  };
+  setVal(3000); await wait(400);
+  const after = get();
+  // 恢复原值，别影响后面那一轮真实生成
+  if (before) {
+    const s = window.__sessionStore.getState();
+    s.patchWorld({ narrative: { ...s.world.narrative, replyLength: before } });
+  }
+  return JSON.stringify({ step:'ok', before, after, hint: /token/.test(document.body.innerText) });
+})()`))
+check('局内能打开「笔」面板', stylePanel.step === 'ok', stylePanel.step || '')
+check('★ 字数滑块改完立刻写进 session.world（下一轮生效）', stylePanel.after === 3000,
+  `${stylePanel.before} → ${stylePanel.after}`)
+check('面板里写了这一项对 token 额度的影响', stylePanel.hint === true)
+
 console.log('\n=== 6) 返回标题 → 继续 ===')
 await click('返回标题')
 await sleep(900)

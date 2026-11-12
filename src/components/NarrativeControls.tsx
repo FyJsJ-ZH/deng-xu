@@ -97,31 +97,66 @@ export function NarrativeControls() {
         </p>
       </section>
 
-      {/* ── 每章字数 ── */}
+      {/* ── 每轮字数 ── */}
       <section className="rounded border border-text-muted/20 bg-surface/20 p-3 space-y-2">
         <div className="flex items-center gap-2">
           <Type size={13} className="text-accent-lantern shrink-0" />
-          <h2 className="text-xs font-serif font-bold text-text-primary">每章字数</h2>
+          <h2 className="text-xs font-serif font-bold text-text-primary">每轮正文目标字数</h2>
           <span className="ml-auto text-[11px] font-mono text-accent-lantern">{replyLength} 字</span>
         </div>
 
+        {/*
+          ── 这里是**唯一**的字数设置（2026-11）──
+
+          玩家原话：「文风预设和模型一下有两个期望字数了，整合进局内菜单方便随时调整」。
+          他说得对：上一轮我在模型设置里也加了一个 `replyLengthOverride`，
+          而局内「笔」面板早就有这个滑块 —— 两个数、两处入口，谁也说不清哪个说了算。
+
+          现在只留这一处。它改的是 `session.world` 的副本（`patchWorld`），
+          **不动卡片库里的原卡**，下一轮就生效。
+        */}
         <input
           type="range"
-          min={600}
-          max={2400}
+          min={800}
+          max={6000}
           step={100}
-          value={Math.min(2400, Math.max(600, replyLength))}
+          value={Math.min(6000, Math.max(800, replyLength))}
           onChange={e => {
             if (!world) return
             patchWorld({ narrative: { ...world.narrative, replyLength: Number(e.target.value) } })
           }}
           className="w-full accent-accent-lantern"
+          aria-label="每轮正文目标字数"
         />
+
+        <div className="flex items-center gap-2 flex-wrap text-[9px] font-mono text-text-muted">
+          {[1200, 1800, 2500, 3500, 5000].map(n => (
+            <button
+              key={n}
+              onClick={() => {
+                if (!world) return
+                patchWorld({ narrative: { ...world.narrative, replyLength: n } })
+              }}
+              className={`px-1.5 py-0.5 rounded border transition-colors
+                ${replyLength === n
+                  ? 'border-accent-lantern/60 text-accent-lantern bg-accent-lantern/10'
+                  : 'border-text-muted/30 hover:text-text-secondary'}`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
 
         <p className="text-[10px] text-text-muted leading-relaxed">
           这是<b className="text-text-secondary">目标值</b>，下限卡在七成 ——
           也就是说实际每轮不会少于 {Math.round(replyLength * 0.7)} 字。
-          只影响<b className="text-text-secondary">这一局</b>，不改卡片库里的原卡；下一轮生效。
+          它同时决定提示词里那句「约 {replyLength} 字」和按它推算的 max_tokens
+          （约 <b className="text-text-secondary">{Math.round(replyLength * 1.5)}</b> token 的正文额度）。
+        </p>
+        <p className="text-[10px] text-text-muted/80 leading-relaxed">
+          只影响<b>这一局</b>，不改卡片库里的原卡；下一轮生效。
+          调大之后每轮的<b>输出更贵更慢</b>，而且这些正文下一轮会作为历史再读一遍
+          （单条已封在 2400 字，不会无限滚）。
         </p>
       </section>
 
