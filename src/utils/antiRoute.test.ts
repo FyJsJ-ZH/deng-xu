@@ -92,7 +92,6 @@ describe('防路由 · 幂等与随机', () => {
   })
 
   it('★ 换了轮次就换一个标记（这才叫随机）', () => {
-    const c = cfg({ refract: 'light' })
     const a = routeAnchor('light', 't3|w1')
     const b = routeAnchor('light', 't4|w1')
     expect(a).not.toBe(b)
