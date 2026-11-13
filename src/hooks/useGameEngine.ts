@@ -1363,10 +1363,17 @@ export function useGameEngine(): GameEngineReturn {
         const last = narrativeMessages.length - 1
         let historyChars = 0
         let memoryChars = 0
+        /** 贴尾段单独计（2026-11）—— 它是 system，但不能混进"记忆"那一格里 */
+        let tailChars = 0
         for (let i = 1; i < last; i++) {
           const m = narrativeMessages[i]
-          if (m.role === 'system') memoryChars += m.content.length
-          else historyChars += m.content.length
+          if (m.role !== 'system') {
+            historyChars += m.content.length
+          } else if (promptParts.tail && m.content === promptParts.tail) {
+            tailChars += m.content.length
+          } else {
+            memoryChars += m.content.length
+          }
         }
         const systemChars = narrativeMessages[0]?.content.length ?? 0
         const userChars = narrativeMessages[last]?.content.length ?? 0
@@ -1374,8 +1381,9 @@ export function useGameEngine(): GameEngineReturn {
           system: systemChars,
           history: historyChars,
           memory: memoryChars,
+          tail: tailChars,
           user: userChars,
-          total: systemChars + historyChars + memoryChars + userChars,
+          total: systemChars + historyChars + memoryChars + tailChars + userChars,
           // JSON 序列化后的字节数 —— 与我们实际发出去的请求体最接近
           bytes: new TextEncoder().encode(JSON.stringify(narrativeMessages)).length,
         })

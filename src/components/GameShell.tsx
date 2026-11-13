@@ -103,6 +103,13 @@ function tokenTooltip(
     ? `\n输入构成：世界书+骨架 ${Math.round(parts.system / 100) / 10}k 字`
       + ` / 历史 ${Math.round(parts.history / 100) / 10}k 字`
       + ` / 记忆 ${Math.round(parts.memory / 100) / 10}k 字`
+      /*
+        贴尾段单独列出（2026-11）。它排在历史之后、正文之前，
+        装的是"这一轮必须照做"的那几条：输出格式、预设的贴尾条目、加固层。
+        玩家核对「我的格式要求进没进去」时看的就是这个数 ——
+        他原话是「开了加固之后预设的首尾格式不见了」。
+      */
+      + ` / 贴尾 ${parts.tail ?? 0} 字`
       + ` / 本轮行动 ${parts.user} 字`
       + `\n合计 ${Math.round(parts.total / 100) / 10}k 字符 ≈ ${(parts.bytes / 1024).toFixed(0)} KB（UTF-8，中文 1 字 = 3 字节）`
     : ''

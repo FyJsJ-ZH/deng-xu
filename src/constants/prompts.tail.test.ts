@@ -109,6 +109,25 @@ describe('加固层：搬到 tail，且排在预设之后', () => {
     expect(tail).toContain('### 输出格式')
     expect(tail).not.toContain('【本回合的铁律')
     expect(tail).not.toContain('【世界不围着人转】')
+    /*
+      没有加固层就不加 `FORMAT_GUARD`：前面没有任何东西会跟格式打架，
+      说"格式优先"反而让模型以为存在冲突、以为自己该写点什么被禁的东西。
+    */
+    expect(tail).not.toContain('【格式优先】')
+  })
+
+  it('★ 开了加固层时，「格式优先」出现在**最末尾**（它要压住前面那一串禁令）', () => {
+    const { tail } = buildNarrativePromptParts(mkWorld(), [], player(), {
+      presetTail: '【结尾格式】正文之后另起一段，写「本章小结」。',
+      antiRoute: antiOn,
+      turnSeed: 't3|w1',
+    })
+    expect(tail).toContain('【格式优先】')
+    // 位置：比预设贴尾段更靠后，也比加固层本身更靠后
+    expect(tail.indexOf('【格式优先】')).toBeGreaterThan(tail.indexOf('本章小结'))
+    expect(tail.indexOf('【格式优先】')).toBeGreaterThan(tail.indexOf('【本回合的铁律'))
+    // 而且真的在最后 —— 它后面只剩空白
+    expect(tail.trimEnd().endsWith('格式优先。')).toBe(true)
   })
 
   it('渲染加固层抛错时 tail 仍然成立（失败安全）', () => {
