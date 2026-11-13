@@ -251,6 +251,13 @@ const edited = await ev(`(async()=>{
   await wait(250);
   const kindChip = document.querySelector('[data-draft-kind="style"]');
   const hasKindChip = !!kindChip;
+  /*
+    贴尾落点（2026-11）：破甲 / 输出格式 / 字数要求该放在这一格 ——
+    它会被发成"历史之后的最后一条 system"，而不是混进第 0 条。
+    这里只验"这个选项在、且点得中"，注入位置由单测（prompts.tail.test.ts）钉。
+  */
+  const tailChip = document.querySelector('[data-draft-kind="tail"]');
+  const hasTailChip = !!tailChip;
   if (kindChip) { kindChip.click(); await wait(200); }
   const saveBtn = byText(/^保存$/);
   if (!saveBtn) return JSON.stringify({ step:'no-save', hasEditor });
@@ -291,6 +298,7 @@ const edited = await ev(`(async()=>{
     hasEditor,
     addedCount: p0.entries.length,
     hasKindChip,
+    hasTailChip,
     savedName: saved && saved.name,
     savedContent: saved && saved.content,
     savedKind: saved && saved.kind,
@@ -310,6 +318,7 @@ check('条目数从 4 变 5', ed.addedCount === 5, `entries=${ed.addedCount}`)
 check('★ 保存后名字与正文都写进去了', ed.savedName === '走查新条目' && ed.savedContent === '这是走查加的一条',
   `${ed.savedName} / ${ed.savedContent}`)
 check('★ 落点能改：从「规则」挪到「文风」', ed.hasKindChip === true && ed.savedKind === 'style', ed.savedKind || '')
+check('★ 落点里有「贴尾」这一档（破甲 / 输出格式该放这儿）', ed.hasTailChip === true)
 check('★ 保存后进入 style 快照、不再在 rules 里', ed.inStyleSnapshot === true && ed.notInRules === true)
 check('★ 再编辑一次生效，旧文字从快照里消失', ed.changed === true)
 check('★ 删除要确认：点一下只变成「确认删除」', ed.confirmLabel === '确认删除' && ed.stillThereAfterOneClick === true,

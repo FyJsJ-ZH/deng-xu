@@ -434,6 +434,12 @@ export function PresetLibrary({ onBack }: { onBack: () => void }) {
 const KIND_META: Record<PresetEntry['kind'], { title: string; hint: string; badge: string }> = {
   rules: { title: '规则', hint: '每轮注入', badge: 'bg-accent-lantern/15 text-accent-lantern/90 border-accent-lantern/30' },
   style: { title: '文风', hint: '每轮注入', badge: 'bg-sky-500/15 text-sky-300/90 border-sky-500/30' },
+  /*
+    贴尾：这一类的条目**贴在生成点之前**发出去（历史之后的最后一条 system），
+    也就是酒馆 `post_history_instructions` 那一格 —— 破甲 / 输出格式 / 字数 / 收尾。
+    见 `types/cards.ts` 里 `PresetEntry.kind` 的说明。
+  */
+  tail: { title: '贴尾', hint: '贴在生成点之前（破甲 / 格式）', badge: 'bg-rose-500/15 text-rose-300/90 border-rose-500/30' },
   other: { title: '存档', hint: '只存档，不注入', badge: 'bg-text-muted/15 text-text-muted border-text-muted/30' },
 }
 
@@ -481,8 +487,8 @@ function PresetEntries({
     [preset.entries],
   )
   const stats = presetEntryStats(preset)
-  const onTotal = stats.rules.on + stats.style.on + stats.other.on
-  const injectChars = stats.rules.chars + stats.style.chars
+  const onTotal = stats.rules.on + stats.style.on + stats.tail.on + stats.other.on
+  const injectChars = stats.rules.chars + stats.style.chars + stats.tail.chars
 
   const beginEdit = (e: PresetEntry) => {
     setOpenId(e.id)
@@ -508,7 +514,7 @@ function PresetEntries({
       {/* 工具条：总数、按类批量开关、顺序说明 */}
       <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-text-muted">
         <span className="font-mono">{onTotal}/{entries.length} 条勾选 · 每轮注入 {injectChars} 字</span>
-        {(['rules', 'style', 'other'] as const).map(kind => {
+        {(['rules', 'style', 'tail', 'other'] as const).map(kind => {
           const st = stats[kind]
           if (!st.all) return null
           const allOn = st.on === st.all
@@ -683,7 +689,7 @@ function PresetEntryRow({
           {/* 落点：这条到底是规则、文风，还是只存档 */}
           <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-text-muted">
             <span className="shrink-0">注入到</span>
-            {(['rules', 'style', 'other'] as const).map(k => {
+            {(['rules', 'style', 'tail', 'other'] as const).map(k => {
               const picked = draft.kind === k
               return (
                 <button
@@ -695,14 +701,22 @@ function PresetEntryRow({
                     ${picked
                       ? 'border-accent-lantern/60 text-accent-lantern bg-accent-lantern/10'
                       : 'border-text-muted/30 text-text-muted hover:text-text-secondary'}`}
-                  title={k === 'other' ? '只存档：留在库里给人看，不进提示词' : '每轮注入提示词'}
+                  title={k === 'other'
+                    ? '只存档：留在库里给人看，不进提示词'
+                    : k === 'tail'
+                      ? '贴在生成点之前：破甲、输出格式、字数要求、收尾规矩该放这儿'
+                      : '每轮注入提示词'}
                 >
                   {KIND_META[k].title}
                 </button>
               )
             })}
             <span className="text-[9px] text-text-muted/60">
-              {draft.kind === 'other' ? '只存档，不注入' : '每轮注入'}
+              {draft.kind === 'other'
+                ? '只存档，不注入'
+                : draft.kind === 'tail'
+                  ? '贴尾：历史之后、正文之前'
+                  : '每轮注入'}
             </span>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">

@@ -216,6 +216,15 @@ export interface TurnBriefing {
    * 否则"重试"本身就成了新的指纹。
    */
   turnSeed?: string
+  /**
+   * 预设里该**贴在生成点之前**的那几条（2026-11）。
+   *
+   * 由 `utils/narrativePreset.ts` 的 `renderPresetTail()` 取出来，走
+   * `buildNarrativeTail()` 单独发一条 system —— 不进 system prompt 主体。
+   * 理由是位置：破甲词住在酒馆的 `post_history_instructions` 那一格，
+   * 离生成点 0～4 条消息；本作上一版把它拼进第 0 条 system，隔着几万字。
+   */
+  presetTail?: string
 }
 
 
@@ -251,7 +260,7 @@ export interface TurnBriefing {
  * 其余一字不动。想往这里加东西之前先问一句：**原作是这么写的吗？**
  * 不是就别加 —— 我们加过的每一条，最后都变成了稀释氛围的噪音。
  */
-export function buildNarrativeSystemPrompt(
+export function buildNarrativeSystemBody(
   world: WorldCard,
   activeCharacters: CharacterCard[],
   player: PlayerCard,
@@ -487,28 +496,112 @@ ${povInstruction(world)}`);
 ${customStyle}`);
   }
 
-  // ── 输出格式（照搬 + 一行篇幅）──
-  sections.push(`### 输出格式
+  /*
+    ── 输出格式与加固层**不在这里**（2026-11）──
+
+    它们搬去了 `buildNarrativeTail()`，由调用方作为**最后一条 system**、
+    插在历史之后、本轮动作之前。
+
+    原因只有一个：位置。这两块都是「这一轮必须照做」的硬约束，
+    而上一版把它们排在这一大段的末尾 —— 看起来在最后，其实仍在第 0 条消息里，
+    后面还压着四块记忆和六条历史。同一句话，贴在生成点前面，
+    和隔着三万 token，模型给它的权重差一个数量级。
+
+    玩家原话：「预设的效果和破甲能力不稳定，一模一样的预设，
+    本项目的和酒馆的到底差在哪」—— 差的就是这个。
+  */
+  return sections.join('\n\n');
+}
+
+/**
+ * 贴在**生成点之前**的那一段（2026-11）。
+ *
+ * ## 它是什么
+ *
+ * 本函数对应酒馆预设里的 `post_history_instructions` 那一格：
+ * 发在聊天历史**之后**、模型开始写之前。破甲串、输出格式、字数要求、
+ * 收尾规矩全部住在这里 —— 它们共同的特点不是"重要"，而是**每轮都必须照做**。
+ *
+ * ## 为什么顺序是「系统格式 → 预设 → 玩家开关」
+ *
+ * 越靠后越强。
+ *
+ *  - 系统自己的「仅输出纯文本剧情」放最前：它是默认值；
+ *  - 预设（作者写的那套）压在它上面：玩家特意导入的东西该盖过默认；
+ *  - `antiRoute`（玩家此刻在面板上拨的开关）最后：刚点的那一下才是他现在想要的。
+ *
+ * ## 空段不占位
+ *
+ * 三段都空时返回空串 —— 调用方据此决定**要不要多发一条消息**。
+ * 多发一条空 system 会让某些端点直接 400。
+ */
+export function buildNarrativeTail(
+  world: WorldCard,
+  activeCharacters: CharacterCard[],
+  player: PlayerCard,
+  briefing: TurnBriefing = {},
+): string {
+  const parts: string[] = []
+
+  parts.push(`### 输出格式
 - 仅输出纯文本剧情。
 - 不要输出任何 JSON。
 - 不要输出任何元数据。
-- 篇幅：这一段正文约 ${resolveReplyLength(world.narrative)} 字，上下浮动不超过 200 字。`);
+- 篇幅：这一段正文约 ${resolveReplyLength(world.narrative)} 字，上下浮动不超过 200 字。`)
+
+  const presetTail = (briefing.presetTail || '').trim()
+  if (presetTail) parts.push(presetTail)
 
   /*
-    ── 防降级加固层（2026-11）──
-
-    放在**最后**：模型对越靠后的指令越敏感，而这几段是"这一轮必须照做"的硬约束，
-    理应在世界卡与预设之后。渲染失败时返回空串，一个字都不会多出来。
+    加固层的渲染失败时返回空串（见 `utils/antiRoute.ts` 的 try/catch）——
+    一个字都不会多出来，也不会把提示词弄坏。
   */
   const anti = renderAntiRoute(briefing.antiRoute, {
     userName: player.name,
     cast: activeCharacters.map(c => c.name),
     replyLength: resolveReplyLength(world.narrative),
     seed: briefing.turnSeed || '',
-  });
-  if (anti) sections.push(anti);
+  })
+  if (anti) parts.push(anti)
 
-  return sections.join('\n\n');
+  return parts.join('\n\n')
+}
+
+/**
+ * 一次拿全两段 —— 叙事调用该用这个。
+ *
+ * `system` 进消息数组的第 0 条；`tail` 进**最后一条 system**。
+ * 拆开是为了让位置可控，不是为了省事。
+ */
+export function buildNarrativePromptParts(
+  world: WorldCard,
+  activeCharacters: CharacterCard[],
+  player: PlayerCard,
+  briefing: TurnBriefing = {},
+): { system: string; tail: string } {
+  return {
+    system: buildNarrativeSystemBody(world, activeCharacters, player, briefing),
+    tail: buildNarrativeTail(world, activeCharacters, player, briefing),
+  }
+}
+
+/**
+ * 两段拼成一段 —— **只为向后兼容存在**。
+ *
+ * 老调用方（以及大量单测）拿到的是一个字符串，断言 `toContain('输出格式')`。
+ * 真跑游戏时用的是 `buildNarrativePromptParts`：它把 tail 单独拿出来，
+ * 放到历史之后 —— 那才是这一整轮改动要的东西。
+ *
+ * 如果你在写新代码：**别用这个**，用 parts。
+ */
+export function buildNarrativeSystemPrompt(
+  world: WorldCard,
+  activeCharacters: CharacterCard[],
+  player: PlayerCard,
+  briefing: TurnBriefing = {},
+): string {
+  const { system, tail } = buildNarrativePromptParts(world, activeCharacters, player, briefing)
+  return tail ? `${system}\n\n${tail}` : system
 }
 
 /**

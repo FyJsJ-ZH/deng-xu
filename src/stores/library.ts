@@ -180,7 +180,7 @@ export interface LibraryState {
   setNarrativePresetEntries: (
     presetId: string,
     enabled: boolean,
-    kind?: 'rules' | 'style' | 'other',
+    kind?: PresetEntry['kind'],
   ) => Promise<void>;
   /**
    * 改某一条的名字或正文（2026-11 第三十八轮）。
@@ -196,12 +196,12 @@ export interface LibraryState {
   updateNarrativePresetEntry: (
     presetId: string,
     entryId: string,
-    patch: { name?: string; content?: string; kind?: 'rules' | 'style' | 'other' },
+    patch: { name?: string; content?: string; kind?: PresetEntry['kind'] },
   ) => Promise<void>;
   /** 往某一类里加一条空白条目，返回新条目的 id（拿不到就是失败） */
   addNarrativePresetEntry: (
     presetId: string,
-    kind: 'rules' | 'style' | 'other',
+    kind: PresetEntry['kind'],
   ) => Promise<string | null>;
   /**
    * 删掉一条。

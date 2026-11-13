@@ -630,6 +630,29 @@ export interface LLMConfig {
    * 换个中转可能就不需要了，换个世界则完全无关。
    */
   antiRoute?: AntiRouteConfig;
+
+  /**
+   * **预填（prefill）开关**（2026-11，破甲稳定性）。
+   *
+   * ## 是什么
+   *
+   * 发请求前在消息数组末尾追加一条**空的 assistant 消息**（一个全角空格）。
+   * 模型拿到的最后一条不是「用户刚说完话」，而是「我这边已经开了个头」——
+   * 于是它落在**续写**状态里，而不是每一轮重新判断「我是谁、该不该写」。
+   *
+   * ## 为什么这对「破甲稳不稳」是决定性的
+   *
+   * 从零开始的 assistant 位，模型必须先做一次自我定位；破甲词灵不灵
+   * 全看它那一刻的判定 —— 表现出来就是「有时生效有时不生效」。
+   * 而 prefill 把这个判定绕过去了：它已经在写了。
+   *
+   * ## 风险与降级
+   *
+   * 部分中转把「只有空格的 assistant」当成空回复直接返回，
+   * 正文一个字都不给。所以它**接在已有的空壳重试链上**：
+   * 连续两轮都是空正文时自动摘掉 prefill 重发，并记一条日志说明原因。
+   */
+  prefill?: boolean;
 }
 
 export interface CardBundle {
@@ -738,8 +761,25 @@ export interface PresetEntry {
   id: string;
   /** 条目标题，ST 的 `name` */
   name: string;
-  /** 落点：`rules` / `style` 每轮注入；`other` 只存档不注入 */
-  kind: 'rules' | 'style' | 'other';
+  /**
+   * 落点：
+   *  - `rules` / `style` —— 每轮注入，进 system prompt 的中段
+   *  - `tail` —— 每轮注入，**贴在生成点之前**（最后一条 system）
+   *  - `other` —— 只存档不注入
+   *
+   * ## 为什么多出 `tail` 这一档（2026-11，玩家报「预设效果和破甲能力不稳定」）
+   *
+   * 酒馆把预设拆成两格：`main`（在历史之前）和 `post_history_instructions`
+   * （在历史之后、生成之前）。破甲词几乎全部住在后者 —— 因为**位置决定权重**，
+   * 离生成点越近，模型越当真。
+   *
+   * 上一版本作把整份预设拼成一段巨大的 system，破甲词排在那段的末尾，
+   * 但那整段在最前面，后面还隔着四块记忆和六条历史。同一段文字，
+   * 在酒馆里贴着生成点，在这里隔着几万字 —— 这就是「一模一样却不灵」的全部原因。
+   *
+   * 现在这一类条目单独走 `buildNarrativeTail()`，作为最后一条 system 发出去。
+   */
+  kind: 'rules' | 'style' | 'tail' | 'other';
   content: string;
   /**
    * 是否勾选。
@@ -800,6 +840,37 @@ export interface PresetEntry {
  * 它们从"唯一真相"退成**当前勾选状态的快照**：注入只看 `entries`，
  * 这三个字符串每次勾选后重算，用于导出、列表摘要与旧版本兜底读。
  */
+/**
+ * 预设自带的一整套**采样参数**（2026-11）。
+ *
+ * ## 为什么必须接上（而不是只搬文本）
+ *
+ * 中文破甲预设之所以在酒馆里稳，**一半靠字，一半靠参数**：
+ * 低 temperature 让它老实按格式吐字，合适的 repetition / frequency penalty
+ * 压住「同一个动作包反复用」的退化，`custom_stop` 则在它想开口说
+ * 「作为一个 AI」时直接切断。
+ *
+ * 上一版导入器把整个 JSON 读了一遍，只把 `prompts[]` 的文字拿走了 ——
+ * 这些数字全丢。玩家看到的现象是「同一份预设，在这儿就是不如在酒馆灵」。
+ *
+ * ## 字段名与酒馆一致（snake→camel 只是本地写法）
+ *
+ * `temperature` / `top_p` / `top_k` / `min_p` / `repetition_penalty` /
+ * `frequency_penalty` / `presence_penalty` / `custom_stop`。
+ * 值为 `0` 也照收（那是作者有意选的），只忽略缺失与非数字。
+ */
+export interface PresetSampling {
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+  minP?: number;
+  repetitionPenalty?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  /** 停止串：命中即截断。破甲预设常用来切断「很抱歉…」这类开场 */
+  stop?: string[];
+}
+
 export interface NarrativePreset {
   id: string;
   /** 列表里显示的名字，默认取原文件名 */
@@ -823,6 +894,13 @@ export interface NarrativePreset {
    * UI 上每一条一个复选框，勾掉的那一条下一轮就不进提示词。
    */
   entries?: PresetEntry[];
+  /**
+   * 作者调好的采样参数快照（导入时从 JSON 顶层取）。
+   *
+   * 缺省 = 什么都不发，行为与从前完全一致。有值时才覆盖 `config.temperature`
+   * 并附带 `top_p` / `top_k` / penalty / `stop`（见 `api/llm.ts` 的 `buildBody`）。
+   */
+  sampling?: PresetSampling;
   /** 转换时的条目统计（UI 上如实显示，别让玩家以为 144 条全进去了） */
   counts: {
     /** 作者当前方案里启用的条目总数（勾选变化后会重算） */
@@ -830,6 +908,8 @@ export interface NarrativePreset {
     rules: number;
     style: number;
     other: number;
+    /** 贴在生成点之前的那几条（破甲 / 格式 / 字数 / 收尾）。旧数据没有这个数 */
+    tail?: number;
     /** 因为超出篇幅预算没并入的条目名 */
     dropped: string[];
   };

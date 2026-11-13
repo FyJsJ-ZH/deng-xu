@@ -1,8 +1,9 @@
 import { useLibraryStore } from '@/stores/library'
 import { useSessionStore } from '@/stores/session'
+import { useUIStore } from '@/stores/ui'
 import { StyleChooser } from '@/components/StyleChooser'
 import { AntiRoutePanel } from '@/components/AntiRoutePanel'
-import { Sparkles, ScrollText, Info, Type } from 'lucide-react'
+import { Sparkles, ScrollText, Info, Type, CornerDownRight } from 'lucide-react'
 
 /**
  * **局内**的叙事预设与文风切换（2026-11）。
@@ -49,6 +50,15 @@ export function NarrativeControls() {
   const replyLength = world?.narrative?.replyLength ?? 1800
 
   const active = presets.find(p => p.id === activeId)
+
+  /*
+    预填（prefill）的开关存在 `LLMConfig` 里 —— 它跟着**模型和渠道**走，
+    与具体世界、具体预设都无关（换个中转可能就不需要了）。
+    `!== false` 而不是 `=== true`：老存档里没有这个字段，缺省应当是"开"。
+  */
+  const llm = useUIStore(s => s.llm)
+  const setLlm = useUIStore(s => s.setLlm)
+  const prefillOn = llm.prefill !== false
 
   return (
     <div className="space-y-3">
@@ -166,6 +176,44 @@ export function NarrativeControls() {
 
       {/* ── 防降级加固（2026-11，从酒馆脚本「卢克之光」移植）── */}
       <AntiRoutePanel />
+
+      {/*
+        ── 预填：让模型"接着写"而不是"从头判断"（2026-11）──
+
+        放在加固面板下面：两者治的是同一件事（模型不肯好好写），
+        但这一条的机理不同 —— 它不是"多说几句狠话"，而是**换掉起跑姿势**。
+
+        默认开。关掉的场合：某些中转把"只有空格的 assistant"当成空回复，
+        正文一个字都不给（撞上了会自动关一次重试，但想彻底关就在这儿关）。
+      */}
+      <section className="rounded border border-text-muted/20 bg-surface/20 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <CornerDownRight size={13} className="text-accent-lantern shrink-0" />
+          <h2 className="text-xs font-serif font-bold text-text-primary">预填</h2>
+          <button
+            onClick={() => setLlm({ prefill: !prefillOn })}
+            role="switch"
+            aria-checked={prefillOn}
+            aria-label="预填：让模型接着写"
+            data-prefill={prefillOn ? 'on' : 'off'}
+            className={`ml-auto px-2 py-0.5 text-[10px] rounded border font-mono transition-colors
+              ${prefillOn
+                ? 'border-accent-lantern/60 text-accent-lantern bg-accent-lantern/10'
+                : 'border-text-muted/40 text-text-muted'}`}
+          >
+            {prefillOn ? '开' : '关'}
+          </button>
+        </div>
+        <p className="text-[10px] text-text-muted leading-relaxed">
+          发请求前，先替模型写下<span className="text-text-secondary">一个看不见的开头</span>。
+          它于是落在「我已经动笔了」的状态里，不用每轮重新决定「我是谁、该不该写」。
+        </p>
+        <p className="text-[10px] text-text-muted/80 leading-relaxed">
+          这是<b className="text-text-secondary">预设灵不灵的关键一环</b>之一 ——
+          破甲词写得再好，若模型每轮都从零判断一次，表现就是「有时生效有时不生效」。
+          极少数中转会把空开头当成空回复（撞上会自动关掉重试一次）；真遇到了就手动关。
+        </p>
+      </section>
 
       {/* ── 一句总述 ── */}
       <p className="flex items-start gap-1.5 text-[10px] text-text-muted leading-relaxed px-1">

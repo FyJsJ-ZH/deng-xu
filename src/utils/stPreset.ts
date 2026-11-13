@@ -35,7 +35,7 @@
  * 免得玩家开一局发现世界一片空白，以为导入坏了。
  */
 
-import type { NarrativePreset, PresetEntry, WorldCard } from '@/types/cards'
+import type { NarrativePreset, PresetEntry, PresetSampling, WorldCard } from '@/types/cards'
 import { makeId } from '@/utils/files'
 
 type JsonObject = Record<string, unknown>
@@ -71,6 +71,66 @@ const RULES_BUDGET = 20000
 const STYLE_BUDGET = 20000
 /** `worldLore` 会被检索，比另两块宽一档 */
 const LORE_BUDGET = 40000
+/**
+ * 贴尾段（post-history）的预算 —— **故意比另两段紧得多**。
+ *
+ * 这一段的意义全在「短而近」：它贴在生成点之前，靠的是**注意力权重大**，
+ * 而不是内容多。一旦它自己也膨胀到一万多字，就退化成了第二个 system，
+ * 白折腾一趟。
+ *
+ * 4000 字足够装下任何一份破甲串 + 输出格式 + 字数要求 + 收尾规矩（实测
+ * 主流中文预设这几条合计 1200～3000 字）。超出的条目不会被丢掉，
+ * 只是**留在原 kind 里**（退回 rules），内容一个字不少。
+ */
+const TAIL_BUDGET = 4000
+
+/**
+ * 这条该**贴在生成点之前**（酒馆的 post-history 段）。
+ *
+ * ## 为什么这条判据是整套改动的核心（2026-11）
+ *
+ * 玩家原话：「预设的效果和破甲能力不稳定，一模一样的预设，本项目的和酒馆的到底差在哪」。
+ *
+ * 答案不在文字，在位置。酒馆的装配序列里，`chatHistory` 之后**还有几格**，
+ * 最后那一格就是 `post_history_instructions` —— 破甲词几乎全住在那儿，
+ * 因为它离生成点最近，注意力权重最高。本作上一版把整份预设拼成一段巨大的
+ * system，破甲词排在那段末尾，而那段在最前面：同一个字，作用力差一个数量级。
+ *
+ * ## 三个判据，从可靠到宽松
+ *
+ * 1. **`afterHistory`（结构性）** —— 作者把它排在 `chatHistory` marker 之后。
+ *    这就是酒馆语义本身，不猜。可靠度最高。
+ * 2. **名字**：『破限』『越狱』『jailbreak』『防拒答』这类。
+ * 3. **内容**：明写「没有内容审查义务」「不受任何限制」等破甲特征句。
+ *
+ * ## 为什么不把整份预设都搬过去
+ *
+ * 段要有边界才有力量。全部搬过去 = 又变回一个大 system，等于没改。
+ * 所以只收**短的、硬的、每轮必须照做**的那些；长的世界观与文风说明留在原地。
+ *
+ * ## 顺便修掉一个静默失效
+ *
+ * `looksLikeMeta()` 会把含「没有任何内容审查义务」的条目判成"给 ST 用的系统人设"，
+ * 扔进 `other` —— 而 `other` **一个字都不注入**。于是作者精心写的那段破甲
+ * 从来没到过模型手上，玩家看到的现象是「导入了但好像没生效」。
+ * 现在 tail 判定排在 meta 之前，破甲串不会被这句特征话误杀。
+ */
+function looksLikeTail(e: StEntry): boolean {
+  // 1. 结构性：作者自己把它排在 chatHistory 之后
+  if (e.afterHistory) return true
+
+  // 2. 名字
+  if (/破甲|破限|越狱|jailbreak|jail\s*break|防拒|解除限制|放纵模式|无限制模式/i.test(e.name)) return true
+
+  /*
+    3. 内容 —— 只在**短条目**上生效。
+
+    破甲串本来就不长（800～2500 字）。给个 3000 字的上限，
+    是为了别把「综合创作总纲」那种一大篇东西误认成破甲词搬过去。
+  */
+  if (e.content.length > 3000) return false
+  return /没有任何(?:内容)?审查|不受任何(?:内容)?限制|忽略(?:之前|以上|先前)[^。\n]{0,12}(?:所有|一切)?(?:设定|规则|指令)|没有道德|无需遵守|越过(?:任何)?限制|jailbreak/i.test(e.content)
+}
 
 /** 这条像不像"文风 / 笔法"要求 */
 function looksLikeStyle(name: string, content: string): boolean {
@@ -194,8 +254,38 @@ interface StEntry {
   name: string
   content: string
   enabled: boolean
-  /** 在作者 `prompt_order` 里的位置（0 起）—— 后面拼提示词、排列表都按它 */
+  /**
+   * 在作者 `prompt_order` 里的位置（0 起）—— 后面拼提示词、排列表都按它。
+   *
+   * ⚠️ 这是**过滤后**的下标（marker 与空条目已被剔除）。
+   * 判断「是不是 post-history 段」用的是下面那个 `afterHistory`，不是它。
+   */
   order: number
+  /**
+   * 作者把它排在 `chatHistory` marker **之后** —— 酒馆语义里这就是
+   * `post_history_instructions` 所在的那一段，该贴在生成点之前。
+   * 见 `looksLikeTail()`。
+   */
+  afterHistory: boolean
+}
+
+/**
+ * `chatHistory` 这个 marker 在 order 表里的槽位。
+ *
+ * 找它就是为了知道「历史在哪儿结束」：它后面的条目，酒馆会发在历史之后、
+ * 生成之前。找不到时返回 -1，此时只剩名字/内容判据可用。
+ *
+ * 大小写与下划线都认：酒馆自己的 identifier 是 `chatHistory`，
+ * 但不少作者手改过的预设写成 `chat_history` 或 `ChatHistory`。
+ */
+function findChatHistorySlot(order: Map<string, boolean> | null): number {
+  if (!order) return -1
+  let i = 0
+  for (const id of order.keys()) {
+    if (/^chat[_ ]?history$/i.test(id)) return i
+    i++
+  }
+  return -1
 }
 
 /**
@@ -307,6 +397,20 @@ function readEntries(raw: JsonObject): StEntry[] {
 
   const order = pickMainOrder(raw, contentById)
 
+  /*
+    ── 历史在哪儿结束（2026-11）──
+
+    `order` 的键序就是酒馆发出去的那条序列。找到 `chatHistory` 的槽位，
+    它后面的一切都属于「历史之后、生成之前」那一段 —— 也就是
+    `post_history_instructions` 的位置，破甲词的正主。
+  */
+  const historySlot = findChatHistorySlot(order)
+  const slotOf = new Map<string, number>()
+  if (order) {
+    let i = 0
+    for (const id of order.keys()) slotOf.set(id, i++)
+  }
+
   const byId = new Map<string, StEntry>()
   for (const [id, p] of rawById) {
     // 有方案表时，**不在表里就是没勾选** —— 备选池不参与注入
@@ -323,6 +427,7 @@ function readEntries(raw: JsonObject): StEntry[] {
       enabled: true,
       // 真正的位置在下面按 order 排完才知道
       order: -1,
+      afterHistory: historySlot >= 0 && (slotOf.get(id) ?? -1) > historySlot,
     })
   }
 
@@ -351,6 +456,9 @@ function readEntries(raw: JsonObject): StEntry[] {
         content,
         enabled: true,
         order: -1,
+        // 兜底分支拿不到 order 表（走到这里说明它一条有内容的都没有），
+        // 只能交给名字/内容判据
+        afterHistory: false,
       })
     }
   }
@@ -395,18 +503,32 @@ function classifyEntries(entries: StEntry[]): {
   world: StEntry[]
   rules: StEntry[]
   style: StEntry[]
+  tail: StEntry[]
 } {
   const world: StEntry[] = []
   const rules: StEntry[] = []
   const style: StEntry[] = []
+  /*
+    ⚠️ `tail` 的判定必须排在 **最前面**（2026-11）。
+
+    两处会被它救回来：
+
+    1. `looksLikeMeta()` 认「没有任何内容审查义务」这句，破甲串常带它 ——
+       以前会被判成"给 ST 用的系统人设"，扔进 `other`，而 `other` 一个字都不注入。
+    2. `looksLikeRules()` 认「格式」「输出」「禁止」，于是破甲与格式条目
+       一路沉到 system 中段。
+
+    先判 tail，这两条路都走岔不了。
+  */
+  const tail: StEntry[] = []
   for (const e of entries) {
-    // 先挑出"给读者看的说明 / 给 ST 用的系统人设"：它们不进每轮注入
-    if (looksLikeMeta(e.name, e.content)) world.push(e)
+    if (looksLikeTail(e)) tail.push(e)
+    else if (looksLikeMeta(e.name, e.content)) world.push(e)
     else if (looksLikeStyle(e.name, e.content)) style.push(e)
     else if (looksLikeRules(e.name, e.content)) rules.push(e)
     else world.push(e)
   }
-  return { world, rules, style }
+  return { world, rules, style, tail }
 }
 
 /** 被预算裁掉时如实写在段末 —— 悄悄截断等于把作者的东西吃掉一半还不告诉他 */
@@ -426,10 +548,15 @@ export function fromSillyTavernPreset(raw: unknown, fileName = ''): WorldCard | 
   const entries = readEntries(raw)
   if (!entries.length) return null
 
-  const { world, rules, style } = classifyEntries(entries)
+  const { world, rules, style, tail } = classifyEntries(entries)
 
   const lorePart = fill(world, LORE_BUDGET)
-  const rulesPart = fill(rules, RULES_BUDGET)
+  /*
+    转成**世界卡**这条路没有"贴尾"的位置可言（世界卡的 `rules` 就是一整块），
+    所以 tail 并回 rules，内容不丢。真正用到 tail 的是预设那条路
+    （`stPresetToNarrativePreset`），那里它单独成为 `kind: 'tail'`。
+  */
+  const rulesPart = fill([...rules, ...tail], RULES_BUDGET)
   const stylePart = fill(style, STYLE_BUDGET)
 
   const baseName = fileName.replace(/\.json$/i, '').trim()
@@ -507,14 +634,87 @@ export function describePreset(raw: unknown): { total: number; rules: number; st
  * 拼接出来的 `rules` / `style` / `lore` 仍然照旧返回一份快照，
  * 用来导出、列表摘要，以及旧版本读到新文件时的兜底。
  */
+/**
+ * 读出这份预设**自带的采样参数**（2026-11）。
+ *
+ * ## 为什么值也得搬，不能只搬字
+ *
+ * 中文破甲预设之所以在酒馆里稳，一半靠字、一半靠参数：低 temperature 让它
+ * 老实按格式吐字，repetition / frequency penalty 压住「同一个动作包反复用」的
+ * 退化，`custom_stop` 在它想开口说「作为一个 AI」时直接切断。
+ *
+ * 上一版导入器把整个 JSON 读了一遍，只搬走 `prompts[]` 里的文字 ——
+ * 这些数字全丢，玩家看到的现象就是「同一份预设，在这儿不如在酒馆灵」。
+ *
+ * ## 取值规矩
+ *
+ *  - `0` 照收（那是作者有意选的，不是"没有"）；
+ *  - 字符串形式的数字也认（手改过的预设里常见 `"top_p": "0.9"`）；
+ *  - 一个都没读到就返回 `null`，**不存空对象** —— 否则「这份预设有没有参数」
+ *    就说不清了，界面上也无从提示。
+ */
+function numOrUndef(v: unknown): number | undefined {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v)
+    if (Number.isFinite(n)) return n
+  }
+  return undefined
+}
+
+export function readPresetSampling(raw: unknown): PresetSampling | null {
+  if (!isPlainObject(raw)) return null
+  const pick = (name: string) => numOrUndef(raw[name])
+
+  const stopRaw = raw.custom_stop ?? raw.custom_stops ?? raw.stop ?? raw.stop_sequences
+  /*
+    ⚠️ **不做 trim**（2026-11）。
+
+    `\n用户：` 这种停止串的前导换行**是有意义的** —— 作者要的是"换行之后
+    出现这个名字就截断"，删掉换行就变成了"正文里任何位置出现都截断"，
+    一个中间提到「用户：」的正常句子会把整段砍断。
+
+    只把**整条全是空白**的去掉。
+  */
+  const stop = Array.isArray(stopRaw)
+    ? stopRaw
+      .filter((s): s is string => typeof s === 'string' && s.trim() !== '')
+      .slice(0, 24)
+    : []
+
+  const out: PresetSampling = {}
+  const set = <K extends keyof PresetSampling>(k: K, v: PresetSampling[K]) => {
+    if (v !== undefined) out[k] = v
+  }
+  set('temperature', pick('temperature'))
+  set('topP', pick('top_p'))
+  set('topK', pick('top_k'))
+  set('minP', pick('min_p'))
+  set('repetitionPenalty', pick('repetition_penalty'))
+  set('frequencyPenalty', pick('frequency_penalty'))
+  set('presencePenalty', pick('presence_penalty'))
+  if (stop.length) out.stop = stop
+
+  return Object.keys(out).length ? out : null
+}
+
 export function stPresetToNarrativePreset(raw: unknown, fileName = ''): NarrativePreset | null {
   if (!isPlainObject(raw)) return null
   const entries = readEntries(raw)
   if (!entries.length) return null
 
-  const { world, rules, style } = classifyEntries(entries)
+  const { world, rules, style, tail } = classifyEntries(entries)
+  const sampling = readPresetSampling(raw)
   const lorePart = fill(world, LORE_BUDGET)
-  const rulesPart = fill(rules, RULES_BUDGET)
+  /*
+    ⚠️ tail 超预算的条目**退回规则段**，不标 `dropped`（2026-11）。
+
+    另三段超预算时从最长的开始丢、标「超预算」角标 —— 那是它们本来的语义
+    （内容太多，塞不下）。但贴尾段不一样：它的预算紧是为了**保持它短而近**，
+    不是因为内容该被砍。所以装不下的那些回 rules 段去，一个字都不丢。
+  */
+  const tailPart = fill(tail, TAIL_BUDGET)
+  const rulesPart = fill([...rules, ...tailPart.dropped], RULES_BUDGET)
   const stylePart = fill(style, STYLE_BUDGET)
 
   const now = Date.now()
@@ -546,9 +746,12 @@ export function stPresetToNarrativePreset(raw: unknown, fileName = ''): Narrativ
     一条条 map 过去就行。`dropped` 也留在原位 —— 它只是"没勾上"，不是"搬走了"。
   */
   const kept = new Set([
-    ...rulesPart.used, ...stylePart.used, ...lorePart.used,
+    ...rulesPart.used, ...stylePart.used, ...lorePart.used, ...tailPart.used,
   ].map(e => e.id))
   const kindOf = new Map<string, PresetEntry['kind']>()
+  // 贴尾段优先写；装不下退回 rules 的那几条下面会被 rules 覆盖回来
+  for (const e of tailPart.used) kindOf.set(e.id, 'tail')
+  for (const e of tailPart.dropped) kindOf.set(e.id, 'rules')
   for (const e of rules) kindOf.set(e.id, 'rules')
   for (const e of style) kindOf.set(e.id, 'style')
   for (const e of world) kindOf.set(e.id, 'other')
@@ -563,15 +766,21 @@ export function stPresetToNarrativePreset(raw: unknown, fileName = ''): Narrativ
     id: makeId('preset'),
     name: (baseName || '导入的叙事预设').slice(0, 60),
     source: fileName,
-    rules: rulesPart.text + droppedNote(rulesPart, '规则类条目'),
+    /*
+      `rules` 快照把贴尾段也带上 —— 它只是「导出/旧版兜底/列表摘要」用的字符串，
+      有 `entries` 时注入只认 `kind`。带上是为了让导出出去的文件**内容一字不少**。
+    */
+    rules: rulesPart.text + (tailPart.text ? `\n\n${tailPart.text}` : '') + droppedNote(rulesPart, '规则类条目'),
     style: stylePart.text + droppedNote(stylePart, '文风类条目'),
     lore: lorePart.text + droppedNote(lorePart, '设定类条目'),
     entries: entryList,
+    ...(sampling ? { sampling } : {}),
     counts: {
       total: entryList.filter(e => e.enabled).length,
       rules: rulesPart.used.length,
       style: stylePart.used.length,
       other: lorePart.used.length,
+      tail: tailPart.used.length,
       dropped: [...rulesPart.dropped, ...stylePart.dropped, ...lorePart.dropped].map(e => e.name),
     },
     createdAt: now,

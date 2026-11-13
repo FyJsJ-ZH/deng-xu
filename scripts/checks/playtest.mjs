@@ -341,6 +341,30 @@ const anti = JSON.parse(await ev(`(async()=>{
 check('局内能打开防降级面板', anti.step === 'ok', anti.step || '')
 check('★ 点一下「防全知」真的写进配置', anti.after !== anti.before, `${anti.before} → ${anti.after}`)
 
+/*
+  预填开关（2026-11）。
+
+  它不拼提示词，只改 `llm.prefill`，由 `useGameEngine` 发请求时读。
+  这里验两件事：它在面板上、且点一下真的写进去 ——
+  默认是「开」，所以点一下应当变成 false。
+*/
+const prefill = JSON.parse(await ev(`(async()=>{
+  const wait = ms => new Promise(r=>setTimeout(r,ms));
+  const btn = document.querySelector('[aria-label="预填：让模型接着写"]');
+  if (!btn) return JSON.stringify({ step:'no-button' });
+  const before = window.__uiStore.getState().llm.prefill;
+  btn.click(); await wait(300);
+  const after = window.__uiStore.getState().llm.prefill;
+  const label = (document.querySelector('[data-prefill]') || {}).getAttribute
+    ? document.querySelector('[data-prefill]').getAttribute('data-prefill') : '';
+  // 恢复：关着会少一层加固，后面那一轮的字数断言按"开"的基线算
+  window.__uiStore.getState().setLlm({ prefill: before });
+  return JSON.stringify({ step:'ok', before: before === undefined ? 'undefined' : String(before), after: String(after), label });
+})()`))
+check('局内找得到「预填」开关', prefill.step === 'ok', prefill.step || '')
+check('★ 点一下预填真的写进配置', prefill.after !== prefill.before, `${prefill.before} → ${prefill.after}`)
+check('开关上显示了当前档位', prefill.label === 'off' || prefill.label === 'on', prefill.label || '')
+
 console.log('\n=== 6) 返回标题 → 继续 ===')
 await click('返回标题')
 await sleep(900)

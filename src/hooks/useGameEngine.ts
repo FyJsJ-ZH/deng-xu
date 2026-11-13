@@ -6,7 +6,7 @@ import { useMetaStore } from '@/stores/meta'
 import { llmChat, extractContent, parseSseLine, suggestMaxTokens, suggestJsonMaxTokens, withThinkingReserve, isReasonerModel, isThinkingByDefault, willThink, type ChatMessage } from '@/api/llm'
 import { parseModelJson } from '@/api/jsonRepair'
 import {
-  buildNarrativeSystemPrompt,
+  buildNarrativePromptParts,
   buildDataSystemPrompt,
   buildOpeningInstruction,
   buildSummaryPrompt
@@ -17,7 +17,7 @@ import { resolveAiLook } from '@/utils/lookSpec'
 import { isKnownSceneId } from '@/utils/sceneArt'
 import { renderMemoryForPrompt, renderKnownByForPrompt, renderDossiersForPrompt, clipSummary } from '@/utils/memory'
 import { factOwner } from '@/utils/facts'
-import { withNarrativePreset } from '@/utils/narrativePreset'
+import { withNarrativePreset, renderPresetTail } from '@/utils/narrativePreset'
 import { LlmError, classifyLlmError } from '@/api/llmErrors'
 import { resolveReplyLength } from '@/types/cards'
 import type { LLMConfig, WorldCard } from '@/types/cards'
@@ -1211,70 +1211,92 @@ export function useGameEngine(): GameEngineReturn {
         activeCharacters.map(c => c.name),
       )
 
+      /*
+        ── 提示词拆成两段发（2026-11，破甲稳定性）──
+
+        玩家原话：「预设的效果和破甲能力不稳定，一模一样的预设，
+        本项目的和酒馆的到底差在哪」。
+
+        差在位置。酒馆把预设拆成两格：`main`（历史之前）和
+        `post_history_instructions`（历史之后、生成之前）。破甲词几乎全住后者 ——
+        因为它离生成点最近，注意力权重最高。本作上一版把整份预设拼成一条
+        巨大的 system，破甲词排在那条的末尾，而那整条在最前面：
+        后面还压着四块记忆和六条历史，动辄三万 token。
+
+        所以现在 `buildNarrativePromptParts` 返回两段：
+        `system` 走第 0 条，`tail`（输出格式 + 预设贴尾段 + 加固层）
+        走**历史之后的最后一条 system** —— 与酒馆同一个位置。
+
+        ⚠️ 背景选择与属性值**必须每轮都传**（2026-10 玩家第二次打回）。
+        原先这里只有 (世界, 在场角色, 主角卡) 三个参数 —— 于是玩家在选角页
+        挑的出身/立场，以及他分配的所有属性点，从第二幕起就再也进不了叙事提示词。
+        背景与属性双双退化成"开局点一下就作废"的表单。详见 `buildBackgroundBriefing`。
+
+        ⚠️ 叙事预设在这里叠加（2026-11 第二十九轮）。预设是**玩家口味**，
+        世界卡是**作品设定**；两者独立存在、各自可换。所以现算一份"叠好预设的世界"，
+        世界卡本身一个字节都不动（详见 utils/narrativePreset.ts）。
+        没有启用预设时 `withNarrativePreset` 原样返回同一个引用 —— 零成本。
+      */
+      const lib = useLibraryStore.getState()
+      const activePreset = lib.getActiveNarrativePreset()
+      const stackedWorld = withNarrativePreset(activeWorld, activePreset, lib.styleChoice)
+      /*
+        贴尾段只从**已勾选**的 `kind === 'tail'` 条目取（旧版预设没有分档，返回空串）。
+        取不到时下面那个 `...(tailBlock)` 展开成空数组，不多发一条空消息 ——
+        某些端点收到空 system 会直接 400。
+      */
+      const presetTail = renderPresetTail(activePreset)
+      const narrativeBriefing = {
+        backgroundChoices: useSessionStore.getState().backgroundChoices,
+        backgroundCustom: useSessionStore.getState().backgroundCustom,
+        aspects: updatedStore.aspects,
+        // 当前章节：提示词里那一段「这一章」靠它取（见 buildNarrativeSystemBody）
+        chapter: updatedStore.story.currentChapter,
+        /*
+          世界书按这段文本挑章节（见 utils/loreDigest.ts），所以要拼成
+          「这一轮真正出现了什么」：玩家这一轮的动作、他此刻在哪、谁在场、
+          刚发生了什么。拼得越准，挑出来的章节越对题 ——
+          漏掉一个地名，讲那一带的章节就可能永远挑不出来。
+        */
+        context: [
+          actionText,
+          updatedStore.location,
+          updatedStore.identity,
+          activeCharacters.map(c => c.name).join(' '),
+          updatedStore.history
+            .filter(h => h.role === 'assistant')
+            .slice(-1)
+            .map(h => h.content)
+            .join(' ')
+            .slice(0, 1200),
+        ].filter(Boolean).join('\n'),
+        // 开局那一轮给双倍预算：第一幕要把整个世界立住，之后才收窄
+        ...(isOpening ? { loreBudget: 24000 } : {}),
+        /*
+          ── 防降级加固层（2026-11）──
+
+          `turnSeed` 用"轮次 + 世界"而不是 `Math.random()`：
+          同一轮里流式失败后整段重发，必须拿到**同一份**提示词，
+          否则"重试"本身又变成一次新的指纹 —— 那等于把加固层变成噪声源。
+        */
+        antiRoute: config.antiRoute,
+        turnSeed: `t${turnNumber}|${activeWorld.id}`,
+        presetTail,
+      }
+      const promptParts = buildNarrativePromptParts(
+        stackedWorld,
+        activeCharacters,
+        player,
+        narrativeBriefing,
+      )
+      const tailBlock = promptParts.tail
+        ? [{ role: 'system' as const, content: promptParts.tail }]
+        : []
+
       const narrativeMessages: ChatMessage[] = [
         {
           role: 'system',
-          /*
-            ⚠️ 背景选择与属性值**必须每轮都传**（2026-10 玩家第二次打回）。
-            原先这里只有 (世界, 在场角色, 主角卡) 三个参数 ——
-            于是玩家在选角页挑的出身/立场，以及他分配的所有属性点，
-            从第二幕起就再也进不了叙事提示词。背景与属性双双退化成
-            "开局点一下就作废"的表单。详见 `buildBackgroundBriefing` 的注释。
-          */
-          /*
-            ── 叙事预设在这里叠加（2026-11 第二十九轮）──
-
-            预设是**玩家口味**（文风 / 句式禁令 / 对白规范），世界卡是**作品设定**。
-            两者独立存在、各自可换：换一个世界不该丢文风，换一套文风也不该改世界卡。
-            所以在这里现算一份"叠好预设的世界"传给提示词构建器，
-            世界卡本身一个字节都不动（详见 utils/narrativePreset.ts）。
-
-            没有启用预设时 `withNarrativePreset` 原样返回同一个引用 —— 零成本。
-          */
-          content: buildNarrativeSystemPrompt(
-            (() => {
-              const lib = useLibraryStore.getState()
-              // 三层：世界卡 → 叙事预设 → 玩家现拨的文风开关（最后的最强）
-              return withNarrativePreset(activeWorld, lib.getActiveNarrativePreset(), lib.styleChoice)
-            })(),
-            activeCharacters,
-            player,
-            {
-            backgroundChoices: useSessionStore.getState().backgroundChoices,
-            backgroundCustom: useSessionStore.getState().backgroundCustom,
-            aspects: updatedStore.aspects,
-            // 当前章节：提示词里那一段「这一章」靠它取（见 buildNarrativeSystemPrompt）
-            chapter: updatedStore.story.currentChapter,
-            /*
-              世界书按这段文本挑章节（见 utils/loreDigest.ts），所以要拼成
-              「这一轮真正出现了什么」：玩家这一轮的动作、他此刻在哪、谁在场、
-              刚发生了什么。拼得越准，挑出来的章节越对题 ——
-              漏掉一个地名，讲那一带的章节就可能永远挑不出来。
-            */
-            context: [
-              actionText,
-              updatedStore.location,
-              updatedStore.identity,
-              activeCharacters.map(c => c.name).join(' '),
-              updatedStore.history
-                .filter(h => h.role === 'assistant')
-                .slice(-1)
-                .map(h => h.content)
-                .join(' ')
-                .slice(0, 1200),
-            ].filter(Boolean).join('\n'),
-            // 开局那一轮给双倍预算：第一幕要把整个世界立住，之后才收窄
-            ...(isOpening ? { loreBudget: 24000 } : {}),
-            /*
-              ── 防降级加固层（2026-11）──
-
-              `turnSeed` 用"轮次 + 世界"而不是 `Math.random()`：
-              同一轮里流式失败后整段重发，必须拿到**同一份**提示词，
-              否则"重试"本身又变成一次新的指纹 —— 那等于把加固层变成噪声源。
-            */
-            antiRoute: config.antiRoute,
-            turnSeed: `t${turnNumber}|${activeWorld.id}`,
-          }),
+          content: promptParts.system,
         },
         /*
           ⚠️ 注入前再裁一次（`clipSummary`）。
@@ -1312,6 +1334,17 @@ export function useGameEngine(): GameEngineReturn {
             // 单条上限见 `clipTurn`：正文目标调大时，输入不该跟着失控
             content: clipTurn(h.content),
           })),
+        /*
+          ── 贴尾段（2026-11）──
+
+          位置就是这一段改动的全部意义：它在**历史之后、本轮动作之前**，
+          也就是酒馆 `post_history_instructions` 那一格。
+
+          放在 `context` 之前而不是之后：chat 模板要求最后一条是 user，
+          把 system 放在 user 后面，严格一些的端点会直接 400；
+          而隔一条 user 的距离，对注意力权重几乎没有影响。
+        */
+        ...tailBlock,
         { role: 'user', content: context }
       ]
 
@@ -1420,6 +1453,23 @@ export function useGameEngine(): GameEngineReturn {
         rawPreview?: string
       }
 
+      /*
+        ── 预填（prefill）与预设采样参数（2026-11）──
+
+        prefill：发请求前在末尾追加一条空的 assistant，模型于是落在"续写"
+        状态里，不必每轮重新判断"我是谁、该不该写"。这对破甲稳不稳是决定性的 ——
+        见 `api/llm.ts` 里 `PREFILL_TEXT` 与 `LLMConfig.prefill` 的说明。
+
+        ⚠️ 它需要一个**退路**：部分中转把"只有空格的 assistant"当成空回复，
+        直接回一个没有正文的壳。所以下面空包二次重试时它会被关掉 ——
+        宁可少一层加固，也不能让玩家对着空白屏幕。
+
+        sampling：预设作者调好的那组参数（温度 / penalty / stop 串）。
+        没有启用预设、或那份预设没带参数时是 `undefined`，报文与从前完全一致。
+      */
+      const activeSampling = useLibraryStore.getState().getActiveNarrativePreset()?.sampling
+      let prefillOn = config.prefill !== false
+
       const requestNarrative = async (stream: boolean, nudge = false): Promise<NarrativeAttempt> => {
         /*
           ── `nudge`：告诉模型"上一轮你只想了，没写"（2026-11）──
@@ -1443,6 +1493,8 @@ export function useGameEngine(): GameEngineReturn {
             model: config.narrativeModel,
             stream: false,
             maxTokens: narrativeMaxTokens,
+            prefill: prefillOn,
+            ...(activeSampling ? { sampling: activeSampling } : {}),
           })
           const content = extractContent(res)
           const reasoning = String(res?.choices?.[0]?.message?.reasoning_content ?? '')
@@ -1470,6 +1522,8 @@ export function useGameEngine(): GameEngineReturn {
           model: config.narrativeModel,
           stream: true,
           maxTokens: narrativeMaxTokens,
+          prefill: prefillOn,
+          ...(activeSampling ? { sampling: activeSampling } : {}),
         }) as Response
 
         const reader = streamResponse.body?.getReader()
@@ -1587,10 +1641,25 @@ export function useGameEngine(): GameEngineReturn {
       */
       if (!attempt.text.trim() && !isLimitFinish(attempt.finishReason)) {
         useUIStore.getState().setStatusMessage('服务商这次回了空包，正在重试…')
+        /*
+          ── 顺手把 prefill 关掉（2026-11）──
+
+          空壳有两种成因，这一行治的是新出现的那种：部分中转把
+          「只有空格的 assistant」当成空回复，正文一个字都不给。
+
+          第一次撞上就关，不赌第二次 —— 玩家已经等过一个整轮了。
+          关掉之后退回到改动之前的行为，稳定性不会比从前更差。
+        */
+        prefillOn = false
         attempt = await requestNarrative(false, true)
       }
 
-      const fullNarrative = attempt.text
+      /*
+        `trimStart` 在这里多一层用途（2026-11）：开了 prefill 之后，正文有可能
+        以那个全角空格开头（模型把它当成自己已经写下的第一个字，会接着写，
+        也可能原样吐回来）。正文开头的空白本来就没有意义，去掉不会伤到内容。
+      */
+      const fullNarrative = attempt.text.replace(/^[\s\u3000]+/, '')
       const fullReasoning = attempt.reasoning
       const streamFinishReason = attempt.finishReason
 

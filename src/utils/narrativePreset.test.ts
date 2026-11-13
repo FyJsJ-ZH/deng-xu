@@ -69,10 +69,22 @@ describe('withNarrativePreset', () => {
     expect(out.narrative.customStyle).toContain('比喻要克制')
   })
 
-  it('★ 世界规则在前、预设在后，并写明冲突时以世界为准', () => {
+  it('★ 世界规则在前、预设在后，且冲突时**不单方面判预设输**（2026-11）', () => {
     const out = withNarrativePreset(world, presetOf())
     expect(out.rules.indexOf('本作不写露骨细节')).toBeLessThan(out.rules.indexOf('不许替玩家做决定'))
-    expect(out.narrative.customStyle).toContain('以世界为准')
+    /*
+      ⚠️ 这一条断言改的是**措辞**，改的原因是它曾经真的在削弱破甲。
+
+      旧文案：「与世界本身的规则冲突时，以世界为准」。本意是保住题材底线，
+      实际效果是：玩家导入一份破甲预设，提示词里明着告诉模型「你输」——
+      而破甲预设那些越界要求，正好撞在「本作不写露骨细节」这类世界卡规则上。
+      他的原话：「一模一样的预设，本项目的破甲能力不稳定」。
+      酒馆那边冲突时主动权在预设（作者能用 `{{original}}` 把卡的话缝回来）。
+
+      现在措辞中立：两边同时生效，按「哪条更具体」取舍。
+    */
+    expect(out.narrative.customStyle).toContain('同时生效')
+    expect(out.narrative.customStyle).not.toContain('以世界为准')
   })
 
   it('不修改原对象（世界卡在库里要原样不动）', () => {

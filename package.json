@@ -43,6 +43,7 @@
     "check:look": "node scripts/check-sprites.mjs",
     "probe:invisible": "node scripts/probe-invisible.mjs",
     "probe:parts": "node scripts/probe-parts.mjs",
+    "probe:jailbreak": "esbuild scripts/checks/jailbreak-probe.ts --bundle --platform=node --format=esm --outfile=.check/jailbreak-probe.mjs --alias:@=./src --log-level=warning && node .check/jailbreak-probe.mjs",
     "dump:worlds": "node scripts/dump-worlds.mjs",
     "see": "node scripts/see.mjs"
   },

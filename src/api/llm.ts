@@ -6,7 +6,7 @@ import { LlmError, classifyLlmError } from './llmErrors';
  * 现在服务商、地址、模型、温度全部来自 LLMConfig，可接任何 OpenAI 兼容端点。
  */
 
-import type { LLMConfig } from '@/types/cards';
+import type { LLMConfig, PresetSampling } from '@/types/cards';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -48,6 +48,23 @@ export interface ChatOptions {
    * 每轮还多花钱。玩家在设置里开的思考是给"写小说"的，不是给"结算"的。
    */
   thinking?: 'auto' | 'on' | 'off';
+  /**
+   * 预设自带的采样参数（2026-11）。
+   *
+   * 来自导入的酒馆预设顶层字段（见 `PresetSampling`）。`buildBody` 只挑
+   * 服务商认的那几个发：OpenAI 系的四个标准参数 + `stop`；`top_k` / `min_p` /
+   * `repetition_penalty` 只在**非 OpenAI 官方**的端点上发（llama.cpp / vLLM 系
+   * 那几家中转才认），认不出的端点由 `llmChat` 的降级链摘掉重发。
+   */
+  sampling?: PresetSampling;
+  /**
+   * 预填（prefill）—— 在消息数组末尾追加一条空的 assistant（2026-11）。
+   *
+   * 默认由 `config.prefill` 决定（叙事调用才考虑）。它让模型落在**续写**状态，
+   * 而不是每一轮重新判断「我是谁、该不该写」—— 破甲稳定性的关键一环。
+   * 代价见 `LLMConfig.prefill` 的说明。
+   */
+  prefill?: boolean;
   signal?: AbortSignal;
 }
 
@@ -498,12 +515,44 @@ export function suggestJsonMaxTokens(model = '', baseUrl = '', configured?: numb
  *
  * @param over 内部降级开关，调用方不该传
  */
+/**
+ * 预填的内容 —— 一个全角空格（2026-11）。
+ *
+ * 为什么是它：模型需要看到「assistant 这边已经有东西了」才会进入续写状态，
+ * 但那段东西**又不能出现在正文里**。全角空格在多数分词器里是独立 token
+ * （比半角空格更难被 strip 掉），字面上又没有任何语义。
+ *
+ * 正文解析那边（`useGameEngine`）会 `trimStart()`，所以哪怕它漏进输出也不可见。
+ */
+const PREFILL_TEXT = '\u3000';
+
 function buildBody(
   opts: ChatOptions,
   stream: boolean,
-  over: { noResponseFormat?: boolean } = {},
+  over: { noResponseFormat?: boolean; noExtraSampling?: boolean } = {},
 ): string {
   const { messages, config, model, temperature, jsonMode } = opts;
+  /*
+    ── 预填（prefill，2026-11）──
+
+    在消息数组末尾追加一条**空的 assistant**，模型于是落在「我已经开写了」
+    的状态里，而不是每一轮重新判断「我是谁、该不该写」。
+
+    这对破甲稳不稳是决定性的：从零开始的 assistant 位，模型必须先做一次
+    自我定位，破甲词灵不灵全看它那一刻的判定 —— 表现出来就是「时灵时不灵」。
+    prefill 把这个判定绕过去了。
+
+    ⚠️ 最后一条已经是 assistant 时不加（继续生成那类调用），否则会出现
+    两条连续的 assistant，部分端点会 400。
+  */
+  const wireMessages: Array<{ role: string; content: string }> =
+    messages.map(m => ({ role: m.role, content: m.content }));
+  if (opts.prefill) {
+    const last = wireMessages[wireMessages.length - 1];
+    if (!last || last.role !== 'assistant') {
+      wireMessages.push({ role: 'assistant', content: PREFILL_TEXT });
+    }
+  }
   const body: Record<string, unknown> = {
     /*
       模型名**去掉首尾空格**（2026-11）。从网页或聊天窗口复制过来时常带一个
@@ -518,7 +567,7 @@ function buildBody(
       各家服务商对"把上一轮的思考回传"态度不一 —— 有的忽略，有的直接 400。
       所以在这里统一剥掉，而不是指望每个调用方都记得。
     */
-    messages: messages.map(m => ({ role: m.role, content: m.content })),
+    messages: wireMessages.map(m => ({ role: m.role, content: m.content })),
     stream,
   };
 
@@ -598,8 +647,59 @@ function buildBody(
     body.max_tokens = maxTokens;
   }
 
-  if (!isThinking && typeof (temperature ?? config.temperature) === 'number') {
-    body.temperature = temperature ?? config.temperature;
+  /*
+    ── 采样参数：入参 → 预设 → 玩家设置（2026-11）──
+
+    ## 为什么要把预设的这一组接上
+
+    玩家报「一模一样的预设，本项目的破甲不如酒馆」。查下来一半是位置（见
+    `buildNarrativePromptBody` 与 `narrativePreset.ts` 的说明），另一半是这里：
+    酒馆的预设 JSON 顶层就带着作者调好的 `temperature` / `top_p` /
+    `repetition_penalty` / `custom_stop`，而上一版导入器**只搬走了文字**。
+
+    低温度让它老实按格式吐字，penalty 压住「同一个动作包反复用」的退化，
+    stop 串在它想开口说「作为一个 AI」时直接切断 —— 这三件事缺一件都会
+    让「同一份预设」表现出不同的人格。
+
+    ## 优先级
+
+    `opts.temperature`（单次调用显式指定）> `sampling.temperature`（预设作者）
+    > `config.temperature`（玩家的设置页）。作者调好的值比玩家的默认值更具体，
+    但显式传参比两者都权威。
+
+    ## 扩展参数的风险
+
+    `top_k` / `min_p` / `repetition_penalty` 不是 OpenAI 标准字段。
+    llama.cpp、vLLM 那几家中转认；OpenAI 官方会 400。所以：
+      - 官方端点一律不发；
+      - 其余端点发，真被拒时 `llmChat` 会带着 `noExtraSampling` 摘掉重发。
+    `stop` 是标准字段，任何非思考模式都发。
+  */
+  const sampling = opts.sampling;
+  /*
+    ⚠️ `noExtraSampling` **只摘扩展字段**，不摘整组（2026-11）。
+
+    它是在端点报「不认识 top_k」之后被置位的。这时候 `temperature` / `top_p` /
+    `stop` 都是标准字段、对方明明认 —— 一并摘掉等于因为一个字段不可用，
+    把作者调好的整套采样都扔了，玩家会觉得"降级之后文风变了"。
+  */
+  const extraOk = !over.noExtraSampling && config.provider !== 'openai';
+  const effectiveTemp = temperature ?? sampling?.temperature ?? config.temperature;
+  if (!isThinking && typeof effectiveTemp === 'number') {
+    body.temperature = effectiveTemp;
+  }
+  if (sampling) {
+    if (!isThinking) {
+      if (typeof sampling.topP === 'number') body.top_p = sampling.topP;
+      if (typeof sampling.frequencyPenalty === 'number') body.frequency_penalty = sampling.frequencyPenalty;
+      if (typeof sampling.presencePenalty === 'number') body.presence_penalty = sampling.presencePenalty;
+    }
+    if (!isThinking && extraOk) {
+      if (typeof sampling.topK === 'number') body.top_k = sampling.topK;
+      if (typeof sampling.minP === 'number') body.min_p = sampling.minP;
+      if (typeof sampling.repetitionPenalty === 'number') body.repetition_penalty = sampling.repetitionPenalty;
+    }
+    if (sampling.stop?.length) body.stop = sampling.stop;
   }
   if (jsonMode && !isThinking) {
     /*
@@ -668,6 +768,16 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
   let jsonModeRetryLeft = 1;
   /** 本次请求要不要禁用 `response_format` */
   let noResponseFormat = false;
+  /**
+   * 扩展采样参数被拒时摘掉重发的机会（2026-11）。
+   *
+   * `top_k` / `min_p` / `repetition_penalty` 是 llama.cpp / vLLM 系的字段，
+   * OpenAI 官方与部分严格中转不认识，会回 400「unrecognized parameter」。
+   * 而它们对破甲稳定性有实际作用（见 `buildBody` 里那段说明），不该因为
+   * 一家端点不认就整个放弃 —— 先带着发，被拒了摘掉重发。
+   */
+  let extraSamplingRetryLeft = 1;
+  let noExtraSampling = false;
 
   const maxAttempts = stream ? 1 : RETRY_MAX_ATTEMPTS;
 
@@ -677,7 +787,10 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
     // 用户已取消就别再发请求了
     if (signal?.aborted) throw new LlmError(classifyLlmError(undefined, '', { name: 'AbortError' }));
 
-    const body = buildBody({ ...opts, maxTokens: effectiveMaxTokens }, stream, { noResponseFormat });
+    const body = buildBody({ ...opts, maxTokens: effectiveMaxTokens }, stream, {
+      noResponseFormat,
+      noExtraSampling,
+    });
 
     try {
       const response = await fetch(url, { method: 'POST', headers, body, signal });
@@ -742,6 +855,26 @@ export async function llmChat(opts: ChatOptions): Promise<any | Response> {
       if (jsonModeRetryLeft > 0 && info.kind === 'function_calling' && !noResponseFormat) {
         jsonModeRetryLeft -= 1;
         noResponseFormat = true;
+        attempt -= 1;
+        continue;
+      }
+
+      /*
+        ── 扩展采样参数被拒：摘掉它们原地重发（2026-11）──
+
+        `top_k` / `min_p` / `repetition_penalty` 非 OpenAI 标准字段。
+        只在我们**确实带了参数**、且报错读起来像「不认识的字段」时才降级 ——
+        否则一次普通的 400（模型名错、余额不足）也会被误判成参数问题，
+        白白多花一次请求。
+      */
+      if (
+        extraSamplingRetryLeft > 0
+        && !noExtraSampling
+        && opts.sampling
+        && /unknown|unrecognized|unsupported|unexpected|extra[_ ]?field|invalid[^.]{0,20}param|不支持|未知(?:的)?(?:参数|字段)/i.test(errorText)
+      ) {
+        extraSamplingRetryLeft -= 1;
+        noExtraSampling = true;
         attempt -= 1;
         continue;
       }

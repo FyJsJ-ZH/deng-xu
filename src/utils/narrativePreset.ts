@@ -40,6 +40,18 @@ import { chosenStyleIds, styleById, type StyleChoice } from '@/data/narrativeSty
 const PRESET_RULES_MAX = 20000
 const PRESET_STYLE_MAX = 20000
 
+/**
+ * 贴尾段的上限 —— **故意比另两段紧得多**（2026-11）。
+ *
+ * 这一段的力量不在内容多，在**离得近**。它贴在生成点之前，靠注意力权重吃饭；
+ * 一旦自己也膨胀成上万字，就退化成了第二个 system，等于没搬。
+ *
+ * 4000 字足够装下任何一份破甲串 + 输出格式 + 字数要求 + 收尾规矩
+ * （实测主流中文预设这几条合计 1200～3000 字）。
+ * 与 `stPreset.ts` 的 `TAIL_BUDGET` 同量级。
+ */
+const PRESET_TAIL_MAX = 4000
+
 /** 段与段之间留一行空，模型才不会读成同一句 */
 function joinBlock(base: string, extra: string): string {
   const a = base.trim()
@@ -75,14 +87,18 @@ export function renderPresetEntries(preset: NarrativePreset, kind: PresetEntry['
 }
 
 /** 这一类条目现在勾掉了几条、总几条、占多少字（给 UI 的小标题用） */
-export function presetEntryStats(preset: NarrativePreset): Record<PresetEntry['kind'], { on: number; all: number; chars: number }> {
-  const out = {
+export function presetEntryStats(
+  preset: NarrativePreset,
+): Record<PresetEntry['kind'], { on: number; all: number; chars: number }> {
+  const out: Record<PresetEntry['kind'], { on: number; all: number; chars: number }> = {
     rules: { on: 0, all: 0, chars: 0 },
     style: { on: 0, all: 0, chars: 0 },
+    tail: { on: 0, all: 0, chars: 0 },
     other: { on: 0, all: 0, chars: 0 },
   }
   for (const e of preset.entries || []) {
-    const k = out[e.kind]
+    // 兜底：库里的旧数据来自 localStorage，`kind` 可能是个我们不认识的值
+    const k = out[e.kind] ?? out.other
     k.all++
     if (e.enabled) {
       k.on++
@@ -90,6 +106,28 @@ export function presetEntryStats(preset: NarrativePreset): Record<PresetEntry['k
     }
   }
   return out
+}
+
+/**
+ * 取这份预设里**该贴在生成点之前**的那些条目（2026-11）。
+ *
+ * ## 为什么单独一个函数，而不是塞进 `withNarrativePreset`
+ *
+ * `withNarrativePreset` 的产物会变成 `world.rules` / `world.narrative.customStyle`，
+ * 而这两块最终都拼进**第 0 条 system**。贴尾段一旦走那条路，就又跑回最前面了 ——
+ * 等于白改。
+ *
+ * 所以它走另一条道：`useGameEngine` 把它作为**最后一条 system** 插在历史之后、
+ * 本轮动作之前。这就是酒馆 `post_history_instructions` 的位置。
+ *
+ * 全空时返回空串 —— 调用方据此决定要不要多插一条消息。
+ */
+export function renderPresetTail(preset: NarrativePreset | null | undefined): string {
+  if (!preset) return ''
+  // 旧版导入的预设没有 entries，也就没有 tail 分档，走不到这里
+  if (!preset.entries?.length) return ''
+  const text = renderPresetEntries(preset, 'tail').slice(0, PRESET_TAIL_MAX)
+  return text
 }
 
 /**
@@ -106,7 +144,14 @@ export function syncPresetSnapshot(preset: NarrativePreset): NarrativePreset {
   const stats = presetEntryStats(preset)
   return {
     ...preset,
-    rules: renderPresetEntries(preset, 'rules'),
+    /*
+      贴尾段并进 `rules` 快照（2026-11）。
+
+      这三个字符串是**导出、列表摘要、旧版本兜底读**的入口，要保证内容完整。
+      注入不靠它们（注入只认 `kind`），所以并进来不会让它跑到错误的位置。
+    */
+    rules: [renderPresetEntries(preset, 'rules'), renderPresetEntries(preset, 'tail')]
+      .filter(Boolean).join('\n\n'),
     style: renderPresetEntries(preset, 'style'),
     lore: renderPresetEntries(preset, 'other'),
     counts: {
@@ -114,6 +159,7 @@ export function syncPresetSnapshot(preset: NarrativePreset): NarrativePreset {
       total: entries.filter(e => e.enabled).length,
       rules: stats.rules.on,
       style: stats.style.on,
+      tail: stats.tail.on,
       other: stats.other.on,
     },
   }
@@ -242,12 +288,19 @@ export function withNarrativePreset(
     ? `### 叙事预设：${preset!.name}\n\n${presetRules}`
     : ''
   /*
-    ⚠️ 这句话不是客套：世界卡的作者与预设的作者不是同一个人，
-    两份要求打起来时模型需要知道该听谁的。世界卡在前、且写明"冲突时以本作为准"，
-    是为了保住这个题材自己的底线（比如《极乐》那张卡明确不写露骨细节）。
+    ⚠️ 这句的措辞改过两次，第二次是因为它**在替对手说话**（2026-11）。
+
+    上一版写的是「与世界本身的规则冲突时，以世界为准」。本意是保住题材底线，
+    实际效果是：玩家导入一份破甲预设，提示词里明着告诉模型「你输」——
+    而破甲预设那些越界要求，正好撞在「本作不写露骨细节」这类世界卡规则上。
+    表现就是「同一份预设，在这儿就是不灵」。
+
+    酒馆那边冲突时主动权在预设：预设作者可以用 `{{original}}` 宏把卡的话
+    缝回来；本作却写死判定。现在改成中立表述，不偏袒任何一方，让模型按
+    「哪条更具体」来取舍——这是它本来就擅长的判断。
   */
   const presetStyleBlock = presetStyle
-    ? `（以下文风要求来自叙事预设「${preset!.name}」；与世界本身的规则冲突时，以世界为准）\n\n${presetStyle}`
+    ? `（以下文风要求来自叙事预设「${preset!.name}」；与本作规则同时生效，冲突处按更具体的这一条执行）\n\n${presetStyle}`
     : ''
   const chosenBlock = chosenStyle
     ? `（以下是玩家当前选定的文风，优先级高于以上风格描述）\n\n${chosenStyle}`
@@ -325,9 +378,10 @@ export function describeNarrativePreset(preset: NarrativePreset): string {
   // 有逐条清单时按**实际勾选**报，而不是报导入时那一瞬间的数字
   if (preset.entries?.length) {
     const stats = presetEntryStats(preset)
-    const on = stats.rules.on + stats.style.on + stats.other.on
-    const chars = stats.rules.chars + stats.style.chars
-    return `${on}/${preset.entries.length} 条勾选 · 每轮注入 ${chars} 字`
+    const on = stats.rules.on + stats.style.on + stats.tail.on + stats.other.on
+    const chars = stats.rules.chars + stats.style.chars + stats.tail.chars
+    const tailNote = stats.tail.on ? `（其中贴尾 ${stats.tail.on} 条）` : ''
+    return `${on}/${preset.entries.length} 条勾选 · 每轮注入 ${chars} 字${tailNote}`
   }
   const { counts } = preset
   const parts = [
