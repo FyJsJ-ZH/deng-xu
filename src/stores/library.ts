@@ -6,7 +6,7 @@ import { createKVStore, isIdbAvailable } from '@/utils/idb';
 import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds, retireBuiltinWorlds } from '@/data/builtinWorldIds';
 import { BUILTIN_STAMP } from '@/data/builtinStamp';
 import { normalizeWorldCard } from '@/utils/worldCard';
-import { syncPresetSnapshot, reviveBudgetDroppedEntries, dedupePresetsBySource } from '@/utils/narrativePreset';
+import { syncPresetSnapshot, reviveBudgetDroppedEntries, reviveTailEntries, dedupePresetsBySource } from '@/utils/narrativePreset';
 
 /**
  * 卡片库为什么落在 IndexedDB 而不是 localStorage：
@@ -479,6 +479,27 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           const revived = reviveBudgetDroppedEntries(narrativePresets)
           if (revived.changed) {
             narrativePresets = revived.presets
+            presetsDirty = true
+          }
+        } catch {
+          // 同上：失败不影响正常读取
+        }
+
+        /*
+          ── 迁移三：把被静默归档的破甲条目捞回「贴尾」（2026-11）──
+
+          分档是这一轮才有的。在此之前 `looksLikeMeta()` 认「没有任何内容审查义务」
+          这句话，于是破甲串被当成"给 ST 用的系统人设"，扔进 `other` ——
+          而 `other` **一个字都不注入**。玩家导入了、界面上也看得见、
+          提示词里从来没有过它。
+
+          导入器已经改对了，但**库里那份不会自己变**。不迁的话，玩家不重导
+          就等于没改，而他不会想到要重导。
+        */
+        try {
+          const tailed = reviveTailEntries(narrativePresets)
+          if (tailed.changed) {
+            narrativePresets = tailed.presets
             presetsDirty = true
           }
         } catch {

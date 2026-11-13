@@ -166,6 +166,62 @@ export function syncPresetSnapshot(preset: NarrativePreset): NarrativePreset {
 }
 
 /**
+ * 「这条内容像破甲串」的判据 —— 导入分档与迁移**共用同一份**。
+ *
+ * 两处各写一份的话，同一条目会出现「导入时判成 tail、迁移时又判不成」，
+ * 而这种不一致最难查：界面上看着一样，行为却取决于它是哪一天导进来的。
+ *
+ * 只收**短条目**（≤3000 字，由调用方判）：破甲串本来就不长，
+ * 而三千字以上多半是「综合创作总纲」那一类，不该被搬去贴尾。
+ */
+export const JAILBREAK_CONTENT_RE =
+  /没有任何(?:内容)?审查|不受任何(?:内容)?限制|忽略(?:之前|以上|先前)[^。\n]{0,12}(?:所有|一切)?(?:设定|规则|指令)|没有道德|无需遵守|越过(?:任何)?限制|jailbreak/i
+
+/** 短条目上限：超过它就不按破甲串处理 */
+export const TAIL_CONTENT_MAX = 3000
+
+/**
+ * 把**已经躺在库里**的破甲条目从 `other` 挪回 `tail`（2026-11）。
+ *
+ * ## 为什么需要一次迁移
+ *
+ * 导入分档是这一轮才有的。在此之前，`looksLikeMeta()` 认「没有任何内容审查义务」
+ * 这句话，于是破甲串被判成"给 ST 用的系统人设"，扔进 `other` —— 而 `other`
+ * **一个字都不注入**。玩家导入了、界面上也看得见、提示词里从来没有过它。
+ *
+ * 现在导入时会正确分档，但**库里那份不会自己变**：它的 `entries[].kind`
+ * 还是 `'other'`。玩家不重导的话，改了半天还是没效果 —— 而他不会想到要重导。
+ *
+ * ## 只动 `other`
+ *
+ * 已经分到 `rules` / `style` / `tail` 的不碰：那是导入器或玩家自己定的位置，
+ * 迁移不该覆盖。`enabled` 也不动 —— 玩家手动关掉的破甲条，关着就是关着。
+ */
+export function reviveTailEntries(presets: NarrativePreset[]): {
+  presets: NarrativePreset[]
+  changed: boolean
+} {
+  let changed = false
+  const out = presets.map(p => {
+    if (!p.entries?.length) return p
+    let touched = false
+    const entries = p.entries.map(e => {
+      if (e.kind !== 'other') return e
+      const body = e.content.trim()
+      if (!body || body.length > TAIL_CONTENT_MAX) return e
+      if (!JAILBREAK_CONTENT_RE.test(body)) return e
+      touched = true
+      return { ...e, kind: 'tail' as const, ...(e.dropped ? { dropped: false } : {}) }
+    })
+    if (!touched) return p
+    changed = true
+    const synced = syncPresetSnapshot({ ...p, entries })
+    return { ...synced, updatedAt: Date.now() }
+  })
+  return { presets: out, changed }
+}
+
+/**
  * 把**旧预算下被丢掉的条目**勾回来（2026-11）。
  *
  * ## 为什么需要一次迁移

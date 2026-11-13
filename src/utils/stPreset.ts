@@ -36,6 +36,7 @@
  */
 
 import type { NarrativePreset, PresetEntry, PresetSampling, WorldCard } from '@/types/cards'
+import { JAILBREAK_CONTENT_RE, TAIL_CONTENT_MAX } from '@/utils/narrativePreset'
 import { makeId } from '@/utils/files'
 
 type JsonObject = Record<string, unknown>
@@ -128,8 +129,8 @@ function looksLikeTail(e: StEntry): boolean {
     破甲串本来就不长（800～2500 字）。给个 3000 字的上限，
     是为了别把「综合创作总纲」那种一大篇东西误认成破甲词搬过去。
   */
-  if (e.content.length > 3000) return false
-  return /没有任何(?:内容)?审查|不受任何(?:内容)?限制|忽略(?:之前|以上|先前)[^。\n]{0,12}(?:所有|一切)?(?:设定|规则|指令)|没有道德|无需遵守|越过(?:任何)?限制|jailbreak/i.test(e.content)
+  if (e.content.length > TAIL_CONTENT_MAX) return false
+  return JAILBREAK_CONTENT_RE.test(e.content)
 }
 
 /** 这条像不像"文风 / 笔法"要求 */
