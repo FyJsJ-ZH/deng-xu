@@ -44,6 +44,7 @@
     "probe:invisible": "node scripts/probe-invisible.mjs",
     "probe:parts": "node scripts/probe-parts.mjs",
     "probe:jailbreak": "esbuild scripts/checks/jailbreak-probe.ts --bundle --platform=node --format=esm --outfile=.check/jailbreak-probe.mjs --alias:@=./src --log-level=warning && node .check/jailbreak-probe.mjs",
+    "probe:preset": "esbuild scripts/checks/preset-doctor.ts --bundle --platform=node --format=esm --outfile=.check/preset-doctor.mjs --alias:@=./src --log-level=warning && node .check/preset-doctor.mjs",
     "dump:worlds": "node scripts/dump-worlds.mjs",
     "see": "node scripts/see.mjs"
   },

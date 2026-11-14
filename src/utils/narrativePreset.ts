@@ -62,6 +62,62 @@ function joinBlock(base: string, extra: string): string {
 }
 
 /**
+ * 剥掉**酒馆脚本的注册语法**（2026-11）。
+ *
+ * ## 玩家报的事
+ *
+ * 「我现在在用这个预设，但预设效果（比如格式，破甲）仍然时有时无」。
+ *
+ * 他那份预设里，每一条格式要求都以这么一行开头：
+ *
+ * ```
+ * <<<|catgodml|menu:输出格式模块:📏<game>正文包裹>>>
+ * 正文要用<game></game>标签包上
+ * ```
+ *
+ * 在酒馆里，第一行是给 **catgodml 脚本**看的注册语句 —— 它把这条登记进某个
+ * 菜单，由脚本决定显示 / 隐藏 / 这一轮注不注入。**模型永远看不到它。**
+ *
+ * 灯叙不执行这类脚本，于是它被原样发给模型。模型拿到一行解析不了的尖括号指令，
+ * 常见反应是**把它和它后面那句一起跳过**（当成工具调用残留或元数据）。
+ * 它每次跳过的范围还不一样 —— 这就是"时有时无"。
+ *
+ * ## 删什么、留什么
+ *
+ * 删：
+ *  - `<<<|vendor|verb:...>>>` —— 脚本注册语句，整条没有一句自然语言；
+ *  - `<|sep|>` `<|merge|>` `<|endoftext|>` 这类**分词器特殊标记**（含 `<|`の形）。
+ *
+ * 留：
+ *  - `<game>` `<summary>` `<comment>` `<status>` —— 这些是**输出格式标签**，
+ *    是模型该写在正文里的东西，删了格式就真没了。判据是"纯字母单词"。
+ *
+ * 判据只认**管道符紧跟尖括号**这一种形状（`<|` / `|>`），
+ * 所以 `<game>` 这类正常标签不会被误伤。
+ */
+export function stripScriptNoise(text: string): string {
+  if (!text) return text
+  return text
+    // `<<<|catgodml|menu:...>>>` / `<<<|anything>>>`
+    .replace(/<<+<\|[^\n]*?>>>+/g, '')
+    // `<|sep|>` `<|merge|>` `<|endoftext|>`
+    .replace(/<\|[a-z0-9_]+\|>/gi, '')
+    // 清完可能留下空行堆叠
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * 这份内容里还有没有**脚本残留**（给面板提示用）。
+ *
+ * 剥完之后再查一遍：能查出来的，说明是一种 `stripScriptNoise` 不认识的写法，
+ * 玩家该知道"这条可能还是会被模型跳过"。
+ */
+export function hasScriptNoise(text: string): boolean {
+  return /<<+<\|/.test(text) || /<\|[a-z0-9_]+\|>/i.test(text)
+}
+
+/**
  * 把某一类**已勾选**的条目拼回一段正文。
  *
  * ## 格式与导入时完全一致
@@ -83,7 +139,19 @@ export function renderPresetEntries(preset: NarrativePreset, kind: PresetEntry['
     .sort((a, b) => (a.e.order ?? a.i) - (b.e.order ?? b.i))
     .map(({ e }) => e)
   if (!list.length) return ''
-  return list.map(e => `【${e.name}】\n${e.content}`).join('\n\n')
+  /*
+    `stripScriptNoise` 在**渲染时**剥，不在导入时剥（2026-11）。
+
+    为什么不改库里的原文：编辑面板显示的是 `e.content`。导入时就地删掉，
+    玩家下次打开编辑器会发现"我没删的东西没了" —— 而那正是他核对预设用的地方。
+
+    渲染是唯一的出口，在这里剥一次，模型永远读不到那行注册语法；
+    而库里存的那份仍然完整，想改、想导出都还是原样。
+  */
+  return list
+    .map(e => `【${stripScriptNoise(e.name) || e.name}】\n${stripScriptNoise(e.content)}`)
+    .filter(s => s.trim())
+    .join('\n\n')
 }
 
 /** 这一类条目现在勾掉了几条、总几条、占多少字（给 UI 的小标题用） */
@@ -109,6 +177,19 @@ export function presetEntryStats(
 }
 
 /**
+ * 贴尾段的**装配结果** —— 装进去的、装不下的。
+ *
+ * 分成两半返回，是因为"装不下"这件事必须让玩家看得见（见 `renderPresetTail`）。
+ */
+export interface PresetTailRender {
+  text: string
+  /** 真的进了提示词的条目 */
+  used: PresetEntry[]
+  /** 因为超出预算被**整条**跳过的条目 */
+  skipped: PresetEntry[]
+}
+
+/**
  * 取这份预设里**该贴在生成点之前**的那些条目（2026-11）。
  *
  * ## 为什么单独一个函数，而不是塞进 `withNarrativePreset`
@@ -120,14 +201,46 @@ export function presetEntryStats(
  * 所以它走另一条道：`useGameEngine` 把它作为**最后一条 system** 插在历史之后、
  * 本轮动作之前。这就是酒馆 `post_history_instructions` 的位置。
  *
- * 全空时返回空串 —— 调用方据此决定要不要多插一条消息。
+ * ## ⚠️ 超预算时**整条跳过**，绝不切句子（2026-11 第二次修）
+ *
+ * 上一版是 `.slice(0, 4000)`。玩家那份预设的贴尾段拼起来 **4215 字**，
+ * 于是最后 215 字被切掉 —— 而被切的正是「📏小总结」的后半段，
+ * 里面写着"本轮事件链 / 当前状态快照 / 定格与伏笔"四个字段。
+ *
+ * 模型拿到的是半句话：「写一份150~250字的场记卡：」然后没了。
+ * 它有时候瞎写、有时候干脆不写 —— 玩家看到的是「总结时有时无」。
+ *
+ * 切句子比缺一条糟得多：缺一条是"这条没生效"，切一半是"这句话被毁掉了"，
+ * 而模型会拿残句当完整要求去执行。
  */
+export function renderPresetTailDetail(preset: NarrativePreset | null | undefined): PresetTailRender {
+  if (!preset?.entries?.length) return { text: '', used: [], skipped: [] }
+  const list = preset.entries
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => e.enabled && e.kind === 'tail' && stripScriptNoise(e.content).trim())
+    .sort((a, b) => (a.e.order ?? a.i) - (b.e.order ?? b.i))
+    .map(({ e }) => e)
+
+  const used: PresetEntry[] = []
+  const skipped: PresetEntry[] = []
+  let acc = ''
+  for (const e of list) {
+    const piece = `【${stripScriptNoise(e.name) || e.name}】\n${stripScriptNoise(e.content)}`
+    // 第一条无论多长都收 —— 否则贴尾段会整个变空，玩家以为预设没启用
+    const next = acc ? `${acc}\n\n${piece}` : piece
+    if (used.length && next.length > PRESET_TAIL_MAX) {
+      skipped.push(e)
+      continue
+    }
+    acc = next
+    used.push(e)
+  }
+  return { text: acc.slice(0, PRESET_TAIL_MAX), used, skipped }
+}
+
+/** 只要正文的那一份（调用方多数时候只关心这个） */
 export function renderPresetTail(preset: NarrativePreset | null | undefined): string {
-  if (!preset) return ''
-  // 旧版导入的预设没有 entries，也就没有 tail 分档，走不到这里
-  if (!preset.entries?.length) return ''
-  const text = renderPresetEntries(preset, 'tail').slice(0, PRESET_TAIL_MAX)
-  return text
+  return renderPresetTailDetail(preset).text
 }
 
 /**
@@ -179,6 +292,82 @@ export const JAILBREAK_CONTENT_RE =
 
 /** 短条目上限：超过它就不按破甲串处理 */
 export const TAIL_CONTENT_MAX = 3000
+
+/**
+ * 内容里能看出"这是**输出格式要求**"的硬标记。
+ *
+ * 与 `JAILBREAK_CONTENT_RE` 一起构成「这条该不该贴到生成点之前」的内容判据 ——
+ * 光看位置不够（玩家的预设把 `chatHistory` 排得很前，后面二十条全会被算进去）。
+ *
+ * 两份东西共用这一份：`stPreset.ts` 的导入分档，和下面的 `slimTailEntries()` 迁移。
+ */
+/** 名字里直接点名的破甲类 */
+export const TAIL_NAME_JAIL_RE = /破甲|破限|越狱|jailbreak|jail\s*break|防拒|解除限制|放纵模式|无限制模式/i
+/** 名字里点名的**输出格式**类 —— 玩家那份预设把格式条目都叫「📏…」 */
+export const TAIL_NAME_FORMAT_RE = /格式|输出|标签|包裹|状态栏|小结|总结|回顾|选项/i
+
+export const TAIL_FORMAT_HINT_RE =
+  /<game>|<summary>|<comment>|<status>|输出格式|格式要求|正文包裹|标签包|另起一段写/i
+
+/**
+ * 内容像"文风 / 笔法"的标记 —— 只给 `slimTailEntries()` 分流用。
+ *
+ * 为什么需要它：从贴尾段退出来的条目不该一律塞进 `rules`。
+ * 「📝文风（选一）丨s喵特调一」（1401 字）退回 rules 的话，
+ * 它会和世界规则混在一起，而它本来是文风，该进 `customStyle`。
+ */
+const TAIL_SLIM_STYLE_RE = /文风|文笔|笔法|写作风格|描写|措辞|用词|句式|节奏|对白|轻小说|NSFW|色情|情色|R18/i
+
+/**
+ * 把**已经撑爆的贴尾段**瘦回去（2026-11 第二次）。
+ *
+ * ## 玩家报的事
+ *
+ * 「预设效果（比如格式，破甲）仍然时有时无」。查下来他那份预设 21 条里有
+ * 18 条被判成 tail、合计 **4215 字**，而贴尾段预算是 4000 —— 超出的部分被切，
+ * 切掉的正好是排在最后的「📏小总结」的后半段。
+ *
+ * 里面还混着根本不该在这儿的东西：一段 730 字的角色扮演剧本（「召唤术」）、
+ * 1401 字的文风档位。它们把真正的格式要求挤到预算之外。
+ *
+ * ## 判据（保守，只踢明显不对的）
+ *
+ * `kind === 'tail'` **且** 内容 > 600 字 **且** 既不像输出格式、也不是破甲串。
+ *
+ * 600 这个门槛是有意的：格式要求与破甲串都短（实测 30～400 字），
+ * 超过六百字的"每轮必须照做"极罕见。误伤空间因此很小。
+ *
+ * ## 退回哪儿
+ *
+ * 不像文风 → `rules`（仍在 system 中段、仍每轮注入）；
+ * 像文风 → `style`（进 `customStyle`）。两条路内容一个字都不少，
+ * 只是从"贴着生成点"挪回"在 system 里"，把贴尾段腾干净。
+ */
+export function slimTailEntries(presets: NarrativePreset[]): {
+  presets: NarrativePreset[]
+  changed: boolean
+} {
+  let changed = false
+  const out = presets.map(p => {
+    if (!p.entries?.length) return p
+    let touched = false
+    const entries = p.entries.map(e => {
+      if (e.kind !== 'tail') return e
+      const body = e.content.trim()
+      if (body.length <= 600) return e
+      if (TAIL_FORMAT_HINT_RE.test(body)) return e
+      if (body.length <= TAIL_CONTENT_MAX && JAILBREAK_CONTENT_RE.test(body)) return e
+      touched = true
+      const look = `${e.name}\n${body.slice(0, 160)}`
+      return { ...e, kind: (TAIL_SLIM_STYLE_RE.test(look) ? 'style' : 'rules') as PresetEntry['kind'] }
+    })
+    if (!touched) return p
+    changed = true
+    const synced = syncPresetSnapshot({ ...p, entries })
+    return { ...synced, updatedAt: Date.now() }
+  })
+  return { presets: out, changed }
+}
 
 /**
  * 把**已经躺在库里**的破甲条目从 `other` 挪回 `tail`（2026-11）。

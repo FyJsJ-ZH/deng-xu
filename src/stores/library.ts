@@ -6,7 +6,7 @@ import { createKVStore, isIdbAvailable } from '@/utils/idb';
 import { BUILTIN_WORLD_IDS, loadBuiltinWorlds, missingBuiltinIds, retireBuiltinWorlds } from '@/data/builtinWorldIds';
 import { BUILTIN_STAMP } from '@/data/builtinStamp';
 import { normalizeWorldCard } from '@/utils/worldCard';
-import { syncPresetSnapshot, reviveBudgetDroppedEntries, reviveTailEntries, dedupePresetsBySource } from '@/utils/narrativePreset';
+import { syncPresetSnapshot, reviveBudgetDroppedEntries, reviveTailEntries, slimTailEntries, dedupePresetsBySource } from '@/utils/narrativePreset';
 
 /**
  * 卡片库为什么落在 IndexedDB 而不是 localStorage：
@@ -504,6 +504,28 @@ export const useLibraryStore = create<LibraryState>()((set, get) => {
           }
         } catch {
           // 同上：失败不影响正常读取
+        }
+
+        /*
+          ── 迁移四：把撑爆的贴尾段瘦回去（2026-11 第二次）──
+
+          迁移三只会把条目**搬进** tail，从不考虑总长。玩家那份预设于是变成
+          18 条 / 4215 字，超过 4000 的预算 —— 超出的部分被切掉，
+          切掉的正是排在最后的格式要求（「📏小总结」后半段，四个字段全丢）。
+
+          `slimTailEntries` 只踢明显不对的：超过 600 字、又既不像输出格式、
+          也不是破甲串的条目。它们退回 rules，仍然每轮注入，内容一字不少。
+
+          ⚠️ 顺序不能反：先 revive（补进该进的），再 slim（踢掉不该占位的）。
+        */
+        try {
+          const slimmed = slimTailEntries(narrativePresets)
+          if (slimmed.changed) {
+            narrativePresets = slimmed.presets
+            presetsDirty = true
+          }
+        } catch {
+          // 同上
         }
 
         if (presetsDirty) {

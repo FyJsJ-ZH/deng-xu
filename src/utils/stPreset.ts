@@ -36,7 +36,7 @@
  */
 
 import type { NarrativePreset, PresetEntry, PresetSampling, WorldCard } from '@/types/cards'
-import { JAILBREAK_CONTENT_RE, TAIL_CONTENT_MAX } from '@/utils/narrativePreset'
+import { JAILBREAK_CONTENT_RE, TAIL_CONTENT_MAX, TAIL_FORMAT_HINT_RE, TAIL_NAME_JAIL_RE, TAIL_NAME_FORMAT_RE } from '@/utils/narrativePreset'
 import { makeId } from '@/utils/files'
 
 type JsonObject = Record<string, unknown>
@@ -117,20 +117,30 @@ const TAIL_BUDGET = 4000
  * 现在 tail 判定排在 meta 之前，破甲串不会被这句特征话误杀。
  */
 function looksLikeTail(e: StEntry): boolean {
-  // 1. 结构性：作者自己把它排在 chatHistory 之后
-  if (e.afterHistory) return true
+  // 1. 名字直接点名 —— 最可靠，作者自己就是这么分类的
+  if (TAIL_NAME_JAIL_RE.test(e.name)) return true
+  if (TAIL_NAME_FORMAT_RE.test(e.name)) return true
 
-  // 2. 名字
-  if (/破甲|破限|越狱|jailbreak|jail\s*break|防拒|解除限制|放纵模式|无限制模式/i.test(e.name)) return true
+  // 2. 内容里的破甲特征，且是短条目
+  if (e.content.length <= TAIL_CONTENT_MAX && JAILBREAK_CONTENT_RE.test(e.content)) return true
 
   /*
-    3. 内容 —— 只在**短条目**上生效。
+    ── 3. 位置判据现在**必须配一个内容判据**（2026-11 第二次收窄）──
 
-    破甲串本来就不长（800～2500 字）。给个 3000 字的上限，
-    是为了别把「综合创作总纲」那种一大篇东西误认成破甲词搬过去。
+    上一版写成「排在 chatHistory 之后就是 tail」，单靠位置。玩家那份预设
+    的 chatHistory 排得很前，于是后面 20 条**全部**被判成 tail：
+    召唤术（730 字，一段角色扮演剧本）、文风（1443 字）、token 重定义（132 字）
+    —— 加起来 4215 字，把贴尾段撑成第二个 system。
+
+    更糟的是贴尾段预算 4000，超出的部分被切掉，而排在最后的几条正是格式要求
+    （「📏小总结」被砍掉后半段，四个字段全丢）。
+
+    所以位置只当**加分项**：在历史之后，且内容确实像输出格式要求，才算。
+    破甲串走第 1、2 条判据，不受影响。
   */
-  if (e.content.length > TAIL_CONTENT_MAX) return false
-  return JAILBREAK_CONTENT_RE.test(e.content)
+  if (e.afterHistory && TAIL_FORMAT_HINT_RE.test(e.content)) return true
+
+  return false
 }
 
 /** 这条像不像"文风 / 笔法"要求 */
