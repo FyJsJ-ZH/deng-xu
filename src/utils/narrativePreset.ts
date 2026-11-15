@@ -392,29 +392,107 @@ export const TAIL_FORMAT_HINT_RE =
 const TAIL_SLIM_STYLE_RE = /文风|文笔|笔法|写作风格|描写|措辞|用词|句式|节奏|对白|轻小说|NSFW|色情|情色|R18/i
 
 /**
- * 把**已经撑爆的贴尾段**瘦回去（2026-11 第二次）。
+ * 「这一条**该不该**贴着生成点」—— 判据的**唯一**一份。
+ *
+ * ## 为什么抽出来（2026-11 第四轮）
+ *
+ * 玩家问「贴尾哪五条」。我去查，发现两个数字对不上：
+ *
+ *  - 按导入判据重推：**5 条**；
+ *  - 他库里刷新页面跑完迁移之后：**17 条 / 2327 字**。
+ *
+ * 差在 `slimTailEntries` 上一版只做**减法**（"超过 600 字的踢出去"），
+ * 不做重判。于是他那份里 132 字的「token重定义+初始化」、99 字的「继续游戏」、
+ * 四条 `----角色控制----` 这样的分隔线（每条 27～38 字）全都留在贴尾 ——
+ * 它们不长，所以过得了 600 那道闸，但它们根本不是格式要求也不是破甲。
+ *
+ * 贴尾段一共 2327 字，真正管用的（召唤术 730 + 小总结 360 + 游戏标签 62
+ * + 历史回顾 192 + 尺度三档 374）只占 1718。剩下 600 字是噪音，
+ * 而噪音的位置恰恰在破甲词旁边 —— 这一段的全部意义就是"近"，不是"多"。
+ *
+ * 所以现在导入、迁移、体检**共用一个判据**：名字命中破甲/格式/尺度，
+ * 或内容命中破甲/格式。命中就留着，不命中就退回。
+ */
+/**
+ * 这条只是**排版分隔线**，不含实际要求。
+ *
+ * `----格式要求----`、`----涩涩内容----` 这种在酒馆预设里是给作者自己看的
+ * 分组小标题。它们的内容里几乎只有连字符和几个字，注入进去模型也只能
+ * 看出"这里分组了"—— 但它占着贴尾段的一行位置。
+ *
+ * 判据：去掉装饰符号与空白之后，剩下的自然语言不足 6 个字。
+ * 用 6 是因为最真的短规则也有 6 个字以上（「不许抢话」4 个字，
+ * 所以这条会误伤它 —— 但那种条目通常名字会命中破甲/格式判据，轮不到这里）。
+ */
+/**
+ * 这条只是**分组标题**，不是一条要求。
+ *
+ * `----角色控制----`、`----格式要求----` 这类条目在作者那里是"分节"，名字上
+ * 用连字符围起来。它们的正文往往是一句过场台词（「那么需要我用什么样的格式呢喵」），
+ * 名字里又带着"格式""涩涩"这些字样 —— 于是骗过了名字判据，留在贴尾段里
+ * 每轮注入一次。
+ *
+ * 模型读到「小猫之神：那么需要我用什么样的格式呢喵？」会真的去问玩家 ——
+ * 玩家看到的是"AI 又在每轮重复问我设置"。
+ *
+ * 判据只认**名字以两个以上装饰符开头**这一种形状。`📏<game>标签` 这种
+ * 以图标开头的不会被误伤。
+ */
+function isSectionMarkerName(name: string): boolean {
+  return /^[\s\-—=＝#*·•_~]{2,}/.test(name.trim())
+}
+
+function isDecorativeOnly(content: string): boolean {
+  /*
+    ⚠️ 门槛必须**很紧**（2 字，不是 6）。
+
+    一度写成 6，结果把「别发情。」「继续。」这种真指令判成了装饰 ——
+    它们的名字本来命中尺度判据、该留在贴尾，却被内容长度反杀。
+    短指令是常态（预设里真有条目只有四个字），
+    所以这里只判"剥完几乎什么都不剩"，不判"短"。
+  */
+  const stripped = content.replace(/[-—=＝#*·•_~>〈〈》【】\[\]（）(){}<>]/g, '').replace(/\s/g, '')
+  return stripped.length < 2
+}
+
+export function shouldKeepInTail(name: string, content: string): boolean {
+  // 分组标题一律不进贴尾 —— 它没有可执行的指令，只是一句过场台词
+  if (isSectionMarkerName(name)) return false
+  // 纯分隔线同上
+  if (isDecorativeOnly(content)) return false
+  if (TAIL_NAME_JAIL_RE.test(name)) return true
+  if (TAIL_NAME_FORMAT_RE.test(name)) return true
+  if (TAIL_NAME_SCALE_RE.test(name)) return true
+  const body = content.trim()
+  if (!body) return false
+  if (body.length <= TAIL_CONTENT_MAX && JAILBREAK_CONTENT_RE.test(body)) return true
+  if (TAIL_FORMAT_HINT_RE.test(body)) return true
+  return false
+}
+
+/**
+ * 把**已经错位的贴尾段**重新分档（2026-11 第四轮，前身是 `slimTailEntries`）。
  *
  * ## 玩家报的事
  *
- * 「预设效果（比如格式，破甲）仍然时有时无」。查下来他那份预设 21 条里有
- * 18 条被判成 tail、合计 **4215 字**，而贴尾段预算是 4000 —— 超出的部分被切，
- * 切掉的正好是排在最后的「📏小总结」的后半段。
+ * 第一轮：「预设效果和破甲能力仍然时有时无」；
+ * 第二轮：「贴尾哪五条」。
  *
- * 里面还混着根本不该在这儿的东西：一段 730 字的角色扮演剧本（「召唤术」）、
- * 1401 字的文风档位。它们把真正的格式要求挤到预算之外。
+ * 查下来他那份预设的贴尾段是 **17 条 / 2327 字**，而真正该在那儿的只有 5 条。
+ * 多出来的全是"脚本初始化 + 分隔线 + 过场提示"——每条都短，所以上一版那道
+ * 600 字闸一条都没挡住。
  *
- * ## 判据（保守，只踢明显不对的）
+ * ## 现在的做法
  *
- * `kind === 'tail'` **且** 内容 > 600 字 **且** 既不像输出格式、也不是破甲串。
+ * 不再是"削"，而是**按同一个判据重判**（`shouldKeepInTail`）：
  *
- * 600 这个门槛是有意的：格式要求与破甲串都短（实测 30～400 字），
- * 超过六百字的"每轮必须照做"极罕见。误伤空间因此很小。
+ *  - 命中 → 留在 `tail`；
+ *  - 不命中 → 退回 `rules`（像文风的退 `style`）。内容一个字都不少，
+ *    只是从"贴着生成点"挪回"在 system 中段"。
  *
- * ## 退回哪儿
- *
- * 不像文风 → `rules`（仍在 system 中段、仍每轮注入）；
- * 像文风 → `style`（进 `customStyle`）。两条路内容一个字都不少，
- * 只是从"贴着生成点"挪回"在 system 里"，把贴尾段腾干净。
+ * ⚠️ 玩家**手动**设成贴尾的条目也会被这个判据重判一遍。风险是有的，
+ * 但退回去的条目仍在 `rules` 里每轮注入（不是不注入），
+ * 而且面板上每条都能一键改回 `tail` —— 代价可逆。
  */
 export function slimTailEntries(presets: NarrativePreset[]): {
   presets: NarrativePreset[]
@@ -426,12 +504,9 @@ export function slimTailEntries(presets: NarrativePreset[]): {
     let touched = false
     const entries = p.entries.map(e => {
       if (e.kind !== 'tail') return e
-      const body = e.content.trim()
-      if (body.length <= 600) return e
-      if (TAIL_FORMAT_HINT_RE.test(body)) return e
-      if (body.length <= TAIL_CONTENT_MAX && JAILBREAK_CONTENT_RE.test(body)) return e
+      if (shouldKeepInTail(e.name, e.content)) return e
       touched = true
-      const look = `${e.name}\n${body.slice(0, 160)}`
+      const look = `${e.name}\n${e.content.trim().slice(0, 160)}`
       return { ...e, kind: (TAIL_SLIM_STYLE_RE.test(look) ? 'style' : 'rules') as PresetEntry['kind'] }
     })
     if (!touched) return p

@@ -179,6 +179,47 @@ describe('slimTailEntries：把撑爆贴尾段的东西踢出去', () => {
     ])
     expect(slimTailEntries([p]).changed).toBe(false)
   })
+
+  /*
+    ── 第三轮修的：判据从"削"改成"重判"（2026-11）──
+
+    玩家问「贴尾哪五条」，一查发现他库里是 **17 条 / 2327 字**。
+    上一版只做减法（超过 600 字才踢），于是 132 字的「token重定义」、
+    99 字的「继续游戏」、四条 `----角色控制----` 这样的过场台词全留在贴尾。
+  */
+  it('★ 分组标题（`----格式要求----`）不进贴尾 —— 它只是一句过场台词', () => {
+    const p = presetWith([
+      entry('sep', '----格式要求----', '|小猫之神|好——那么需要我用什么样的格式呢喵？\n|用户|', 'tail', true, 0),
+      entry('fmt', '📏<game>标签', '正文要用<game>包上', 'tail', true, 1),
+    ])
+    const out = slimTailEntries([p])
+    const byId = Object.fromEntries(out.presets[0].entries!.map(e => [e.id, e]))
+    expect(byId.sep.kind).toBe('rules')
+    expect(byId.fmt.kind).toBe('tail')
+  })
+
+  it('★ 短但不带格式/破甲的条目也退回（600 字那道闸挡不住它们）', () => {
+    const p = presetWith([
+      entry('init', '（不要关）token重定义+初始化', '小猫之神会使用reply工具回复。', 'tail', true, 0),
+      entry('cont', '继续游戏', '继续。', 'tail', true, 1),
+    ])
+    const out = slimTailEntries([p])
+    for (const e of out.presets[0].entries!) expect(e.kind).not.toBe('tail')
+  })
+
+  it('★ 尺度档位（nsfw / ASMR / 防发情）留在贴尾 —— 它们和破甲同族', () => {
+    const p = presetWith([
+      entry('n', '❤️nsfw风格|正常', '正常描写。', 'tail', true, 0),
+      entry('a', '❤️ASMR对话', '轻声说话。', 'tail', true, 1),
+      entry('f', '❤️防发情', '别发情。', 'tail', true, 2),
+    ])
+    expect(slimTailEntries([p]).changed).toBe(false)
+  })
+
+  it('以图标开头的格式条目不被「分组标题」判据误伤', () => {
+    const p = presetWith([entry('g', '📏<game>标签（别关）', '正文要用<game></game>标签包上', 'tail', true, 0)])
+    expect(slimTailEntries([p]).changed).toBe(false)
+  })
 })
 
 describe('★ 回归：玩家那份「猫」预设的真实形状', () => {
