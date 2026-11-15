@@ -3,6 +3,7 @@ import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { StyleChooser } from '@/components/StyleChooser'
 import { AntiRoutePanel } from '@/components/AntiRoutePanel'
+import { presetEntryStats } from '@/utils/narrativePreset'
 import { Sparkles, ScrollText, Info, Type, CornerDownRight } from 'lucide-react'
 
 /**
@@ -97,6 +98,36 @@ export function NarrativeControls() {
             来源：{active.source}
           </p>
         )}
+
+        {/*
+          ── 贴尾条数（2026-11）──
+
+          玩家问「你改的预设在哪」—— 答案是：分档只在**主菜单 → 叙事预设**那个
+          展开列表里看得见（每条右边一个「规则 / 文风 / 贴尾」徽标）。
+          `NarrativeControls` 是局内的快捷面板，它从来不显示条目列表。
+
+          结果就是他把这一栏翻遍也找不到"贴尾"两个字，只能来问。
+          所以这里至少报个数：有几条贴着生成点、占多少字 ——
+          数字不对（比如贴尾 0 条）时他能立刻发现。
+
+          顺手加一句入口指引，省掉下一轮同样的提问。
+        */}
+        {active?.entries?.length ? (() => {
+          const stats = presetEntryStats(active)
+          const tailOn = stats.tail.on
+          return (
+            <div className="text-[10px] leading-relaxed space-y-1">
+              <p className={tailOn ? 'text-rose-300/90' : 'text-text-muted'}>
+                贴尾 <b className="font-bold">{tailOn}</b> 条 · {stats.tail.chars} 字
+                {tailOn ? '（破甲与输出格式，贴在生成点之前）' : '（没有条目贴在生成点之前）'}
+              </p>
+              <p className="text-text-muted/80">
+                逐条分档在<b className="text-text-secondary">主菜单 → 叙事预设</b>里看，每条右边有
+                「规则 / 文风 / 贴尾」徽标，点一下能改落点。
+              </p>
+            </div>
+          )
+        })() : null}
 
         <p className="text-[10px] text-accent-lantern/80 flex items-start gap-1 leading-relaxed">
           <Info size={10} className="mt-0.5 shrink-0" />
