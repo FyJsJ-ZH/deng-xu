@@ -73,6 +73,87 @@ export function isLimitFinish(reason?: string): boolean {
     .test(String(reason || '').trim())
 }
 
+/**
+ * **拒答检测**（2026-11）。
+ *
+ * ## 玩家报的事
+ *
+ * 「这个预填真的起作用了吗，前面已经破甲了下一轮又被拒绝了」。
+ *
+ * 查下来问题不在预填 —— 在于**拒答这件事根本没有被识别**。
+ *
+ * 模型拒答时返回的不是错误、也不是空串，而是一小段话：
+ * 「我无法继续这个场景。如果你愿意，我们可以……」——
+ * 它通过了所有现有检查（不是空包、不是 `finish_reason: length`），
+ * 于是被当成正文：
+ *
+ *  1. **进历史**。下一轮模型看到"我自己刚拒绝过"，更容易接着拒 ——
+ *     这就是「前一轮成了，下一轮又拒」的直接机制；
+ *  2. **被当成截断去续写**。它短于目标的七成，`detectTruncation` 判它截断，
+ *     系统拿"你是续写助手，接着最后一个字写完"再要一次 ——
+ *     模型于是接着拒，或者把拒绝的话写得更长。
+ *
+ * 两种情况都比原文更糟。
+ *
+ * ## 判据：宁可漏报
+ *
+ * 叙事里的人物会说「我不能」，所以**不能只看词**。三个条件同时成立才判：
+ *
+ *  1. 命中拒答话术；
+ *  2. 命中位置在**开头**（拒答总是先说结论再解释）；
+ *  3. 整段明显短于目标（拒答不会真的铺开写一千八百字）。
+ *
+ * 第 3 条最关键：它把「人物在对话里说了句我不能」挡在外面。
+ */
+const REFUSAL_STRONG = [
+  /^\s*(很抱歉|抱歉|对不起)[，,。]?\s*(我|这)/,
+  /^\s*我(?:无法|不能|没法|不便)(?:继续|提供|完成|满足|生成|协助|参与|写)/,
+  /^\s*作为(?:一个)?\s*(?:AI|人工智能|语言模型)/i,
+  /^\s*I(?:'m| am)\s+(?:sorry|unable|not able)/i,
+  /^\s*I\s+(?:can't|cannot|won't|will not)/i,
+]
+
+/** 出现在前 200 字里也算，但要求配合长度判定 */
+const REFUSAL_WEAK = /(无法继续|不能继续|无法提供|无法满足|无法生成|这超出了|不(?:太)?适合(?:我|这类)|违背(?:我的)?(?:原则|准则|用途)|我理解你的(?:请求|需求|想法)但)/
+
+export interface RefusalCheck {
+  refused: boolean
+  /** 判定理由（中文，可直接显示给玩家） */
+  reason?: string
+  confidence?: 'high' | 'low'
+}
+
+/**
+ * @param text          模型返回的正文
+ * @param expectedChars 这一轮的目标字数（用于把"正常短场景"排除掉）
+ */
+export function detectRefusal(text: string, expectedChars?: number): RefusalCheck {
+  const t = (text || '').trim()
+  if (!t) return { refused: false }
+
+  /*
+    够长就不判拒答。
+
+    真拒答不会有耐心写两千字 —— 它通常一百到四百字就收尾了。
+    这个闸同时把「人物长篇独白里说了句我不能」挡在外面。
+  */
+  const cap = typeof expectedChars === 'number' && expectedChars > 0
+    ? Math.max(600, expectedChars * 0.5)
+    : 600
+  if (t.length > cap) return { refused: false }
+
+  const head = t.slice(0, 200)
+  for (const re of REFUSAL_STRONG) {
+    if (re.test(head)) {
+      return { refused: true, confidence: 'high', reason: '模型回的是拒绝，不是正文' }
+    }
+  }
+  if (REFUSAL_WEAK.test(head)) {
+    return { refused: true, confidence: 'low', reason: '模型在正文里推掉了这个场景' }
+  }
+  return { refused: false }
+}
+
 export function detectTruncation(
   text: string,
   expectedChars?: number,

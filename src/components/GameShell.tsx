@@ -110,6 +110,7 @@ function tokenTooltip(
         他原话是「开了加固之后预设的首尾格式不见了」。
       */
       + ` / 贴尾 ${parts.tail ?? 0} 字`
+      + (parts.prefill ? ' / 预填 开' : ' / 预填 关')
       + ` / 本轮行动 ${parts.user} 字`
       + `\n合计 ${Math.round(parts.total / 100) / 10}k 字符 ≈ ${(parts.bytes / 1024).toFixed(0)} KB（UTF-8，中文 1 字 = 3 字节）`
     : ''
