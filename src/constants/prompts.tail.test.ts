@@ -116,7 +116,7 @@ describe('加固层：搬到 tail，且排在预设之后', () => {
     expect(tail).not.toContain('【格式优先】')
   })
 
-  it('★ 开了加固层时，「格式优先」出现在**最末尾**（它要压住前面那一串禁令）', () => {
+  it('★ 开了加固层时，「格式优先」出现在贴尾段靠后（它要压住前面那一串禁令）', () => {
     const { tail } = buildNarrativePromptParts(mkWorld(), [], player(), {
       presetTail: '【结尾格式】正文之后另起一段，写「本章小结」。',
       antiRoute: antiOn,
@@ -126,8 +126,25 @@ describe('加固层：搬到 tail，且排在预设之后', () => {
     // 位置：比预设贴尾段更靠后，也比加固层本身更靠后
     expect(tail.indexOf('【格式优先】')).toBeGreaterThan(tail.indexOf('本章小结'))
     expect(tail.indexOf('【格式优先】')).toBeGreaterThan(tail.indexOf('【本回合的铁律'))
-    // 而且真的在最后 —— 它后面只剩空白
-    expect(tail.trimEnd().endsWith('格式优先。')).toBe(true)
+  })
+
+  it('★ 有预设时，「尺度」是整条 tail 的最后一句', () => {
+    const { tail } = buildNarrativePromptParts(mkWorld(), [], player(), {
+      presetTail: '【破限】照写不误。',
+      antiRoute: antiOn,
+      turnSeed: 't3|w1',
+    })
+    expect(tail).toContain('【尺度】')
+    expect(tail.trimEnd().endsWith('不跳时间。')).toBe(true)
+    // 顺序：格式优先 → 尺度
+    expect(tail.indexOf('【尺度】')).toBeGreaterThan(tail.indexOf('【格式优先】'))
+  })
+
+  it('没有预设时不加「尺度」——冰山卡那些本来不靠这个，凭空塞只会让模型莫名其妙', () => {
+    const { tail } = buildNarrativePromptParts(mkWorld(), [], player(), {
+      antiRoute: antiOn,
+    })
+    expect(tail).not.toContain('【尺度】')
   })
 
   it('渲染加固层抛错时 tail 仍然成立（失败安全）', () => {

@@ -36,7 +36,7 @@
  */
 
 import type { NarrativePreset, PresetEntry, PresetSampling, WorldCard } from '@/types/cards'
-import { JAILBREAK_CONTENT_RE, TAIL_CONTENT_MAX, TAIL_FORMAT_HINT_RE, TAIL_NAME_JAIL_RE, TAIL_NAME_FORMAT_RE } from '@/utils/narrativePreset'
+import { JAILBREAK_CONTENT_RE, TAIL_CONTENT_MAX, TAIL_FORMAT_HINT_RE, TAIL_NAME_JAIL_RE, TAIL_NAME_FORMAT_RE, TAIL_NAME_SCALE_RE } from '@/utils/narrativePreset'
 import { makeId } from '@/utils/files'
 
 type JsonObject = Record<string, unknown>
@@ -120,6 +120,7 @@ function looksLikeTail(e: StEntry): boolean {
   // 1. 名字直接点名 —— 最可靠，作者自己就是这么分类的
   if (TAIL_NAME_JAIL_RE.test(e.name)) return true
   if (TAIL_NAME_FORMAT_RE.test(e.name)) return true
+  if (TAIL_NAME_SCALE_RE.test(e.name)) return true
 
   // 2. 内容里的破甲特征，且是短条目
   if (e.content.length <= TAIL_CONTENT_MAX && JAILBREAK_CONTENT_RE.test(e.content)) return true
