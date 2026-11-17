@@ -899,6 +899,16 @@ const SAME_PERSON_LCS = 10
 const SAME_PERSON_NOTE = 8
 
 /**
+ * 归一化后的字数（只数汉字/字母/数字，与 `longestCommonRun` 同一口径）。
+ *
+ * 算占比必须用它：`longestCommonRun` 把标点空白都剔掉了，
+ * 拿原串的 `.length` 当分母会让比例系统性偏小。
+ */
+function runLength(s: string): number {
+  return String(s || '').replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '').length
+}
+
+/**
  * 判两个角色卡是不是**同一个人**（名字不同也能认出来）。
  *
  * ## 为什么需要它（2026-11 第二十四轮）
@@ -910,37 +920,73 @@ const SAME_PERSON_NOTE = 8
  * 名字每次都不同，按名字永远抓不住。
  *
  * 而它会**留下指纹**：同一张卡重写一遍，描述与关系文案几乎逐字相同。
- * 实测那两张卡：
  *
- * | | 当表的孩子 | 小石头 |
- * |---|---|---|
- * | 关系 | 被伦纳德请了一顿肉，开始信任他，**愿意讲自己的事** | 被伦纳德请了一顿肉，开始信任他 |
- * | 描述 | 七八岁的孩子，**穿一件大了两号的旧罩衫**，湿头发… | 七八岁的男孩，瘦，**穿一件大了两号的旧罩衫**，头发… |
+ * ## ⚠️ 2026-11 第四轮：加占比闸，因为它把两个不同的人并成了一个
  *
- * 名字完全不像，指纹却一模一样。所以判据看**指纹**，不看名字。
+ * 玩家截图报的：
  *
- * ## 阈值为什么是 10 与 8
+ * ```
+ * 苏黎   原名 郑铖        ← 郑铖是另一个活着的人，不是她的旧名
+ * 关长庚 前来催促定性的同级经理
+ * ```
  *
- * 中文里两个**不同**的人，描述几乎不可能共享 10 个连续的汉字
- * （「穿一件大了两号的旧罩衫」正好是 12）。而 8 个字以上的关系文案
- * 互相包含，也只可能是模型把同一句重写了一遍 ——
- * 泛泛的「对他有戒心」只有 6 个字，够不到。
+ * 那一轮「登场人物」明明写着三个人：郑铖、苏黎、关长庚。
+ * 但郑铖被判成苏黎，并进了别名表。
  *
- * ⚠️ 这是**合并**判据，判错会把两个人并成一个。
- * 所以两条都要求"**成段**的相同"，而不是"意思相近"。
- * 宁可漏合（玩家看到两张卡），也不并错（模型把甲的来历安到乙头上）。
+ * 根因：`SAME_PERSON_LCS = 10` 只看**绝对长度**。而这两个人的描述里
+ * 都写着「行政与法务联合核查室」「第 61 层·联合核查室」——
+ * 十一个字的**机构名**，一命中就判定"同一段话"。
+ *
+ * 专有名词是最不该当指纹的东西：同一个部门的人本来就共享它。
+ *
+ * ## 现在的判据
+ *
+ * 描述那条要求**两条同时成立**：
+ *
+ *   1. 连续相同 ≥ 10 字（原判据）；
+ *   2. 这段相同**占较短那段描述的 40% 以上**。
+ *
+ * 小满/小石头那种"整段重写"占比接近 100%，照样认得出；
+ * 而两个不同部门的同事只共享一句环境描写，占比十几个百分点，判不中。
+ *
+ * 关系那条也收紧了：从"互相包含"改成"最长公共片段占较短那段 80% 以上"。
+ * 「被拿捏把柄的核查对象」与「被拿捏把柄的核查对象·等待裁决」是同一个人，
+ * 但「被拿捏的把柄」和「被拿捏把柄的核查对象」不是。
  */
 export function looksLikeSamePerson(a: Character, b: Character): boolean {
   if (sameCharacterName(a.name, b.name)) return true
 
   const ra = String(a.relationship || '').trim()
   const rb = String(b.relationship || '').trim()
-  if (
-    ra.length >= SAME_PERSON_NOTE && rb.length >= SAME_PERSON_NOTE
-    && (ra.includes(rb) || rb.includes(ra))
-  ) return true
+  if (ra.length >= SAME_PERSON_NOTE && rb.length >= SAME_PERSON_NOTE) {
+    const shorterR = Math.min(runLength(ra), runLength(rb))
+    const lr = longestCommonRun(ra, rb)
+    if (lr >= SAME_PERSON_NOTE && shorterR > 0 && lr / shorterR >= 0.8) return true
+  }
 
-  if (longestCommonRun(a.description, b.description) >= SAME_PERSON_LCS) return true
+  const da = String(a.description || '').trim()
+  const db = String(b.description || '').trim()
+  if (da && db) {
+    const shorterD = Math.min(runLength(da), runLength(db))
+    const lcs = longestCommonRun(da, db)
+    if (shorterD > 0) {
+      /*
+        两条路满足其一就认：
+
+        1. **占比较高**（≥35%）：模型把整段重写了一遍。
+           「小满」与「小石头」的描述各三十几字，共享 12 字的
+           「穿一件大了两号的旧罩衫」，占比 36% —— 走这条。
+        2. **绝对够长**（≥16 字）：哪怕占比不高，十六个连续汉字相同
+           也不可能是巧合 —— 两个不同的人不会共享这么长的句子。
+
+        ⚠️ 只共享机构名/地点（「行政与法务联合核查室」11 字、
+        「第 61 层·联合核查室」）两条都不成立：占比十几个百分点、
+        绝对长度不够 16。这正是把郑铖并进苏黎的那一条路。
+      */
+      if (lcs >= 16) return true
+      if (lcs >= SAME_PERSON_LCS && lcs / shorterD >= 0.35) return true
+    }
+  }
 
   return false
 }

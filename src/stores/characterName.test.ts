@@ -151,6 +151,48 @@ describe('looksLikeSamePerson · 名字不同也要认出来', () => {
     const b = { id: 'y', name: '乙', description: '瘦高的当铺朝奉，戴一副圆框眼镜', relationship: '压价收当', status: '' } as never
     expect(looksLikeSamePerson(a, b)).toBe(false)
   })
+
+  /* ────────────────────────────────────────────────────────
+     ★ 同部门的两个人不许并（2026-11 第四轮，玩家截图）
+     ────────────────────────────────────────────────────────
+
+     玩家报的事：人物面板里写着「苏黎 · 原名 郑铖」，
+     而这两个人在剧情里是**两个活人**（那一轮的「登场人物」列了三个：
+     郑铖、苏黎、关长庚）。
+
+     根因：旧判据只看「连续相同 ≥10 字」。而这两个人的描述里都写着
+     「行政与法务联合核查室」—— 十一个字的**机构名**，一命中就判同一人。
+     专有名词是最不该当指纹的东西：同一个部门的人本来就共享它。
+  */
+  const ZHENG = {
+    id: 'z',
+    name: '郑铖',
+    description: '行政与法务联合核查室五级经理。三十出头，深灰色制服，左胸别着工作牌，说话很慢。',
+    relationship: '来催促定性的上级',
+    status: '等着答复',
+  } as never
+
+  const SU = {
+    id: 's',
+    name: '苏黎',
+    description: '行政与法务联合核查室七级复核专员，二十七岁，栗色齐耳短发，戴细框眼镜。',
+    relationship: '被拿捏把柄的核查对象',
+    status: '神色紧绷，等待裁决',
+  } as never
+
+  it('★ 共享机构名、但描述各写各的 → 是两个人', () => {
+    expect(looksLikeSamePerson(ZHENG, SU)).toBe(false)
+  })
+
+  it('★ 同一部门 + 相似的关系措辞，也还是两个人', () => {
+    const su2 = { ...(SU as object), relationship: '被拿捏把柄的核查对象·等待裁决' } as never
+    expect(looksLikeSamePerson(ZHENG, su2)).toBe(false)
+  })
+
+  it('真·同一个人（描述几乎整段重写）照样认得出', () => {
+    // 占比路：12 / 33 ≈ 36%
+    expect(looksLikeSamePerson(KID_A, { ...(KID_B as object), relationship: '欠他一枚铜钱' } as never)).toBe(true)
+  })
 })
 
 describe('longestCommonRun', () => {
