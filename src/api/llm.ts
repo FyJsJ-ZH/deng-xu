@@ -1080,7 +1080,7 @@ export async function listModels(config: LLMConfig): Promise<string[]> {
  * 光看文档看不出来）。清单回传给界面渲染成可点选的列表。
  */
 export async function testConnectionDetailed(config: LLMConfig): Promise<{ catalog: string[] }> {
-  const models = [config.narrativeModel, config.analysisModel]
+  const models = [config.narrativeModel, config.analysisModel, config.summaryModel]
     .map(m => (m || '').trim())
     .filter((m, i, arr) => !!m && arr.indexOf(m) === i);
 

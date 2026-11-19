@@ -166,6 +166,7 @@ export function ApiKeyModal() {
       provider: draft.provider,
       model: draft.narrativeModel,
       analysisModel: draft.analysisModel,
+      summaryModel: draft.summaryModel || undefined,
       // 完整清单也要进日志 —— 只写「等 27 个」，出了这份文件还是查不到名字
       modelCatalog: info?.modelCatalog ?? catalog ?? undefined,
       inputKeyMasked: key ? `${key.slice(0, 3)}...${key.slice(-4)}` : 'empty'
@@ -299,6 +300,36 @@ export function ApiKeyModal() {
             <datalist id="llm-analysis-model-options">
               {modelCandidates.map(m => <option key={m} value={m} />)}
             </datalist>
+          </div>
+          {/*
+            ── 摘要模型（2026-11）──
+
+            玩家原话：「换了结算模型后正文速度变快了，字数也少了」。
+
+            `analysisModel` 一直同时干两份活：读状态吐 JSON（要准），
+            以及读十几轮剧情写前情摘要 + 三层记忆（要读得懂）。后者产出的东西
+            **每一轮都整份进正文提示词** —— 它降档了，正文就跟着变短。
+
+            所以单开一格。留空 = 跟随结算模型，与从前的行为一模一样。
+          */}
+          <div>
+            <label className={labelClass} htmlFor="llm-summary-model">
+              摘要模型 <span className="text-text-muted/70">（可选）</span>
+            </label>
+            <input
+              id="llm-summary-model"
+              type="text"
+              list="llm-analysis-model-options"
+              value={draft.summaryModel ?? ''}
+              onChange={(e) => patch({ summaryModel: e.target.value })}
+              placeholder="留空 = 跟随结算模型"
+              className={`${inputClass} font-mono`}
+            />
+            <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+              每 6 轮跑一次，写前情摘要与记忆。它降档不会让这一轮变快，
+              只会让<b className="text-text-secondary">后面每一轮写得更短</b> ——
+              结算可以换 lite，这一格别跟着换。
+            </p>
           </div>
         </div>
         <p className="text-[10px] text-text-muted -mt-2">

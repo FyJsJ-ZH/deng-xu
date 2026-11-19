@@ -1015,10 +1015,25 @@ export function useGameEngine(): GameEngineReturn {
     const messages: ChatMessage[] = [{ role: 'user', content: prompt }]
 
     try {
+      /*
+        ── 摘要器 ≠ 结算器（2026-11）──
+
+        玩家原话：「换了结算模型后正文速度变快了，字数也少了」。
+
+        原因就在这一行：它原来写死用 `config.analysisModel` —— 同一个模型
+        既做"读状态吐 JSON"（要准），又做"读十几轮剧情写前情摘要"（要读得懂）。
+
+        换成 flash-lite 之后，摘要跟着变薄、facts 提得少、timeline 变简。
+        而这三样**每一轮都整份进正文提示词**，于是下一轮模型手里的料变少 ——
+        写得更短，输入也变小，看起来就是"又快又短"。
+
+        所以给摘要单开一个可选项：留空才跟随结算模型（旧行为不变）。
+      */
+      const summaryModel = (config.summaryModel || '').trim() || config.analysisModel
       const response = await llmChat({
         messages,
         config,
-        model: config.analysisModel,
+        model: summaryModel,
         stream: false,
         temperature: 0.3,
         // 摘要返回的是三层记忆的 JSON —— 不给额度时会被服务商默认值切在半个 JSON 上

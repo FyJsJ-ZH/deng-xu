@@ -81,7 +81,18 @@ export function applyProviderPreset(current: LLMConfig, provider: LLMConfig['pro
       : (preset.models[0] || current.narrativeModel),
     analysisModel: preset.models.includes(current.analysisModel)
       ? current.analysisModel
-      : (preset.models[0] || current.analysisModel)
+      : (preset.models[0] || current.analysisModel),
+    /*
+      摘要模型是"可选、留空即跟随结算模型"的（2026-11）。换服务商时旧家的名字
+      就作废了 —— 留着它，会在第六轮那次压缩里突然报「未知模型」，
+      而那时玩家早就忘了这一格填过东西。有候选名单时按名单筛，没有就保留原样
+      （custom 服务商没有候选，无从判断）。
+    */
+    summaryModel: !current.summaryModel
+      ? undefined
+      : (preset.models.length === 0 || preset.models.includes(current.summaryModel)
+        ? current.summaryModel
+        : undefined)
   };
 }
 

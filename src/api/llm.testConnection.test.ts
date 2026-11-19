@@ -286,4 +286,38 @@ describe('完整模型清单', () => {
       expect(r.catalog).toEqual([])
     } finally { await s.close() }
   })
+
+  /**
+   * 「换了结算模型后正文速度变快了，字数也少了」（2026-11）。
+   *
+   * 原因是 `analysisModel` 一直兼着摘要器的活（见 `summarizeHistory`）。
+   * 拆出 `summaryModel` 之后，它也得跟另外两个一起被测 —— 否则又是一次
+   * 「测试连接成功、跑到第六轮才知道摘要模型写错了」的老故事。
+   */
+  it('★ 填了摘要模型 → 三个都要测，一个都别落下', async () => {
+    const s = server((h) => h.path.startsWith('/models')
+      ? { status: 404, json: { detail: 'Not Found' } }
+      : { status: 200, json: okChat })
+    const port = await s.listen()
+    try {
+      await testConnection(cfg(port, { summaryModel: 'pg-gemini-3.5-flash-lite' }))
+      const chats = s.hits.filter(h => h.path.includes('/chat/completions'))
+      expect(chats.map(c => c.body.model)).toEqual([
+        'vtx-抗截断-gemini-4-Argon-high',
+        'vtx-抗截断-gemini-4-argon-high',
+        'pg-gemini-3.5-flash-lite',
+      ])
+    } finally { await s.close() }
+  })
+
+  it('摘要模型留空 → 不多发第三次（与从前完全一样）', async () => {
+    const s = server((h) => h.path.startsWith('/models')
+      ? { status: 404, json: { detail: 'Not Found' } }
+      : { status: 200, json: okChat })
+    const port = await s.listen()
+    try {
+      await testConnection(cfg(port, { summaryModel: '   ' }))
+      expect(s.hits.filter(h => h.path.includes('/chat/completions'))).toHaveLength(2)
+    } finally { await s.close() }
+  })
 })
