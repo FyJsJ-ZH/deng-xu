@@ -149,7 +149,7 @@ Windows 也可以直接双击 **`start-dev.bat`**（开发模式）或 **`start.
 
 - **必须自备**。本站不提供 Key，也不做转发 —— 你的请求由浏览器直接发往你选择的服务商。
 - Key **只存在你自己的浏览器** localStorage 里，不会上传到任何地方。
-- 支持 DeepSeek 官方、OpenAI、硅基流动、OpenRouter、Ollama（本地）以及自定义接口。
+- 支持 DeepSeek 官方、OpenAI、硅基流动、OpenRouter、Demon Route、Ollama（本地）以及自定义接口。
 - 想用本地模型：服务商选 `Ollama`，地址填 `http://localhost:11434` 即可。
 
 ---

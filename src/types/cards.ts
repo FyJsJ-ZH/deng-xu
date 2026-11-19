@@ -556,7 +556,7 @@ export interface StartConfig {
 
 export interface LLMConfig {
   /** 预设服务商标识，'custom' 表示手填 baseUrl */
-  provider: 'deepseek' | 'openai' | 'siliconflow' | 'openrouter' | 'ollama' | 'custom';
+  provider: 'deepseek' | 'openai' | 'siliconflow' | 'openrouter' | 'demonroute' | 'ollama' | 'custom';
   baseUrl: string;
   apiKey: string;
   /** 叙事模型（建议用擅长写作的模型） */

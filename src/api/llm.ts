@@ -135,6 +135,25 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyUrl: 'https://openrouter.ai/keys',
   },
   {
+    /*
+      Demon Route：OpenAI 兼容（/chat/completions + SSE，Bearer key，标准 /v1/models），
+      走和 OpenRouter / 自定义端点相同的请求路径。候选里放的是它独有的去审查版本，
+      完整清单见 https://demonroute.com/models ，也可以在「拉取模型列表」里直接搜。
+      没有加进 streamUsageProviders：未确认支持 stream_options 前，按自定义端点处理更稳。
+    */
+    id: 'demonroute',
+    label: 'Demon Route',
+    baseUrl: 'https://api.demonroute.com/v1',
+    models: [
+      'deepseek-v4-pro-uncensored',
+      'glm-5.3-uncensored',
+      'qwen3.8-max-uncensored',
+      'huihui-ai/Huihui-gemma-4-31B-it-abliterated-v2',
+    ],
+    needsKey: true,
+    keyUrl: 'https://demonroute.com/dashboard',
+  },
+  {
     id: 'ollama',
     label: 'Ollama（本地）',
     baseUrl: 'http://localhost:11434/v1',
