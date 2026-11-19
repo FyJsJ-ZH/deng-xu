@@ -159,6 +159,16 @@ export function NarrativeControls() {
                 {' '}· 结算 <b className="text-text-secondary">{mmss(timing.analysisMs)}</b>
                 <span className="text-text-muted/70">（{timing.narrativeCalls} / {timing.analysisCalls} 次请求）</span>
               </p>
+              {timing.analysisChars ? (
+                <p className="text-text-muted/80">
+                  结算读进去 {timing.analysisChars > 10000
+                    ? `${(timing.analysisChars / 10000).toFixed(1)} 万字`
+                    : `${timing.analysisChars} 字`}
+                  {timing.analysisChars > 40000
+                    ? ' —— 偏大。它要带着这些思考一遍，慢的大头常在这里。'
+                    : ''}
+                </p>
+              ) : null}
               <p className="text-text-muted/80">
                 {slowerIsAnalysis
                   ? '结算比正文还久 —— 把「结算模型」换成一个不想事的（flash 档），这一半基本能砍掉。'

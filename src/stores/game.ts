@@ -203,6 +203,15 @@ export interface TurnTiming {
   analysisCalls: number
   /** 这一轮输入了多少字符（叙事那一次） */
   inputChars: number
+  /**
+   * 结算那一次请求送进去多少字符（2026-11）。
+   *
+   * 单独记它，是因为「结算慢」的原因常常**不在模型**：
+   * 角色卡上的 `avatar`（base64 data URL）、`look`（立绘部件）、`prompt`
+   * （整份人物资料）原来会原样跟着 JSON 进报文，几十万字符它一个字都用不上。
+   * 有这个数，能一眼看出结算的输入是不是被撑爆了。
+   */
+  analysisChars?: number
 }
 
 /**

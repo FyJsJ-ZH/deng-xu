@@ -33,6 +33,7 @@ import {
 } from '@/utils/historyArchive'
 import { computeStats, startingItemsOf } from '@/utils/runRebuild'
 import { describeEmptyNarrative } from '@/utils/engineErrors'
+import { slimCharactersForAnalysis } from '@/utils/analysisContext'
 
 /**
  * 流式叙事允许的**最长静默**（2026-11）。
@@ -2067,7 +2068,7 @@ export function useGameEngine(): GameEngineReturn {
             inventory: afterNarrative.inventory,
             facts: afterNarrative.facts,
             story: afterNarrative.story,
-            characters: afterNarrative.characters,
+            characters: slimCharactersForAnalysis(afterNarrative.characters),
             location: afterNarrative.location,
             sceneId: afterNarrative.sceneId,
             time: afterNarrative.time,
@@ -2248,6 +2249,7 @@ export function useGameEngine(): GameEngineReturn {
           narrativeCalls,
           analysisCalls,
           inputChars: useGameStore.getState().lastPromptParts?.total ?? 0,
+          analysisChars: dataAnalysisContext.length,
         })
 
         setIsAnalyzingData(false)
