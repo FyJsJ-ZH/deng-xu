@@ -1074,8 +1074,12 @@ export async function listModels(config: LLMConfig): Promise<string[]> {
  *
  * 现在：先问模型清单（快、准，还能指出大小写差在哪），
  * 拉不到清单才真跑一次请求；失败时把是**哪个模型**说清楚。
+ *
+ * 返回值带上这次拉到的清单 —— 玩家即便**测通了**，也常常想知道这家还能
+ * 选什么（2026-11：他那家 27 个模型里有一串 `抗截断-` / `假流式-` 前缀变体，
+ * 光看文档看不出来）。清单回传给界面渲染成可点选的列表。
  */
-export async function testConnection(config: LLMConfig): Promise<void> {
+export async function testConnectionDetailed(config: LLMConfig): Promise<{ catalog: string[] }> {
   const models = [config.narrativeModel, config.analysisModel]
     .map(m => (m || '').trim())
     .filter((m, i, arr) => !!m && arr.indexOf(m) === i);
@@ -1102,11 +1106,23 @@ export async function testConnection(config: LLMConfig): Promise<void> {
       throw new LlmError({
         kind: 'model', retryable: false,
         message: `模型名对不上：${lines.join('；')}`,
-        hint: `这家现在可选：${catalog.slice(0, 12).join('、')}`
-          + (catalog.length > 12 ? ` 等 ${catalog.length} 个` : ''),
+        /*
+          旧版这里写 `catalog.slice(0, 12).join('、') + ' 等 N 个'`。
+
+          玩家截图里那句是「…等 27 个」—— 到此为止了：剩下的 15 个名字
+          他永远看不到，而这家的命名是 `pg-gemini-3.5-flash-lite`、
+          `抗截断-pg-gemini-3.5-flash-lite`、`假流式-pg-gemini-3.5-flash-lite`
+          这种带前缀的，猜不出来。
+
+          所以清单不再塞进 hint（27 个名字会把手机屏撑爆，还没法点），
+          改成走 `modelCatalog` 交给界面渲染成可筛可点的列表。
+        */
+        hint: `这家共 ${catalog.length} 个可用模型 —— 往下看「模型清单」逐个点选，`
+          + '点名字右边的「叙事」「结算」就直接填进对应的输入框。',
+        modelCatalog: catalog,
       });
     }
-    return;
+    return { catalog };
   }
 
   // 拿不到清单（多数中转不实现 /models）→ 老老实实跑一次最小请求
@@ -1118,7 +1134,7 @@ export async function testConnection(config: LLMConfig): Promise<void> {
   }).then(() => null, (e: unknown) => e)));
 
   const failedAt = results.findIndex(r => r !== null);
-  if (failedAt === -1) return;
+  if (failedAt === -1) return { catalog: [] };
 
   const err = results[failedAt];
   const model = models[failedAt];
@@ -1147,6 +1163,11 @@ export async function testConnection(config: LLMConfig): Promise<void> {
     throw new LlmError(base);
   }
   throw err;
+}
+
+/** 只关心成败的旧接口 —— 游戏内重试与既有测试都按这个签名用 */
+export async function testConnection(config: LLMConfig): Promise<void> {
+  await testConnectionDetailed(config);
 }
 
 /** 两段原始错误几乎总是一样的（同一个 fetch 异常），去重后才好读 */

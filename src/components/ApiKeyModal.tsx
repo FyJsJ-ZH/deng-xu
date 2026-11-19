@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useUIStore, applyProviderPreset } from '@/stores/ui';
 import { useGameStore } from '@/stores/game';
-import { PROVIDER_PRESETS, testConnection, isGeminiLike } from '@/api/llm';
+import { PROVIDER_PRESETS, testConnectionDetailed, probeModels, isGeminiLike } from '@/api/llm';
+import { classifyLlmError } from '@/api/llmErrors';
 import { THINKING_MIN_MAX_TOKENS } from '@/utils/engineErrors';
 import type { LLMConfig } from '@/types/cards';
 
@@ -19,6 +20,18 @@ export function ApiKeyModal() {
   const [draft, setDraft] = useState<LLMConfig>(llm);
   const [status, setStatus] = useState<TestStatus>('idle');
   const [lastError, setLastError] = useState<any>(null);
+  /**
+   * 这个地址下能用的模型清单（2026-11）。
+   *
+   * `null` = 还没拉过；`[]` = 拉了，对方不回清单（多数中转不实现 `/models`）。
+   * 以前这份清单只以「前 12 个…等 27 个」的形式出现在报错的一行小字里，
+   * 玩家看到「等 27 个」之后就断了 —— 剩下的名字他一个都拿不到。
+   */
+  const [catalog, setCatalog] = useState<string[] | null>(null);
+  const [catalogBusy, setCatalogBusy] = useState(false);
+  const [catalogFilter, setCatalogFilter] = useState('');
+  /** 刚点了哪个「叙事 / 结算」，给一行即时反馈（手机上输入框在屏幕另一头） */
+  const [picked, setPicked] = useState<string | null>(null);
 
   // 本地服务（如 ollama）不需要 Key，因此不强制弹出
   const shouldShow = isApiKeyModalOpen || (!llm.apiKey && llm.provider !== 'ollama');
@@ -31,6 +44,9 @@ export function ApiKeyModal() {
       setDraft(llm);
       setStatus('idle');
       setLastError(null);
+      setCatalog(null);
+      setCatalogFilter('');
+      setPicked(null);
     }
     // 只在弹窗显示状态变化时同步，避免用户编辑过程中被覆盖
   }, [shouldShow]);
@@ -48,6 +64,12 @@ export function ApiKeyModal() {
   const modelMissing = !draft.narrativeModel.trim() || !draft.analysisModel.trim();
   const canSave = !baseUrlMissing && !keyMissing && !modelMissing;
 
+  /** 筛选后的清单（子串匹配，不分大小写 —— 这家的名字里有大写也有中文前缀） */
+  const catalogQuery = catalogFilter.trim().toLowerCase();
+  const shownModels = (catalog ?? []).filter(
+    m => !catalogQuery || m.toLowerCase().includes(catalogQuery)
+  );
+
   const handleProviderChange = (provider: LLMConfig['provider']) => {
     setDraft(prev => applyProviderPreset(prev, provider));
     setStatus('idle');
@@ -57,14 +79,48 @@ export function ApiKeyModal() {
   const handleTest = async () => {
     setStatus('testing');
     setLastError(null);
+    setPicked(null);
     try {
-      await testConnection(draft);
+      const { catalog: got } = await testConnectionDetailed(draft);
+      if (got.length) setCatalog(got);
       setStatus('success');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
       setLastError(error);
+      // 「模型名对不上」这条会把完整清单挂在错误上 —— 顺手留到列表里
+      if (Array.isArray(error?.info?.modelCatalog) && error.info.modelCatalog.length) {
+        setCatalog(error.info.modelCatalog);
+      }
       setStatus('error');
     }
+  };
+
+  /**
+   * 只拉模型清单，不发任何生成请求。
+   *
+   * 单独给一个入口，是因为玩家想知道的常常不是「配错了没有」，
+   * 而是「这家到底有什么」—— 测通了也一样。`/models` 是最轻的一个请求。
+   */
+  const handleListModels = async () => {
+    if (catalogBusy || baseUrlMissing) return;
+    setCatalogBusy(true);
+    setPicked(null);
+    try {
+      const probe = await probeModels(draft);
+      setCatalog(probe.models);
+      if (!probe.models.length && probe.networkError) {
+        const info = classifyLlmError(undefined, '', probe.networkError.err);
+        setLastError({ info });
+        setStatus('error');
+      }
+    } finally {
+      setCatalogBusy(false);
+    }
+  };
+
+  const pickModel = (model: string, slot: 'narrative' | 'analysis') => {
+    patch(slot === 'narrative' ? { narrativeModel: model } : { analysisModel: model });
+    setPicked(`${slot === 'narrative' ? '叙事模型' : '结算模型'} 已填：${model}`);
   };
 
   const handleSave = () => {
@@ -110,6 +166,8 @@ export function ApiKeyModal() {
       provider: draft.provider,
       model: draft.narrativeModel,
       analysisModel: draft.analysisModel,
+      // 完整清单也要进日志 —— 只写「等 27 个」，出了这份文件还是查不到名字
+      modelCatalog: info?.modelCatalog ?? catalog ?? undefined,
       inputKeyMasked: key ? `${key.slice(0, 3)}...${key.slice(-4)}` : 'empty'
     };
     const blob = new Blob([JSON.stringify(errorInfo, null, 2)], { type: 'text/plain' });
@@ -451,6 +509,83 @@ export function ApiKeyModal() {
             </button>
           </div>
         )}
+
+        {/*
+          ── 模型清单（2026-11）──
+          玩家的原话：「想要能看到此接口地址的所有可选模型」。
+
+          以前这份清单只以「这家现在可选：A、B、C…等 27 个」的形式出现在报错的
+          一行小字里。问题不在"看不全"，而在**剩下的名字完全拿不到**：
+          这家的命名是 `pg-gemini-3.5-flash-lite` / `抗截断-pg-gemini-3.5-flash-lite`
+          / `假流式-pg-gemini-3.5-flash-lite` 这种，靠猜拼不出来。
+
+          所以给一个独立入口：不测连接、不发生成请求，只问 `/models`，
+          然后可筛、可点 —— 点「叙事」「结算」直接填进对应的框。
+        */}
+        <div className="space-y-2 border border-text-muted/30 rounded p-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-text-secondary">
+              模型清单
+              {catalog && <span className="text-text-muted">（{catalog.length} 个）</span>}
+            </span>
+            <button
+              onClick={handleListModels}
+              disabled={catalogBusy || baseUrlMissing}
+              className="text-[11px] text-accent-lantern underline hover:text-accent-lantern/80 disabled:opacity-50"
+            >
+              {catalogBusy ? '拉取中…' : catalog ? '重新拉取' : '拉取清单'}
+            </button>
+          </div>
+
+          {catalog === null ? (
+            <p className="text-[10px] text-text-muted leading-relaxed">
+              向这个地址要一次模型列表。只发一个 <span className="font-mono">/models</span> 请求，
+              不生成任何内容、不花钱。
+            </p>
+          ) : catalog.length === 0 ? (
+            <p className="text-[10px] text-text-muted leading-relaxed">
+              这个地址没返回清单（多数中转不实现 <span className="font-mono">/models</span>），
+              只能按服务商的文档手填模型名。
+            </p>
+          ) : (
+            <>
+              <input
+                value={catalogFilter}
+                onChange={(e) => setCatalogFilter(e.target.value)}
+                placeholder="筛选，比如 gemini-3.5 / flash / 抗截断"
+                className="w-full bg-background border border-text-muted/40 rounded px-2 py-1.5 text-[11px] text-text-primary focus:border-accent-lantern outline-none"
+              />
+              <ul className="max-h-56 overflow-y-auto space-y-0.5 pr-1">
+                {shownModels.map(m => (
+                  <li key={m} className="flex items-center gap-1.5">
+                    <span className="font-mono text-[11px] text-text-secondary break-all flex-1">
+                      {m}
+                    </span>
+                    <button
+                      onClick={() => pickModel(m, 'narrative')}
+                      title="填进「叙事模型」"
+                      className="shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-text-muted/40 text-text-muted hover:text-accent-lantern hover:border-accent-lantern/60"
+                    >
+                      叙事
+                    </button>
+                    <button
+                      onClick={() => pickModel(m, 'analysis')}
+                      title="填进「结算模型」"
+                      className="shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-text-muted/40 text-text-muted hover:text-accent-lantern hover:border-accent-lantern/60"
+                    >
+                      结算
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {shownModels.length === 0 && (
+                <p className="text-[10px] text-text-muted">没有匹配的名字。</p>
+              )}
+            </>
+          )}
+
+          {picked && <p className="text-[10px] text-accent-edge break-all">{picked}</p>}
+        </div>
 
         <div className="flex justify-end gap-2 pt-2">
           <button

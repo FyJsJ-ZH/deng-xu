@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { testConnection, listModels, llmChat } from '@/api/llm'
+import { testConnection, testConnectionDetailed, listModels, llmChat } from '@/api/llm'
 import { LlmError } from '@/api/llmErrors'
 import type { LLMConfig } from '@/types/cards'
 
@@ -226,6 +226,64 @@ describe('地址根本不通', () => {
       const err = await testConnection(cfg(port)).then(() => null, (e) => e) as LlmError
       expect(err.info.kind).toBe('auth')
       expect(err.info.message).not.toContain('接口地址不通')
+    } finally { await s.close() }
+  })
+})
+
+/**
+ * 「想要能看到此接口地址的所有可选模型」（2026-11 玩家截图）。
+ *
+ * 他那家回 27 个模型，界面上只有一行：
+ *   这家现在可选：pg-gemini-3-flash-preview、… 等 27 个
+ * 剩下 15 个名字一个都拿不到。而这家的命名是
+ *   `pg-gemini-3.5-flash-lite` / `抗截断-pg-gemini-3.5-flash-lite`
+ *   / `假流式-pg-gemini-3.5-flash-lite`
+ * 三种包装 × 九个基名 —— 靠猜拼不出来。
+ *
+ * 这一组钉两件事：完整清单要带出来（不截断），以及**测通了也要能拿到**。
+ */
+describe('完整模型清单', () => {
+  /** 27 个，与玩家那家同量级 */
+  const many = Array.from({ length: 27 }, (_, i) => `pg-gemini-3.${i}-flash-lite`)
+
+  it('★ 模型名对不上 → info.modelCatalog 是全部 27 个，不是前 12 个', async () => {
+    const s = server(() => ({ status: 200, json: { data: many.map(id => ({ id })) } }))
+    const port = await s.listen()
+    try {
+      const err = await testConnection(cfg(port)).then(() => null, (e) => e) as LlmError
+      expect(err.info.modelCatalog).toEqual(many)
+      expect(err.info.modelCatalog).toHaveLength(27)
+    } finally { await s.close() }
+  })
+
+  it('★ hint 里不再出现「等 N 个」—— 那句话等于什么都没给', async () => {
+    const s = server(() => ({ status: 200, json: { data: many.map(id => ({ id })) } }))
+    const port = await s.listen()
+    try {
+      const err = await testConnection(cfg(port)).then(() => null, (e) => e) as LlmError
+      expect(err.info.hint).not.toMatch(/等\s*\d+\s*个/)
+      expect(err.info.hint).toContain('模型清单')
+    } finally { await s.close() }
+  })
+
+  it('★ 测试通过时也把清单带回去（配好了照样想换模型）', async () => {
+    const ok = ['vtx-抗截断-gemini-4-Argon-high', 'vtx-抗截断-gemini-4-argon-high', 'other']
+    const s = server(() => ({ status: 200, json: { data: ok.map(id => ({ id })) } }))
+    const port = await s.listen()
+    try {
+      const r = await testConnectionDetailed(cfg(port))
+      expect(r.catalog).toEqual(ok)
+    } finally { await s.close() }
+  })
+
+  it('对方不实现 /models → 清单为空数组，不是 undefined', async () => {
+    const s = server((h) => h.path.startsWith('/models')
+      ? { status: 404, json: { detail: 'Not Found' } }
+      : { status: 200, json: okChat })
+    const port = await s.listen()
+    try {
+      const r = await testConnectionDetailed(cfg(port))
+      expect(r.catalog).toEqual([])
     } finally { await s.close() }
   })
 })

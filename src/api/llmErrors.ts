@@ -78,6 +78,17 @@ export interface LlmErrorInfo {
   outputLimit?: number
   /** 原始错误文本，仅用于调试面板 */
   raw?: string
+  /**
+   * 服务商 `/models` 返回的**完整**模型名清单（拉得到才有）。
+   *
+   * 以前这份清单只以"前 12 个 + 等 N 个"的形式塞在 `hint` 里 —— 玩家看到的
+   * 是「…等 27 个」，然后就没下文了：他没法知道剩下 15 个叫什么，而这个
+   * 地址下真正能用的名字恰好在被截掉的那一段里（2026-11 玩家截图）。
+   *
+   * 清单不放进 `hint`：`hint` 是一句话，塞 27 个名字会把手机屏幕撑爆，
+   * 也没法点。UI 那边拿这个字段渲染成可筛选、可点选的列表。
+   */
+  modelCatalog?: string[]
 }
 
 export class LlmError extends Error {
