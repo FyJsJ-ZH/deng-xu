@@ -3,7 +3,7 @@ import { useGameStore, countTurns, type GameState, type TokenUsage } from '@/sto
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
 import { useMetaStore } from '@/stores/meta'
-import { llmChat, extractContent, parseSseLine, suggestMaxTokens, suggestJsonMaxTokens, withThinkingReserve, isReasonerModel, isThinkingByDefault, willThink, type ChatMessage } from '@/api/llm'
+import { llmChat, extractContent, parseSseLine, suggestMaxTokens, suggestJsonMaxTokens, withThinkingReserve, isReasonerModel, isThinkingByDefault, willThink, watchIdle, withDeadline, type ChatMessage } from '@/api/llm'
 import { parseModelJson } from '@/api/jsonRepair'
 import {
   buildNarrativePromptParts,
@@ -33,6 +33,29 @@ import {
 } from '@/utils/historyArchive'
 import { computeStats, startingItemsOf } from '@/utils/runRebuild'
 import { describeEmptyNarrative } from '@/utils/engineErrors'
+
+/**
+ * 流式叙事允许的**最长静默**（2026-11）。
+ *
+ * 2026-11 玩家报：「接中转站用本项目时慢得异常，酒馆最多十分钟出一轮，
+ * 这里有时半小时都跑不出来」。查下去最刺眼的是：流式读取循环
+ * `while (true) await reader.read()` 一点超时都没有 —— 中转不回数据时，
+ * 浏览器就真的陪它等到 TCP 自己超时。
+ *
+ * 为什么是 180 秒：Gemini 系走中转时，思考阶段本来就可能一两分钟不吐字。
+ * 定得太短会把「正在想」误判成「死了」，那样比慢更糟。超过三分钟一个字节
+ * 都没有，就不是想得慢，是那一路断了。
+ */
+const NARRATIVE_IDLE_MS = 180_000
+
+/**
+ * 整段返回（无流）的单次封顶。
+ *
+ * 非流式没有中间信号 —— 从发出到回来之间一片空白，只能给总时限。
+ * 十分钟是实测最长（结算请求输入是整个状态 JSON，Gemini 想七八分钟是常事）。
+ * 比这更久多半已经断了，早点说清楚比让玩家盯着转圈强。
+ */
+const BULK_DEADLINE_MS = 600_000
 
 /**
  * 空回重试时追加给模型的那一句话（2026-11）。
@@ -1091,18 +1114,26 @@ export function useGameEngine(): GameEngineReturn {
       这个通道单轮实测 54~175 秒，而界面上只有一个转圈 ——
       玩家会以为卡死了，然后切后台、锁屏，请求就此真正中断。
 
-      节奏是**一分钟刷一次**：秒数一直在变的那种提示看着像在催，
-      而这里真正要说的只有一句"还活着、别切走"，一分钟说一遍正好。
+      **2026-11 第二轮改**：玩家报「有时半小时都跑不出来」。原来的节奏是
+      60 秒才刷一次 —— 头一分钟一个字都没有，而那正是最焦虑的一段；
+      而且结算开始时的那句「正在结算世界状态…」会被这个定时器一分钟后再
+      覆盖回「等待模型回话」，他看到的是**上一步的文案**，phase 全乱了。
 
-      定时器在 finally 里清。
+      现在：5 秒一刷、显示 m:ss、文案跟着 `waitPhase` 走。
+      秒数一直跳看着像催，但这正是要的 —— 他要的是"还活着"，不是"快完了"。
     */
     const waitStartedAt = Date.now()
+    /** 当前处在哪一步。结算开始时会被改写，定时器跟着它换文案 */
+    const waitPhase = { label: '等待模型回话' }
+    const elapsed = () => {
+      const secs = Math.floor((Date.now() - waitStartedAt) / 1000)
+      return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`
+    }
     const waitTimer = setInterval(() => {
-      const secs = Math.round((Date.now() - waitStartedAt) / 1000)
       useUIStore.getState().setStatusMessage(
-        `等待模型回话…已 ${secs} 秒（这个模型会先思考很久，别切走页面）`,
+        `${waitPhase.label}…已等 ${elapsed()}（别切走页面，切走会断）`,
       )
-    }, 60_000)
+    }, 5_000)
 
     // 摘要节流：每 6 轮压缩一次。用"已经写完的轮数"而不是组件本地的计数器 ——
     // 本地计数器在回溯时必须手动重置，一旦忘了就会按错误的节奏跑摘要
@@ -1506,10 +1537,19 @@ export function useGameEngine(): GameEngineReturn {
       const activeSampling = useLibraryStore.getState().getActiveNarrativePreset()?.sampling
       let prefillOn = config.prefill !== false
 
+      /**
+       * 计时（2026-11）。玩家问「为什么酒馆十分钟、这里半小时」——
+       * 这个项目一轮发**两次**大请求（正文 + 结算），得能量出各占多少
+       * 才能判断该改哪里。见 `TurnTiming`。
+       */
+      const narrativeT0 = Date.now()
+      let narrativeCalls = 0
+
       const requestNarrative = async (
         stream: boolean,
         nudge: false | 'empty' | 'refusal' = false,
       ): Promise<NarrativeAttempt> => {
+        narrativeCalls += 1
         /*
           ── `nudge`：告诉模型"上一轮你只想了，没写"（2026-11）──
 
@@ -1529,15 +1569,25 @@ export function useGameEngine(): GameEngineReturn {
           : narrativeMessages
 
         if (!stream) {
-          const res = await llmChat({
-            messages,
-            config,
-            model: config.narrativeModel,
-            stream: false,
-            maxTokens: narrativeMaxTokens,
-            prefill: prefillOn,
-            ...(activeSampling ? { sampling: activeSampling } : {}),
-          })
+          /*
+            ⚠️ 这里必须封顶（2026-11）。非流式没有中间信号 —— 从发出到回来
+            之间一片空白，中转跑挂了就会一直挂着。`withDeadline` 到点 abort，
+            并抛一句能读懂的话，而不是让玩家盯着一个转圈半小时。
+          */
+          const res = await withDeadline(
+            (signal) => llmChat({
+              messages,
+              config,
+              model: config.narrativeModel,
+              stream: false,
+              maxTokens: narrativeMaxTokens,
+              prefill: prefillOn,
+              signal,
+              ...(activeSampling ? { sampling: activeSampling } : {}),
+            }),
+            BULK_DEADLINE_MS,
+            '叙事请求（整段返回）',
+          )
           const content = extractContent(res)
           const reasoning = String(res?.choices?.[0]?.message?.reasoning_content ?? '')
           if (res?.model) useGameStore.getState().recordResponseModel(String(res.model))
@@ -1558,6 +1608,22 @@ export function useGameEngine(): GameEngineReturn {
           }
         }
 
+        /*
+          ── 流式的看门狗（2026-11）──
+
+          玩家原话：「接中转站慢得异常，酒馆十分钟出一轮，这里半小时都跑不出来」。
+
+          流式本来是最能分辨"慢"和"死"的形式：只要还在吐 chunk，就是活着。
+          但读取循环原来是 `while (true) await reader.read()` —— 一个字节不来
+          就永远挂着，浏览器要等 TCP 自己超时才收场（十几分钟）。
+
+          所以每收到一段就 `kick()` 重置；连续 `NARRATIVE_IDLE_MS` 一个字节
+          都没有才 abort。abort 之后这一趟按"流式失败"处理，自动降级成
+          整段返回 —— 那条路本来就有，见下面 `streamFailure`。
+        */
+        const streamCtl = new AbortController()
+        const streamIdle = watchIdle(NARRATIVE_IDLE_MS, () => streamCtl.abort())
+
         const streamResponse = await llmChat({
           messages,
           config,
@@ -1565,6 +1631,7 @@ export function useGameEngine(): GameEngineReturn {
           stream: true,
           maxTokens: narrativeMaxTokens,
           prefill: prefillOn,
+          signal: streamCtl.signal,
           ...(activeSampling ? { sampling: activeSampling } : {}),
         }) as Response
 
@@ -1582,51 +1649,58 @@ export function useGameEngine(): GameEngineReturn {
         /** 回包里的 model 只记一次（每个 chunk 都带同一个值，没必要反复写 store） */
         let responseModelSeen = false
 
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            streamIdle.kick()
 
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          // 最后一行可能被截断，留到下次
-          buffer = lines.pop() ?? ''
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            // 最后一行可能被截断，留到下次
+            buffer = lines.pop() ?? ''
 
-          for (const line of lines) {
-            const usage = parseSseUsage(line.trim())
-            if (usage) streamUsage = usage
-            const chunk = parseSseLine(line.trim())
-            if (!chunk) continue
-            /*
-              服务端回包里的 model 是**唯一可信**的"到底在跑什么模型"的证据
-              （我们发出去的是别名，中转站还可能改路由）。只记第一次拿到的那个。
-            */
-            if (chunk.model && !responseModelSeen) {
-              responseModelSeen = true
-              useGameStore.getState().recordResponseModel(chunk.model)
-            }
-            if (chunk.finishReason) finishReason = chunk.finishReason
-            if (chunk.reasoning) {
-              reasoning += chunk.reasoning
-              reasoningStats.chunks++
-              setStreamingReasoning(reasoning)
-            }
-            if (chunk.content) {
-              text += chunk.content
-              setStreamingContent(text)
+            for (const line of lines) {
+              const usage = parseSseUsage(line.trim())
+              if (usage) streamUsage = usage
+              const chunk = parseSseLine(line.trim())
+              if (!chunk) continue
+              /*
+                服务端回包里的 model 是**唯一可信**的"到底在跑什么模型"的证据
+                （我们发出去的是别名，中转站还可能改路由）。只记第一次拿到的那个。
+              */
+              if (chunk.model && !responseModelSeen) {
+                responseModelSeen = true
+                useGameStore.getState().recordResponseModel(chunk.model)
+              }
+              if (chunk.finishReason) finishReason = chunk.finishReason
+              if (chunk.reasoning) {
+                reasoning += chunk.reasoning
+                reasoningStats.chunks++
+                setStreamingReasoning(reasoning)
+              }
+              if (chunk.content) {
+                text += chunk.content
+                setStreamingContent(text)
+              }
             }
           }
-        }
-        // 处理残留缓冲
-        const tailLine = buffer.trim()
-        const tailUsage = parseSseUsage(tailLine)
-        if (tailUsage) streamUsage = tailUsage
-        const tail = parseSseLine(tailLine)
-        if (tail?.content) {
-          text += tail.content
-          setStreamingContent(text)
-        }
+          // 处理残留缓冲
+          const tailLine = buffer.trim()
+          const tailUsage = parseSseUsage(tailLine)
+          if (tailUsage) streamUsage = tailUsage
+          const tail = parseSseLine(tailLine)
+          if (tail?.content) {
+            text += tail.content
+            setStreamingContent(text)
+          }
 
-        return { text, reasoning, finishReason, streamUsage, streamed: true }
+          return { text, reasoning, finishReason, streamUsage, streamed: true }
+        } finally {
+          // 成功、失败、被 abort —— 三种出口都要把计时器停掉，否则它会
+          // 在下一轮请求开始之后还活着，abort 到一个已经作废的 controller 上
+          streamIdle.stop()
+        }
       }
 
       let attempt: NarrativeAttempt | null = null
@@ -1950,7 +2024,13 @@ export function useGameEngine(): GameEngineReturn {
         setDebugDataOutput('[快速模式] 未发起数据结算调用')
       } else {
         // —— 第二阶段：数据结算 ——
-        useUIStore.getState().setStatusMessage('正在结算世界状态…')
+        /*
+          这一步是整个项目与酒馆**最大的结构差异**：正文已经写完了，
+          但玩家还要再等一次完整的大请求才能继续操作。文案要说清这一点，
+          否则他会以为"正文都出来了，怎么又卡了"。
+        */
+        waitPhase.label = '正文已写好，正在结算世界数据（这一步与正文各是一次完整请求）'
+        useUIStore.getState().setStatusMessage(`${waitPhase.label}…已等 ${elapsed()}`)
         setIsAnalyzingData(true)
 
         const afterNarrative = useGameStore.getState()
@@ -2013,30 +2093,40 @@ export function useGameEngine(): GameEngineReturn {
            别的思考模型给 16384），解析失败**自动放大额度再跑一次**
            （第二次仍失败才报错）。多花一次请求，比让玩家每轮手动点重试划算得多。
         */
+        const analysisT0 = Date.now()
+        let analysisCalls = 0
         const analysisBudget = suggestJsonMaxTokens(config.analysisModel, config.baseUrl, config.maxTokens)
-        const callAnalysis = (maxTokens: number) => llmChat({
-          messages: dataMessages,
-          config,
-          model: config.analysisModel,
-          stream: false,
-          temperature: 0.2,
-          jsonMode: true,
-          maxTokens,
-          /*
-            ⚠️ **仍然传 `thinking: 'off'`**（2026-11 玩家实测：报「数据结算返回的
-            内容无法解析为 JSON」）。
+        const callAnalysis = (maxTokens: number) => withDeadline(
+          (signal) => {
+            analysisCalls += 1
+            return llmChat({
+              messages: dataMessages,
+              config,
+              model: config.analysisModel,
+              stream: false,
+              temperature: 0.2,
+              jsonMode: true,
+              maxTokens,
+              signal,
+              /*
+                ⚠️ **仍然传 `thinking: 'off'`**（2026-11 玩家实测：报「数据结算返回的
+                内容无法解析为 JSON」）。
 
-            对认这个字段的服务商（DeepSeek 官方那套），思考模式下 `buildBody`
-            不会放 `response_format`，模型于是没有"必须输出纯 JSON"的硬约束，
-            思维链还要从额度里先吃掉一大截 —— 结果是"一段带思考痕迹的半截 JSON"，
-            而 `parseModelJson` 那四道修复策略修的是格式，救不了
-            "模型压根没打算只输出 JSON"。
+                对认这个字段的服务商（DeepSeek 官方那套），思考模式下 `buildBody`
+                不会放 `response_format`，模型于是没有"必须输出纯 JSON"的硬约束，
+                思维链还要从额度里先吃掉一大截 —— 结果是"一段带思考痕迹的半截 JSON"，
+                而 `parseModelJson` 那四道修复策略修的是格式，救不了
+                "模型压根没打算只输出 JSON"。
 
-            对不认它的服务商（Gemini 系）它是个空操作 —— 那边由额度与重试兜着，
-            见上面 `analysisBudget` 的说明。
-          */
-          thinking: 'off',
-        })
+                对不认它的服务商（Gemini 系）它是个空操作 —— 那边由额度与重试兜着，
+                见上面 `analysisBudget` 的说明。
+              */
+              thinking: 'off',
+            })
+          },
+          BULK_DEADLINE_MS,
+          '数据结算（整段返回）',
+        )
 
         const budgets = analysisBudget >= 32768
           ? [analysisBudget]
@@ -2132,6 +2222,18 @@ export function useGameEngine(): GameEngineReturn {
             : `${actionText} → ${finalNarrative}`
           useGameStore.getState().appendTimeline(turnNumber, beat)
         }
+
+        /*
+          把这一轮的耗时交出去（2026-11）。
+          只在**走完**时记 —— 半途失败的那一轮，数字会误导人。
+        */
+        useGameStore.getState().recordTurnTiming({
+          narrativeMs: analysisT0 - narrativeT0,
+          analysisMs: Date.now() - analysisT0,
+          narrativeCalls,
+          analysisCalls,
+          inputChars: useGameStore.getState().lastPromptParts?.total ?? 0,
+        })
 
         setIsAnalyzingData(false)
       }

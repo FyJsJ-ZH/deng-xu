@@ -177,6 +177,35 @@ export interface PromptParts {
 }
 
 /**
+ * 这一轮的时间花在哪（2026-11）。
+ *
+ * 玩家原话：「接中转站用本项目时慢得异常，酒馆最多十分钟出一轮，
+ * 这里有时半小时都跑不出来」。
+ *
+ * 光看"半小时"判断不了该改什么。本项目的结构与酒馆**不一样**：它一轮发
+ * 两次大请求 —— 正文一次、数据结算再一次，而酒馆只发一次。所以"慢一倍"
+ * 是结构性的，问题只在于这两段各占多少：
+ *
+ * ```
+ * 叙事 8:12 / 结算 11:30   → 换结算模型（别用会思考的那个）
+ * 叙事 19:42 / 结算 0:08   → 正文那次本身在拖，查 max_tokens 与模型档位
+ * 叙事 0:40 / 结算 0:50    → 都不慢，慢在别处（网络、排队）
+ * ```
+ */
+export interface TurnTiming {
+  /** 正文那一段总共花了多少毫秒（含流式失败降级、空包重试） */
+  narrativeMs: number
+  /** 数据结算总共花了多少毫秒（含放大额度重试） */
+  analysisMs: number
+  /** 正文实际发了几次请求 */
+  narrativeCalls: number
+  /** 结算实际发了几次请求 */
+  analysisCalls: number
+  /** 这一轮输入了多少字符（叙事那一次） */
+  inputChars: number
+}
+
+/**
  * 一次 LLM 调用的用量（C9）
  *
  * `estimated` 是**必须**有的字段：很多 OpenAI 兼容端点（尤其是第三方中转与
@@ -662,6 +691,22 @@ export interface GameState {
   lastResponseModel: string
   recordResponseModel: (model: string) => void
 
+  /**
+   * 这一轮的时间花在哪（2026-11）。
+   *
+   * 玩家原话：「接中转站用本项目时慢得异常，酒馆最多十分钟出一轮，
+   * 这里有时半小时都跑不出来」。
+   *
+   * 光看"半小时"判断不了该改什么。本项目的结构与酒馆**不一样**：
+   * 它一轮发两次大请求 —— 正文一次、数据结算再一次，
+   * 而酒馆只发一次。所以"慢一倍"是结构性的，问题只在于这两段各占多少。
+   *
+   * 把这四个数摆出来，"叙事 8:12 / 结算 11:30"和"叙事 19:42 / 结算 0:08"
+   * 指向完全不同的两处改动。
+   */
+  lastTurnTiming: TurnTiming | null
+  recordTurnTiming: (timing: TurnTiming) => void
+
   // Player Profile
   playerName: string
   playerGender: string
@@ -1125,6 +1170,7 @@ const INITIAL_STATE = {
   lastPromptParts: null,
   sessionUsage: EMPTY_USAGE,
   lastResponseModel: '',
+  lastTurnTiming: null,
   story: {
     currentChapter: 1,
     completedEvents: [],
@@ -1530,6 +1576,7 @@ export const useGameStore = create<GameState>()(
       clearLastUsage: () => set({ lastUsage: null }),
       setPromptParts: (parts) => set({ lastPromptParts: parts }),
       recordResponseModel: (model) => set({ lastResponseModel: String(model || '') }),
+      recordTurnTiming: (timing) => set({ lastTurnTiming: timing }),
       // 复制一份而不是直接写 EMPTY_USAGE：共享同一个对象引用时，
       // 任何一处误改都会污染"零值"这个全局常量
       resetSessionUsage: () => set({ sessionUsage: { ...EMPTY_USAGE }, lastUsage: null }),

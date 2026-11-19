@@ -1,6 +1,7 @@
 import { useLibraryStore } from '@/stores/library'
 import { useSessionStore } from '@/stores/session'
 import { useUIStore } from '@/stores/ui'
+import { useGameStore } from '@/stores/game'
 import { StyleChooser } from '@/components/StyleChooser'
 import { AntiRoutePanel } from '@/components/AntiRoutePanel'
 import { presetEntryStats } from '@/utils/narrativePreset'
@@ -60,6 +61,9 @@ export function NarrativeControls() {
   const llm = useUIStore(s => s.llm)
   const setLlm = useUIStore(s => s.setLlm)
   const prefillOn = llm.prefill !== false
+
+  /** 上一轮的时间构成（2026-11，见 `TurnTiming`） */
+  const timing = useGameStore(s => s.lastTurnTiming)
 
   return (
     <div className="space-y-3">
@@ -128,6 +132,41 @@ export function NarrativeControls() {
             </div>
           )
         })() : null}
+
+        {/*
+          ── 上一轮的耗时构成（2026-11）──
+
+          玩家原话：「接中转站用本项目时慢得异常，酒馆最多十分钟出一轮，
+          这里有时半小时都跑不出来」。
+
+          这个项目与酒馆的结构不一样：一轮发**两次**大请求 ——
+          正文一次、数据结算再一次，而酒馆只发一次。所以"慢一倍"是结构性的。
+          但到底慢在哪一段，只有两个数摆在一起才说得清：
+          「正文 8:12 / 结算 11:30」该换结算模型；
+          「正文 19:42 / 结算 0:08」则该查正文那边。
+        */}
+        {timing && (() => {
+          const mmss = (ms: number) => {
+            const s = Math.floor(ms / 1000)
+            return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+          }
+          const slowerIsAnalysis = timing.analysisMs > timing.narrativeMs
+          return (
+            <div className="text-[10px] leading-relaxed space-y-1 border-t border-text-muted/20 pt-2">
+              <p className="text-text-muted">
+                上一轮耗时 <b className="text-text-secondary">{mmss(timing.narrativeMs + timing.analysisMs)}</b>
+                {' '}—— 正文 <b className="text-text-secondary">{mmss(timing.narrativeMs)}</b>
+                {' '}· 结算 <b className="text-text-secondary">{mmss(timing.analysisMs)}</b>
+                <span className="text-text-muted/70">（{timing.narrativeCalls} / {timing.analysisCalls} 次请求）</span>
+              </p>
+              <p className="text-text-muted/80">
+                {slowerIsAnalysis
+                  ? '结算比正文还久 —— 把「结算模型」换成一个不想事的（flash 档），这一半基本能砍掉。'
+                  : '正文那段是大头。它读的是整份世界书 + 历史 + 贴尾，长度压不下来时只能换更快的模型档位。'}
+              </p>
+            </div>
+          )
+        })()}
 
         <p className="text-[10px] text-accent-lantern/80 flex items-start gap-1 leading-relaxed">
           <Info size={10} className="mt-0.5 shrink-0" />

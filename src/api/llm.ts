@@ -1170,6 +1170,86 @@ export async function testConnection(config: LLMConfig): Promise<void> {
   await testConnectionDetailed(config);
 }
 
+/**
+ * 空闲看门狗 —— 给「可能在等一个永远不来的字节」的请求计时。
+ *
+ * ## 为什么要有这个
+ *
+ * 2026-11 玩家报：「接中转站用本项目时慢得异常，酒馆最多十分钟出一轮，
+ * 这里有时半小时都跑不出来」。
+ *
+ * 查下来最刺眼的一条：**全项目只有一个 `AbortController`，在 `listModels`
+ * 里管 8 秒**；`llmChat` 的 `fetch` 和流式读取循环
+ * `while (true) await reader.read()` 一点超时都没有。中转不回数据时，
+ * 浏览器就真的陪它等到 TCP 自己超时 —— 那是十几分钟起步。
+ *
+ * ## 判据是「多久没动静」，不是「一共多久」
+ *
+ * 这条最要紧：慢不等于卡死。中转排了十分钟队但第十一分钟开始吐字，
+ * 那是它的正常表现，杀掉等于把十分钟的成果扔了。所以只在**连续
+ * `idleMs` 一个字节都没收到**时判定卡死；每收到一段就 `kick()` 重新计时。
+ */
+export function watchIdle(idleMs: number, onTrip: () => void) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let tripped = false;
+  let since = Date.now();
+  const stop = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+  };
+  const kick = () => {
+    if (tripped) return;
+    since = Date.now();
+    stop();
+    timer = setTimeout(() => { tripped = true; onTrip(); }, idleMs);
+  };
+  kick();
+  return {
+    kick,
+    stop,
+    /** 已经多久没动静了（给"已等 X 分 Y 秒"用） */
+    get idled() { return Date.now() - since; },
+    get tripped() { return tripped; },
+  };
+}
+
+/**
+ * 给一次「整段返回」的请求封顶时限。
+ *
+ * 流式能靠 `watchIdle` 分辨"慢"和"死"（有 chunk 就是活着）；非流式没有这个
+ * 信号 —— 从发出到回来之间一片空白，只能给一个够长的总时限。
+ *
+ * 给 10 分钟的理由：Gemini 走中转、输入是整个状态 JSON 的结算请求，
+ * 实测最长能到七八分钟。比这更久的话，多半不是"慢"而是"已经断了"，
+ * 让玩家一直盯着转圈比早点说清楚糟得多。
+ */
+export async function withDeadline<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  const controller = new AbortController();
+  let fired = false;
+  const timer = setTimeout(() => { fired = true; controller.abort(); }, ms);
+  try {
+    return await run(controller.signal);
+  } catch (e) {
+    if (fired) {
+      const min = Math.round(ms / 60000);
+      throw new LlmError({
+        kind: 'timeout',
+        retryable: false,
+        message: `${label}超时：${min} 分钟没有任何回应`,
+        hint: '服务商侧没有把这个请求跑完。先把「结算模型」换成一个不想事的模型'
+          + '（两个都填 -high 就是双倍慢），再试一次；仍超时就换一家中转。',
+        raw: String((e as Error)?.message || e),
+      });
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** 两段原始错误几乎总是一样的（同一个 fetch 异常），去重后才好读 */
 function dedupeRaw(...parts: (string | undefined)[]): string | undefined {
   const kept: string[] = [];
