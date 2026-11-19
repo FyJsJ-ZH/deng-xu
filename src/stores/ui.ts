@@ -13,6 +13,15 @@ interface UIState {
   showTutorial: boolean
   setShowTutorial: (show: boolean) => void
   statusMessage: string | null
+  /**
+   * 设置状态消息。
+   *
+   * 它现在**只喂文字**，不触发任何浮层 —— 原来那个 `GlobalToast` 已经删了
+   * （2026-11，玩家原话：「直接删掉弹窗」）。
+   *
+   * 落地位置只有两处：游戏界面里的 `StatusBar` 一行，以及非游戏界面里的
+   * `StatusLine` 一行。两处都是常驻文字，不淡入淡出、不自动消失。
+   */
   setStatusMessage: (msg: string | null) => void
 
   /** 卡片编辑器是否打开 */

@@ -1,5 +1,5 @@
 import { useEffect, Suspense } from 'react'
-import { GlobalToast } from '@/components/GlobalToast'
+import { StatusLine } from '@/components/StatusLine'
 import { StartScreen } from '@/components/StartScreen'
 import { useGameStore } from '@/stores/game'
 import { useSessionStore } from '@/stores/session'
@@ -104,11 +104,15 @@ function App() {
         </ChunkErrorBoundary>
       )}
       {/*
-        `GlobalToast` 必须挂在这个层级 —— 主菜单上的「再按一次返回即退出游戏」
-        就是在这里提示的，而 `statusMessage` 原先只在游戏界面的 StatusBar 里渲染，
-        于是主菜单上的提示**根本没有 DOM**，玩家看到的是"按键没反应"。
+        状态提示的落地处（2026-11）。
+
+        这里原来是 `GlobalToast` 浮层，玩家说「跟催命一样」、要求「直接删掉弹窗」。
+        现在换成一行**常驻文字**：不淡入淡出、不自动消失、不占屏幕中央。
+
+        只在**非游戏界面**挂 —— 游戏进行中的进度提示由 `StatusBar` 承担，
+        两处同时出现同一句话只会让画面更吵。
       */}
-      <GlobalToast />
+      {!isGameStarted && <StatusLine />}
     </Suspense>
   )
 }
