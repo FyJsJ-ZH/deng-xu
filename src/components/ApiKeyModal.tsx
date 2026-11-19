@@ -83,14 +83,33 @@ export function ApiKeyModal() {
   const exportErrorLog = () => {
     if (!lastError) return;
     const key = draft.apiKey;
+    const info = lastError?.info;
+    const base = (draft.baseUrl || '').trim();
+    /*
+      这份日志是给人看的诊断包，不是堆栈转储。2026-11 玩家导出的那一份
+      只有 message / stack / baseUrl / model —— 而 message 是
+      「网络连接失败」，于是谁都看不出真相是端口已经关了。
+
+      `raw` 才是那一趟 fetch 真正抛出来的话（`Failed to fetch` /
+      `net::ERR_CONNECTION_REFUSED` / `Load failed`）。少它一个词，
+      排查就从"看日志"变成"猜"。
+    */
     const errorInfo = {
       message: lastError?.message || String(lastError),
+      kind: info?.kind,
+      status: info?.status,
+      hint: info?.hint,
+      raw: info?.raw,
       stack: lastError?.stack,
       time: new Date().toISOString(),
       userAgent: navigator.userAgent,
-      provider: draft.provider,
+      // https 页面调 http 接口会被浏览器直接拦掉，报的话与"断网"一模一样
+      pageOrigin: location.origin,
       baseUrl: draft.baseUrl,
+      mixedContent: location.protocol === 'https:' && /^http:\/\//i.test(base),
+      provider: draft.provider,
       model: draft.narrativeModel,
+      analysisModel: draft.analysisModel,
       inputKeyMasked: key ? `${key.slice(0, 3)}...${key.slice(-4)}` : 'empty'
     };
     const blob = new Blob([JSON.stringify(errorInfo, null, 2)], { type: 'text/plain' });

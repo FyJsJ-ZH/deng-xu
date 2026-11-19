@@ -86,3 +86,81 @@ describe('LLM 错误分类', () => {
     expect(e.info.kind).toBe('rate_limit')
   })
 })
+
+/**
+ * 网络层失败的细分（2026-11）。
+ *
+ * 以前 `status === undefined` 只有一个出口：「网络连接失败 / 检查网络或代理」。
+ * 玩家拿这句话去查网络，而真相七种里挑一。
+ *
+ * 麻烦在于浏览器不给细节：Chrome 统一抛 `TypeError: Failed to fetch`。
+ * 所以这里分两层测：
+ *   1. 认得出来的（Node/undici 会带 cause.code、部分浏览器会漏 net::ERR_xxx）
+ *      必须分对，而且 `retryable` 要跟着变 —— "重试就好"和"改配置"不是一回事；
+ *   2. 认不出来的（纯 Failed to fetch）走兜底，兜底给的是**排查顺序**。
+ */
+describe('网络层失败细分', () => {
+  /** 造一个像 undici 那样的异常：message 是 fetch failed，原因在 cause.code */
+  const netErr = (code: string, message = 'fetch failed') =>
+    Object.assign(new Error(message), { name: 'TypeError', cause: { code } })
+
+  it('★ ECONNREFUSED（端口没人听）→ 地址问题，且不再劝人重试', () => {
+    const info = classifyLlmError(undefined, '', netErr('ECONNREFUSED'))
+    expect(info.message).toContain('拒绝连接')
+    expect(info.retryable).toBe(false)
+    // 原始异常必须留下来，否则日志里没有任何证据
+    expect(info.raw).toContain('ECONNREFUSED')
+  })
+
+  it('★ ENOTFOUND（域名解析不了）→ 指向拼写，而不是网络', () => {
+    const info = classifyLlmError(undefined, '', netErr('ENOTFOUND'))
+    expect(info.message).toContain('域名')
+    expect(info.retryable).toBe(false)
+  })
+
+  it('证书问题 → 别让人去改模型名', () => {
+    const info = classifyLlmError(undefined, '', netErr('CERT_HAS_EXPIRED'))
+    expect(info.message).toContain('证书')
+    expect(info.retryable).toBe(false)
+  })
+
+  it('连接被重置 → 这条才是"换个网络再试"，可重试', () => {
+    const info = classifyLlmError(undefined, '', netErr('ECONNRESET'))
+    expect(info.message).toContain('掐断')
+    expect(info.retryable).toBe(true)
+  })
+
+  it('超时与"连不上"必须分开 —— 一个等，一个改', () => {
+    const t = classifyLlmError(undefined, '', netErr('ETIMEDOUT'))
+    const r = classifyLlmError(undefined, '', netErr('ECONNREFUSED'))
+    expect(t.kind).toBe('timeout')
+    expect(r.kind).toBe('network')
+    expect(t.message).not.toBe(r.message)
+  })
+
+  it('★ 纯 `Failed to fetch` → 兜底给三步排查顺序，不含糊', () => {
+    const info = classifyLlmError(undefined, '', new TypeError('Failed to fetch'))
+    expect(info.kind).toBe('network')
+    expect(info.hint).toContain('地址栏')
+    expect(info.hint).toContain('跨域')
+  })
+
+  it('浏览器带 net::ERR_ 时也认', () => {
+    const info = classifyLlmError(undefined, '', new TypeError('net::ERR_CONNECTION_REFUSED'))
+    expect(info.message).toContain('拒绝连接')
+  })
+
+  it('https 页面调 http 接口 → 直说协议问题', () => {
+    const info = classifyLlmError(
+      undefined, '',
+      new TypeError('Mixed Content: The page at https://... was loaded over HTTPS')
+    )
+    expect(info.message).toContain('HTTPS')
+    expect(info.hint).toContain('https://')
+  })
+
+  it('aborted 不会被当成网络失败（用户主动取消不该报红）', () => {
+    const info = classifyLlmError(undefined, '', Object.assign(new Error('x'), { name: 'AbortError' }))
+    expect(info.kind).toBe('aborted')
+  })
+})

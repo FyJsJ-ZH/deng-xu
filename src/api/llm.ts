@@ -1000,29 +1000,60 @@ export function extractContent(response: any): string {
  *
  * 拉不到就返回空数组（很多中转不实现 `/models`，不该因此判失败）。
  */
-export async function listModels(config: LLMConfig): Promise<string[]> {
+export interface ModelsProbe {
+  /** 拿到的模型名清单；拿不到就是空数组 */
+  models: string[]
+  /** 拿到 HTTP 响应时的状态码（401 / 404 也算拿到了响应） */
+  status?: number
+  /** 网络层就死了 —— 一个响应头都没拿到 */
+  networkError?: { ms: number; err: unknown }
+  /** 这一趟花了多少毫秒 */
+  ms: number
+}
+
+/**
+ * 问一次 `/models`，**并把失败原因留下来**。
+ *
+ * 以前这里 `catch { return [] }` —— 连不上、域名错、端口关、401、404
+ * 全部缩成同一个空数组，外面无从分辨。
+ *
+ * 后果在 2026-11 的一次排查里很清楚：玩家的中转站 443 端口已经关了，
+ * 但 `testConnection` 只看到"清单是空的"，于是退回发真实请求，再失败，
+ * 报出一句笼统的「网络连接失败」。**真正的原因在第一步就被吞掉了。**
+ *
+ * 现在把 networkError 带出去，让 `testConnection` 能说：
+ * 「连模型清单都拉不到 —— 不是模型名的问题，是地址本身不通」。
+ */
+export async function probeModels(config: LLMConfig): Promise<ModelsProbe> {
   const base = (config.baseUrl || '').trim().replace(/\/+$/, '');
-  if (!base) return [];
+  if (!base) return { models: [], ms: 0 };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
+  const t0 = Date.now();
   try {
     const res = await fetch(`${base}/models`, {
       headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
       signal: controller.signal,
     });
-    if (!res.ok) return [];
+    const ms = Date.now() - t0;
+    if (!res.ok) return { models: [], status: res.status, ms };
     const json: any = await res.json();
     const arr = Array.isArray(json?.data) ? json.data
       : Array.isArray(json?.models) ? json.models
       : Array.isArray(json) ? json : [];
-    return arr
+    const models = arr
       .map((x: any) => (typeof x === 'string' ? x : x?.id ?? x?.name))
       .filter((x: any): x is string => typeof x === 'string' && !!x.trim());
-  } catch {
-    return [];
+    return { models, status: res.status, ms };
+  } catch (err) {
+    return { models: [], ms: Date.now() - t0, networkError: { ms: Date.now() - t0, err } };
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function listModels(config: LLMConfig): Promise<string[]> {
+  return (await probeModels(config)).models;
 }
 
 /**
@@ -1057,7 +1088,8 @@ export async function testConnection(config: LLMConfig): Promise<void> {
     });
   }
 
-  const catalog = await listModels(config);
+  const probe = await probeModels(config);
+  const catalog = probe.models;
   if (catalog.length) {
     const missing = models.filter(m => !catalog.includes(m));
     if (missing.length) {
@@ -1091,7 +1123,39 @@ export async function testConnection(config: LLMConfig): Promise<void> {
   const err = results[failedAt];
   const model = models[failedAt];
   if (err instanceof LlmError) {
-    throw new LlmError({ ...err.info, message: `「${model}」—— ${err.info.message}` });
+    const base = { ...err.info, message: `「${model}」—— ${err.info.message}` };
+    /*
+      清单那一步如果死在网络层，那才是**最早**的死因 —— 而且比 chat 那趟
+      干净得多：`/models` 是最轻的请求，它都到不了，就与模型名、Key、
+      max_tokens、预设全部无关，纯粹是地址打不通。
+
+      2026-11 那次排查全靠这个判断：玩家的 baseUrl 端口已经关了，
+      但旧代码把这一步的异常吞成空数组，于是只能报「网络连接失败」，
+      他于是去换网络、换 VPN，越查越远。
+    */
+    if (probe.networkError) {
+      const p = classifyLlmError(undefined, '', probe.networkError.err);
+      const addr = (config.baseUrl || '').trim().replace(/\/+$/, '');
+      throw new LlmError({
+        ...base,
+        message: `接口地址不通 —— ${p.message}`,
+        hint: `${p.hint}（连 ${addr}/models 都没走到：${probe.networkError.ms} ms 就断了，`
+          + '所以与模型名、Key、额度都无关）',
+        raw: dedupeRaw(base.raw, p.raw),
+      });
+    }
+    throw new LlmError(base);
   }
   throw err;
+}
+
+/** 两段原始错误几乎总是一样的（同一个 fetch 异常），去重后才好读 */
+function dedupeRaw(...parts: (string | undefined)[]): string | undefined {
+  const kept: string[] = [];
+  for (const p of parts) {
+    const s = (p || '').trim();
+    if (!s || kept.includes(s)) continue;
+    kept.push(s);
+  }
+  return kept.length ? kept.join('\n---\n') : undefined;
 }

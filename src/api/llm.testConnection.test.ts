@@ -179,3 +179,53 @@ describe('模型名里的空格', () => {
     } finally { await s.close() }
   })
 })
+
+/**
+ * 地址本身不通（2026-11 玩家那份 `llm-settings-error.log`）。
+ *
+ * 他的 baseUrl 是 `https://catiecli.sukaka.top/v1`，我实测：域名解析正常
+ * （38.49.38.34），但那个 IP 的 443 端口直接 RST，22 端口还开着 OpenSSH ——
+ * 也就是**机器活着，服务停了**。而他看到的是「网络连接失败」，
+ * 于是去查自己的网络，怎么查都是好的。
+ *
+ * 这一组钉住：先说地址，再提模型名。旧实现的 `/models` 那一趟把异常
+ * 吞成了空数组，最早的死因就这么丢了。
+ */
+describe('地址根本不通', () => {
+  /** 拿一个此刻没人监听的本地端口 */
+  const deadPort = () => new Promise<number>((r) => {
+    const s = http.createServer()
+    s.listen(0, '127.0.0.1', () => {
+      const p = (s.address() as AddressInfo).port
+      s.close(() => r(p))
+    })
+  })
+
+  it('★ 端口没人听 → 说「接口地址不通」，且点明与模型名无关', async () => {
+    const port = await deadPort()
+    const err = await testConnection(cfg(port)).then(() => null, (e) => e)
+    expect(err).toBeInstanceOf(LlmError)
+    const info = (err as LlmError).info
+    expect(info.message).toContain('接口地址不通')
+    // 这句是关键：让他别再去改模型名
+    expect(info.hint).toContain('与模型名')
+    // 原始异常要留下来（以前这里是空的，等于不给证据）
+    expect(info.raw).toMatch(/ECONNREFUSED|fetch failed/i)
+  })
+
+  it('★ 连接被拒不该说成"重试就好" —— 它是配置问题', async () => {
+    const port = await deadPort()
+    const err = await testConnection(cfg(port)).then(() => null, (e) => e) as LlmError
+    expect(err.info.retryable).toBe(false)
+  })
+
+  it('地址通、只是 401 → 不许说成"地址不通"', async () => {
+    const s = server(() => ({ status: 401, json: { error: { message: 'Invalid API key' } } }))
+    const port = await s.listen()
+    try {
+      const err = await testConnection(cfg(port)).then(() => null, (e) => e) as LlmError
+      expect(err.info.kind).toBe('auth')
+      expect(err.info.message).not.toContain('接口地址不通')
+    } finally { await s.close() }
+  })
+})

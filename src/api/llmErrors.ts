@@ -202,12 +202,40 @@ export function parseOutputTokenLimit(body: string): number | undefined {
  * @param body   错误响应体
  * @param err    网络层抛出的原始异常
  */
+/**
+ * 把网络层异常的**全部**信息拼成一行。
+ *
+ * Node / undici 的 fetch 失败时 message 只写 `fetch failed`，真正的原因
+ * （`ECONNREFUSED`、`ENOTFOUND`、`CERT_HAS_EXPIRED`）藏在 `err.cause.code`
+ * 里。只读 message 的后果是：所有网络失败长得一模一样 —— 2026-11 那次
+ * 排查里，明明"连接被拒"和"超时"的处理方式完全不同，日志里却都是同一句。
+ *
+ * 浏览器没有 `cause`（Chrome 抛 `TypeError: Failed to fetch`），
+ * 所以这里只是"能捞就捞"，捞不到不影响后面的兜底分类。
+ */
+function describeNetworkError(err: unknown): string {
+  const e = err as any
+  const parts: string[] = []
+  const push = (v: any) => {
+    if (v == null) return
+    const s = typeof v === 'string' ? v : (v?.message || v?.code || '')
+    const t = String(s).trim()
+    if (t && !parts.includes(t)) parts.push(t)
+  }
+  push(e?.name && e.name !== 'Error' ? `${e.name}: ${e?.message ?? ''}` : e?.message)
+  push(e?.cause?.code)
+  push(e?.cause?.errno && String(e.cause.errno))
+  push(e?.cause?.message)
+  push(typeof e === 'string' ? e : '')
+  return parts.join(' / ')
+}
+
 export function classifyLlmError(
   status: number | undefined,
   body: string,
   err?: unknown
 ): LlmErrorInfo {
-  const raw = err ? String((err as Error)?.message || err) : body
+  const raw = err ? describeNetworkError(err) : body
   const serverMsg = extractServerMessage(body)
 
   // 用户主动取消：不是错误，别报红
@@ -216,18 +244,107 @@ export function classifyLlmError(
   }
 
   if (status === undefined) {
-    // 没有状态码 → 网络层就没通
-    const m = String((err as Error)?.message || '')
-    if (/timeout|timed out|ETIMEDOUT/i.test(m)) {
+    /*
+      ── 请求在拿到响应之前就死了 ──
+
+      `status` 为 undefined 意味着浏览器连一个 HTTP 响应头都没拿到。原因有
+      七八种，以前它们全部显示成「网络连接失败」+「检查网络或代理设置」。
+
+      2026-11 玩家发来的日志就是这么卡住的：他本地网络完全正常，而真相是
+      那个中转站的 443 端口已经关了（TCP 直接 RST）。提示却让他去查网络。
+
+      这一支的麻烦在于：Chrome 的 fetch 失败时统一抛
+      `TypeError: Failed to fetch`，**不告诉你为什么**。所以下面按原始
+      message 里可能出现的特征词分（各家浏览器/Node 会漏出不同的词），
+      认不出来才走兜底，兜底给的是排查顺序而不是含糊的一句话。
+
+      顺序有讲究：端口没开最容易自证（把 baseUrl 粘到地址栏），
+      所以排在最前；CORS 最难查，放最后并配一次主动探测。
+    */
+    const all = raw
+
+    if (/timeout|timed out|ETIMEDOUT|ERR_TIMED_OUT/i.test(all)) {
       return {
         kind: 'timeout', retryable: true, status,
-        message: '请求超时', hint: '可能是网络慢或服务商拥堵，稍后会自动重试', raw,
+        message: '请求超时',
+        hint: '连上了但对方一直不回。可能是服务商拥堵，也可能是链路被限速 —— 稍后会自动重试。',
+        raw,
       }
     }
+
+    // 端口上没人听 —— **服务器还活着，服务停了**。重试一百次也一样。
+    if (/ECONNREFUSED|ERR_CONNECTION_REFUSED|connection refused|actively refused/i.test(all)) {
+      return {
+        kind: 'network', retryable: false, status,
+        message: '接口地址拒绝连接（这个端口上没有服务在跑）',
+        hint: '服务器本身是通的，但它不接这个端口的请求 —— 多半是服务商停机、换了域名/端口，'
+          + '或者这家已经关站。把接口地址整条粘到浏览器地址栏：打得开才说明这个地址还在用。',
+        raw,
+      }
+    }
+
+    if (/ENOTFOUND|ERR_NAME_NOT_RESOLVED|getaddrinfo|ERR_DNS|DNS_PROBE/i.test(all)) {
+      return {
+        kind: 'network', retryable: false, status,
+        message: '接口地址的域名解析不了',
+        hint: '这个域名查不到 IP —— 抄错一个字母就会这样，也可能域名已注销。'
+          + '核对拼写，或找服务商的文档重新复制一份地址。',
+        raw,
+      }
+    }
+
+    if (/ERR_CERT|certificate|self.signed|SSL|TLS handshake|CERT_/i.test(all)) {
+      return {
+        kind: 'network', retryable: false, status,
+        message: '证书握手失败',
+        hint: '对方用的是自签证书、证书过期，或者被中间设备替换了。'
+          + '换一个网络试（公司网/校园网常做 HTTPS 拦截），仍不行就是服务商自己的问题。',
+        raw,
+      }
+    }
+
+    if (/ECONNRESET|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_EMPTY_RESPONSE|socket hang up|other side closed/i.test(all)) {
+      return {
+        kind: 'network', retryable: true, status,
+        message: '连接被中途掐断',
+        hint: '常见于代理/VPN 的出口被服务商拒绝，或手机在 Wi-Fi 与流量之间切换。'
+          + '关掉代理直连再试一次；用手机上玩时尤其容易碰上。',
+        raw,
+      }
+    }
+
+    // 页面是 https、接口填了 http —— 浏览器直接拦，请求根本发不出去
+    if (/Mixed Content|insecure|blocked.*http/i.test(all)) {
+      return {
+        kind: 'network', retryable: false, status,
+        message: 'HTTPS 页面不能调用 HTTP 接口',
+        hint: '把接口地址开头的 http:// 改成 https://（多数中转两种都支持）。',
+        raw,
+      }
+    }
+
+    if (/CORS|cross-origin|Access-Control|preflight/i.test(all)) {
+      return {
+        kind: 'network', retryable: false, status,
+        message: '服务商不允许网页直接调用（跨域被拦）',
+        hint: '对方没回 Access-Control-Allow-Origin，浏览器就把结果扣下了 —— 请求其实成功了，'
+          + '只是正文拿不到。这家要么换成官方域名，要么别在网页里用。',
+        raw,
+      }
+    }
+
+    /*
+      兜底 —— `Failed to fetch` / `Load failed` / `NetworkError`。
+      这三个词是三种浏览器对**同一件事**的不同说法，等于什么都没说。
+      所以这里不猜，给的是"三步能自查完"的顺序。
+    */
     return {
       kind: 'network', retryable: true, status,
       message: '网络连接失败',
-      hint: '检查网络或代理设置。若用了 VPN，注意部分服务商会拒绝代理出口',
+      hint: '浏览器只说「失败」，不说为什么。按这个顺序排：'
+        + '① 把接口地址粘到地址栏，打不开 = 地址/服务的问题（最常见）；'
+        + '② 打得开就是跨域被拦，换官方域名或问服务商要允许网页调的地址；'
+        + '③ 都正常再查代理/VPN。',
       raw,
     }
   }
